@@ -1,0 +1,3 @@
+Contact: https://github.com/netkeep80/mast-calculator/issues
+Preferred-Languages: ru, en
+Canonical: https://netkeep80.github.io/mast-calculator/.well-known/security.txt

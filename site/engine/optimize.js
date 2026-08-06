@@ -6,13 +6,16 @@ export function selectUniformDiameter(parameters, diameters = STANDARD_DIAMETERS
   const variants = []
   for (const diameter of diameters) {
     const result = calculateMast({ ...parameters, barDiameterMm: diameter })
-    const passesStrength = result.analysis.maxUtilization <= 1
-    const passesDisplacement = result.analysis.maxTopDisplacementM * 1000 <= parameters.displacementLimitMm
-    variants.push({ diameter, result, passesStrength, passesDisplacement })
+    const passesStrength = result.envelope.maxUtilization <= 1
+    const passesDisplacement = result.envelope.maxTopDisplacementM * 1000 <= parameters.displacementLimitMm
+    const passesBuckling = result.envelope.minimumBucklingFactor >= parameters.minimumBucklingFactor
+    variants.push({ diameter, result, passesStrength, passesDisplacement, passesBuckling })
   }
 
   return {
     variants,
-    recommended: variants.find((variant) => variant.passesStrength && variant.passesDisplacement) ?? null,
+    recommended: variants.find((variant) => (
+      variant.passesStrength && variant.passesDisplacement && variant.passesBuckling
+    )) ?? null,
   }
 }

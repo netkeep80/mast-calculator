@@ -3,6 +3,7 @@ export class MastViewer {
     this.canvas = canvas
     this.context = canvas.getContext('2d')
     this.result = null
+    this.showBucklingMode = false
     this.yaw = -0.65
     this.pitch = 0.35
     this.zoom = 1
@@ -48,6 +49,11 @@ export class MastViewer {
     this.draw()
   }
 
+  setBucklingMode(enabled) {
+    this.showBucklingMode = enabled
+    this.draw()
+  }
+
   project(point, scale, centerX, centerY) {
     const [x, y, z] = point
     const cosYaw = Math.cos(this.yaw)
@@ -58,10 +64,33 @@ export class MastViewer {
     const sinPitch = Math.sin(this.pitch)
     const screenY3d = cosPitch * z - sinPitch * rotatedY
     const depth = sinPitch * z + cosPitch * rotatedY
-    return {
-      x: centerX + rotatedX * scale,
-      y: centerY - screenY3d * scale,
-      depth,
+    return { x: centerX + rotatedX * scale, y: centerY - screenY3d * scale, depth }
+  }
+
+  drawMembers(projectedNodes, strokeStyle, lineWidth, utilizationColors = false) {
+    const { model, analysis } = this.result
+    const items = model.members.map((member) => ({
+      member,
+      depth: (projectedNodes[member.nodeA].depth + projectedNodes[member.nodeB].depth) / 2,
+    })).sort((a, b) => a.depth - b.depth)
+
+    const ctx = this.context
+    ctx.lineCap = 'round'
+    for (const item of items) {
+      const start = projectedNodes[item.member.nodeA]
+      const end = projectedNodes[item.member.nodeB]
+      if (utilizationColors) {
+        const utilization = Math.min(1, analysis.memberResults[item.member.id]?.utilization ?? 0)
+        const hue = Math.round((1 - utilization) * 120)
+        ctx.strokeStyle = `hsl(${hue} 72% 38%)`
+      } else {
+        ctx.strokeStyle = strokeStyle
+      }
+      ctx.lineWidth = lineWidth
+      ctx.beginPath()
+      ctx.moveTo(start.x, start.y)
+      ctx.lineTo(end.x, end.y)
+      ctx.stroke()
     }
   }
 
@@ -86,29 +115,23 @@ export class MastViewer {
     const scale = baseScale * this.zoom
     const centerX = width / 2
     const centerY = height * 0.88
+    const original = model.nodes.map((node) => this.project(node.position, scale, centerX, centerY))
 
-    const projectedNodes = model.nodes.map((node) => this.project(node.position, scale, centerX, centerY))
-    const drawItems = model.members.map((member) => ({
-      member,
-      depth: (projectedNodes[member.nodeA].depth + projectedNodes[member.nodeB].depth) / 2,
-    })).sort((a, b) => a.depth - b.depth)
-
-    ctx.lineCap = 'round'
-    for (const item of drawItems) {
-      const start = projectedNodes[item.member.nodeA]
-      const end = projectedNodes[item.member.nodeB]
-      const utilization = Math.min(1, analysis.memberResults[item.member.id]?.utilization ?? 0)
-      const hue = Math.round((1 - utilization) * 120)
-      ctx.strokeStyle = `hsl(${hue} 72% 38%)`
-      ctx.lineWidth = Math.max(1.3, 2.3 * this.zoom)
-      ctx.beginPath()
-      ctx.moveTo(start.x, start.y)
-      ctx.lineTo(end.x, end.y)
-      ctx.stroke()
+    let displayed = original
+    if (this.showBucklingMode && Number.isFinite(analysis.buckling.criticalLoadFactor)) {
+      const amplitude = mastHeight * 0.16
+      const deformedPositions = model.nodes.map((node) => {
+        const mode = analysis.buckling.mode[node.id] ?? [0, 0, 0]
+        return node.position.map((value, axis) => value + amplitude * mode[axis])
+      })
+      displayed = deformedPositions.map((point) => this.project(point, scale, centerX, centerY))
+      this.drawMembers(original, '#b5bec8', Math.max(1, 1.5 * this.zoom), false)
     }
 
-    for (const node of projectedNodes) {
-      ctx.fillStyle = '#233342'
+    this.drawMembers(displayed, '#168565', Math.max(1.3, 2.3 * this.zoom), !this.showBucklingMode)
+
+    for (const node of displayed) {
+      ctx.fillStyle = this.showBucklingMode ? '#1d5f9a' : '#233342'
       ctx.beginPath()
       ctx.arc(node.x, node.y, Math.max(2, 3.2 * this.zoom), 0, Math.PI * 2)
       ctx.fill()
@@ -117,6 +140,7 @@ export class MastViewer {
     ctx.fillStyle = '#657382'
     ctx.font = '12px system-ui'
     ctx.textAlign = 'left'
-    ctx.fillText('Перетаскивание — вращение, колесо — масштаб', 12, 20)
+    const modeText = this.showBucklingMode ? ' · форма потери устойчивости увеличена' : ''
+    ctx.fillText(`Перетаскивание — вращение, колесо — масштаб${modeText}`, 12, 20)
   }
 }

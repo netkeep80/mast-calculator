@@ -6,7 +6,10 @@ export function buildLoadCase(model, parameters) {
   const loads = model.nodes.map(() => [0, 0, 0])
   const directionRad = parameters.windDirectionDeg * Math.PI / 180
   const wind = [Math.cos(directionRad), Math.sin(directionRad), 0]
+  const iceThicknessM = Math.max(0, parameters.iceThicknessMm ?? 0) / 1000
+  const iceDensityKgM3 = Math.max(0, parameters.iceDensityKgM3 ?? 900)
   let selfWeightN = 0
+  let iceWeightN = 0
   let memberWindN = 0
 
   const addNodeLoad = (nodeId, load) => {
@@ -24,18 +27,22 @@ export function buildLoadCase(model, parameters) {
 
     const delta = sub3(nodeB.position, nodeA.position)
     const lengthM = norm3(delta)
-    const areaM2 = Math.PI * member.diameterM ** 2 / 4
-    const weightN = member.densityKgM3 * areaM2 * lengthM * GRAVITY * parameters.deadLoadFactor
-    selfWeightN += weightN
-    addNodeLoad(member.nodeA, [0, 0, -weightN / 2])
-    addNodeLoad(member.nodeB, [0, 0, -weightN / 2])
+    const steelAreaM2 = Math.PI * member.diameterM ** 2 / 4
+    const outerDiameterM = member.diameterM + 2 * iceThicknessM
+    const iceAreaM2 = Math.PI * Math.max(0, outerDiameterM ** 2 - member.diameterM ** 2) / 4
+    const steelWeightN = member.densityKgM3 * steelAreaM2 * lengthM * GRAVITY * parameters.deadLoadFactor
+    const memberIceWeightN = iceDensityKgM3 * iceAreaM2 * lengthM * GRAVITY * parameters.deadLoadFactor
+    selfWeightN += steelWeightN
+    iceWeightN += memberIceWeightN
+    const gravityLoad = steelWeightN + memberIceWeightN
+    addNodeLoad(member.nodeA, [0, 0, -gravityLoad / 2])
+    addNodeLoad(member.nodeB, [0, 0, -gravityLoad / 2])
 
-    // Проекция цилиндрического стержня на плоскость, нормальную ветру.
     const axis = unit3(delta)
     const projectedLengthM = lengthM * Math.sqrt(Math.max(0, 1 - dot3(axis, wind) ** 2))
     const windForceN = parameters.windPressurePa
       * parameters.dragCoefficient
-      * member.diameterM
+      * outerDiameterM
       * projectedLengthM
       * parameters.windLoadFactor
     memberWindN += windForceN
@@ -61,5 +68,13 @@ export function buildLoadCase(model, parameters) {
     [0, 0, 0],
   )
 
-  return { nodalLoads: loads, totalAppliedLoad, selfWeightN, memberWindN, equipmentWindN }
+  return {
+    nodalLoads: loads,
+    totalAppliedLoad,
+    selfWeightN,
+    iceWeightN,
+    memberWindN,
+    equipmentWindN,
+    windDirectionDeg: parameters.windDirectionDeg,
+  }
 }

@@ -1,16 +1,29 @@
 import { calculateMast, DEFAULT_PARAMETERS } from './engine/calculate.js'
 import { selectUniformDiameter } from './engine/optimize.js'
+import {
+  buildMaterialSummary,
+  buildMemberEnvelope,
+  createCalculationCsv,
+  createCalculationJson,
+} from './engine/report.js'
 import { MastViewer } from './viewer.js'
 
 const form = document.querySelector('#parameters-form')
 const calculateButton = document.querySelector('#calculate-button')
 const optimizeButton = document.querySelector('#optimize-button')
+const exportCsvButton = document.querySelector('#export-csv-button')
+const exportJsonButton = document.querySelector('#export-json-button')
 const errorBox = document.querySelector('#error')
 const resultsSection = document.querySelector('#results')
 const warningsList = document.querySelector('#warnings')
 const optimizationBox = document.querySelector('#optimization-result')
 const showBucklingMode = document.querySelector('#show-buckling-mode')
+const memberResultsBody = document.querySelector('#member-results-body')
+const materialSummaryBox = document.querySelector('#material-summary')
 const viewer = new MastViewer(document.querySelector('#mast-canvas'))
+
+let lastResult = null
+let lastParameters = null
 
 const fieldNames = [
   'moduleCount', 'triangleSideMm', 'moduleHeightMm', 'barDiameterMm',
@@ -56,7 +69,62 @@ function readParameters() {
   return parameters
 }
 
+function downloadText(filename, content, type) {
+  const blob = new Blob([content], { type })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.append(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+function exportFilename(extension) {
+  const modules = lastParameters?.moduleCount ?? 'mast'
+  const height = lastParameters?.moduleHeightMm ?? ''
+  return `mast-calculation-${modules}x${height}.${extension}`
+}
+
+function renderMemberReport(result) {
+  const members = buildMemberEnvelope(result)
+    .sort((left, right) => right.utilization - left.utilization)
+  memberResultsBody.replaceChildren(...members.map((member) => {
+    const row = document.createElement('tr')
+    if (member.utilization > 1) row.classList.add('danger-row')
+    const values = [
+      member.memberId,
+      member.familyName,
+      `${member.nodeA}–${member.nodeB}`,
+      format(member.lengthM * 1000, 1),
+      member.mode === 'compression' ? 'Сжатие' : 'Растяжение',
+      format(member.axialForceN / 1000, 3),
+      angle(member.windDirectionDeg),
+      format(member.designCapacityN / 1000, 3),
+      format(member.slenderness, 1),
+      format(member.utilization, 4),
+    ]
+    row.replaceChildren(...values.map((value) => {
+      const cell = document.createElement('td')
+      cell.textContent = value
+      return cell
+    }))
+    return row
+  }))
+
+  const material = buildMaterialSummary(result)
+  const groupDescription = material.groups.map((group) => (
+    `${group.familyName.toLowerCase()} Ø${format(group.diameterMm, 0)} × ${format(group.lengthMm, 0)} мм — ${group.count} шт.`
+  )).join('; ')
+  materialSummaryBox.textContent = `Всего ${material.totalCount} стержней, ${format(material.totalLengthM, 2)} м и ${format(material.totalMassKg, 1)} кг стали. ${groupDescription}`
+}
+
 function renderResult(result, parameters) {
+  lastResult = result
+  lastParameters = { ...parameters }
+  exportCsvButton.disabled = false
+  exportJsonButton.disabled = false
   viewer.setResult(result)
   resultsSection.hidden = false
 
@@ -91,6 +159,7 @@ function renderResult(result, parameters) {
     item.textContent = warning
     return item
   }))
+  renderMemberReport(result)
 }
 
 function runCalculation() {
@@ -136,6 +205,14 @@ function runOptimization() {
 
 calculateButton.addEventListener('click', runCalculation)
 optimizeButton.addEventListener('click', runOptimization)
+exportCsvButton.addEventListener('click', () => {
+  if (!lastResult) return
+  downloadText(exportFilename('csv'), createCalculationCsv(lastResult), 'text/csv;charset=utf-8')
+})
+exportJsonButton.addEventListener('click', () => {
+  if (!lastResult || !lastParameters) return
+  downloadText(exportFilename('json'), createCalculationJson(lastResult, lastParameters), 'application/json;charset=utf-8')
+})
 form.elements.namedItem('windEnvelopeEnabled').addEventListener('change', syncWindFields)
 showBucklingMode.addEventListener('change', () => viewer.setBucklingMode(showBucklingMode.checked))
 form.addEventListener('submit', (event) => {

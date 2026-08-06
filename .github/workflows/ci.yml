@@ -55,4 +55,5 @@ jobs:
           grep --quiet '<title>Mast Calculator</title>' /tmp/mast-calculator-index.html
           curl --fail --silent http://127.0.0.1:4173/app.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/calculate.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/report.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/styles.css >/dev/null

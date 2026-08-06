@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Расчёт модульной телекоммуникационной мачты методом конечных элементов">
+  <title>Mast Calculator</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Mast Calculator · прототип 0.1</p>
+      <h1>Расчёт модульной мачты</h1>
+      <p class="subtitle">Линейная пространственная ферма, собственный вес, ветер и проверка стержней.</p>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel parameters">
+      <h2>Исходные данные</h2>
+      <form id="parameters-form">
+        <div class="form-grid">
+          <label>Число модулей<input name="moduleCount" type="number" min="1" max="80" step="1"></label>
+          <label>Сторона треугольника, мм<input name="triangleSideMm" type="number" min="100" step="10"></label>
+          <label>Высота модуля, мм<input name="moduleHeightMm" type="number" min="100" step="10"></label>
+          <label>Диаметр арматуры, мм<input name="barDiameterMm" type="number" min="4" max="40" step="1"></label>
+          <label>Модуль упругости, ГПа<input name="youngModulusGPa" type="number" min="1" step="1"></label>
+          <label>Предел текучести, МПа<input name="yieldStrengthMPa" type="number" min="10" step="10"></label>
+          <label>Плотность, кг/м³<input name="densityKgM3" type="number" min="1" step="10"></label>
+          <label>Коэфф. расчётной длины<input name="effectiveLengthFactor" type="number" min="0.3" max="3" step="0.05"></label>
+          <label>Коэфф. материала<input name="materialSafetyFactor" type="number" min="1" max="3" step="0.05"></label>
+          <label>Коэфф. постоянной нагрузки<input name="deadLoadFactor" type="number" min="1" max="3" step="0.05"></label>
+          <label>Коэфф. ветровой нагрузки<input name="windLoadFactor" type="number" min="1" max="3" step="0.05"></label>
+          <label>Коэфф. веса оборудования<input name="equipmentLoadFactor" type="number" min="1" max="3" step="0.05"></label>
+          <label>Ветровое давление, Па<input name="windPressurePa" type="number" min="0" step="10"></label>
+          <label>Аэродин. коэфф. стержней<input name="dragCoefficient" type="number" min="0" step="0.05"></label>
+          <label>Направление ветра, °<input name="windDirectionDeg" type="number" step="5"></label>
+          <label>Масса оборудования, кг<input name="equipmentMassKg" type="number" min="0" step="1"></label>
+          <label>Парусная площадь, м²<input name="equipmentWindAreaM2" type="number" min="0" step="0.01"></label>
+          <label>Аэродин. коэфф. оборудования<input name="equipmentDragCoefficient" type="number" min="0" step="0.05"></label>
+          <label>Доп. горизонтальная сила, Н<input name="extraHorizontalLoadN" type="number" min="0" step="10"></label>
+          <label>Доп. вертикальная сила вниз, Н<input name="extraVerticalLoadN" type="number" min="0" step="10"></label>
+          <label>Допустимое отклонение, мм<input name="displacementLimitMm" type="number" min="1" step="1"></label>
+          <label class="checkbox"><input name="closeTopRing" type="checkbox"> Замкнуть верхний треугольник</label>
+        </div>
+        <div class="button-row">
+          <button id="calculate-button" class="primary" type="button">Выполнить расчёт</button>
+          <button id="optimize-button" class="secondary" type="button">Подобрать диаметр</button>
+        </div>
+      </form>
+      <p id="error" class="error" hidden></p>
+      <p id="optimization-result" class="optimization" hidden></p>
+    </section>
+
+    <section class="panel visual">
+      <h2>Расчётная схема</h2>
+      <p class="hint">Зелёный — малое использование, красный — приближение к пределу.</p>
+      <canvas id="mast-canvas" aria-label="Трёхмерная расчётная схема мачты"></canvas>
+    </section>
+
+    <section id="results" class="panel results" hidden>
+      <h2>Основные результаты</h2>
+      <div class="metric-grid">
+        <article><span>Высота</span><strong id="metric-height"></strong></article>
+        <article><span>Масса стержней</span><strong id="metric-mass"></strong></article>
+        <article><span>Отклонение вершины</span><strong id="metric-displacement"></strong></article>
+        <article><span>Макс. использование</span><strong id="metric-utilization"></strong></article>
+        <article><span>Критический стержень</span><strong id="metric-critical"></strong></article>
+        <article><span>Численная невязка</span><strong id="metric-residual"></strong></article>
+      </div>
+      <div class="critical-card">
+        <h3>Критическая проверка</h3>
+        <p id="critical-description"></p>
+      </div>
+      <details open>
+        <summary>Ограничения текущей модели</summary>
+        <ul id="warnings"></ul>
+      </details>
+    </section>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

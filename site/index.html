@@ -10,7 +10,7 @@
 <body>
   <header class="page-header">
     <div>
-      <p class="eyebrow">Mast Calculator · прототип 0.2</p>
+      <p class="eyebrow">Mast Calculator · прототип 0.3</p>
       <h1>Расчёт модульной мачты</h1>
       <p class="subtitle">Пространственная ферма, огибающая ветровых направлений, обледенение и линейная общая устойчивость.</p>
     </div>
@@ -96,6 +96,36 @@
         <p id="critical-description"></p>
       </div>
       <p id="load-summary" class="load-summary"></p>
+
+      <div class="export-row">
+        <button id="export-csv-button" class="secondary" type="button" disabled>Скачать CSV стержней</button>
+        <button id="export-json-button" class="secondary" type="button" disabled>Скачать JSON расчёта</button>
+      </div>
+
+      <details open>
+        <summary>Ведомость стержней по огибающей</summary>
+        <p id="material-summary" class="material-summary"></p>
+        <div class="table-scroll">
+          <table class="member-table">
+            <thead>
+              <tr>
+                <th>№</th>
+                <th>Тип</th>
+                <th>Узлы</th>
+                <th>Длина, мм</th>
+                <th>Режим</th>
+                <th>Усилие, кН</th>
+                <th>Ветер</th>
+                <th>Несущая, кН</th>
+                <th>Гибкость</th>
+                <th>Использование</th>
+              </tr>
+            </thead>
+            <tbody id="member-results-body"></tbody>
+          </table>
+        </div>
+      </details>
+
       <details open>
         <summary>Ограничения текущей модели</summary>
         <ul id="warnings"></ul>

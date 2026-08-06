@@ -10,9 +10,9 @@
 <body>
   <header class="page-header">
     <div>
-      <p class="eyebrow">Mast Calculator · прототип 0.1</p>
+      <p class="eyebrow">Mast Calculator · прототип 0.2</p>
       <h1>Расчёт модульной мачты</h1>
-      <p class="subtitle">Линейная пространственная ферма, собственный вес, ветер и проверка стержней.</p>
+      <p class="subtitle">Пространственная ферма, огибающая ветровых направлений, обледенение и линейная общая устойчивость.</p>
     </div>
   </header>
 
@@ -20,6 +20,7 @@
     <section class="panel parameters">
       <h2>Исходные данные</h2>
       <form id="parameters-form">
+        <h3 class="form-section-title">Геометрия и материал</h3>
         <div class="form-grid">
           <label>Число модулей<input name="moduleCount" type="number" min="1" max="80" step="1"></label>
           <label>Сторона треугольника, мм<input name="triangleSideMm" type="number" min="100" step="10"></label>
@@ -29,21 +30,35 @@
           <label>Предел текучести, МПа<input name="yieldStrengthMPa" type="number" min="10" step="10"></label>
           <label>Плотность, кг/м³<input name="densityKgM3" type="number" min="1" step="10"></label>
           <label>Коэфф. расчётной длины<input name="effectiveLengthFactor" type="number" min="0.3" max="3" step="0.05"></label>
-          <label>Коэфф. материала<input name="materialSafetyFactor" type="number" min="1" max="3" step="0.05"></label>
-          <label>Коэфф. постоянной нагрузки<input name="deadLoadFactor" type="number" min="1" max="3" step="0.05"></label>
-          <label>Коэфф. ветровой нагрузки<input name="windLoadFactor" type="number" min="1" max="3" step="0.05"></label>
-          <label>Коэфф. веса оборудования<input name="equipmentLoadFactor" type="number" min="1" max="3" step="0.05"></label>
+          <label class="checkbox"><input name="closeTopRing" type="checkbox"> Замкнуть верхний треугольник</label>
+        </div>
+
+        <h3 class="form-section-title">Нагрузки</h3>
+        <div class="form-grid">
           <label>Ветровое давление, Па<input name="windPressurePa" type="number" min="0" step="10"></label>
           <label>Аэродин. коэфф. стержней<input name="dragCoefficient" type="number" min="0" step="0.05"></label>
           <label>Направление ветра, °<input name="windDirectionDeg" type="number" step="5"></label>
+          <label>Шаг огибающей, °<input name="windEnvelopeStepDeg" type="number" min="5" max="180" step="5"></label>
+          <label class="checkbox"><input name="windEnvelopeEnabled" type="checkbox"> Перебирать направления ветра по кругу</label>
+          <label>Толщина льда, мм<input name="iceThicknessMm" type="number" min="0" step="1"></label>
+          <label>Плотность льда, кг/м³<input name="iceDensityKgM3" type="number" min="0" step="10"></label>
           <label>Масса оборудования, кг<input name="equipmentMassKg" type="number" min="0" step="1"></label>
           <label>Парусная площадь, м²<input name="equipmentWindAreaM2" type="number" min="0" step="0.01"></label>
           <label>Аэродин. коэфф. оборудования<input name="equipmentDragCoefficient" type="number" min="0" step="0.05"></label>
           <label>Доп. горизонтальная сила, Н<input name="extraHorizontalLoadN" type="number" min="0" step="10"></label>
           <label>Доп. вертикальная сила вниз, Н<input name="extraVerticalLoadN" type="number" min="0" step="10"></label>
-          <label>Допустимое отклонение, мм<input name="displacementLimitMm" type="number" min="1" step="1"></label>
-          <label class="checkbox"><input name="closeTopRing" type="checkbox"> Замкнуть верхний треугольник</label>
         </div>
+
+        <h3 class="form-section-title">Коэффициенты и ограничения</h3>
+        <div class="form-grid">
+          <label>Коэфф. материала<input name="materialSafetyFactor" type="number" min="1" max="3" step="0.05"></label>
+          <label>Коэфф. постоянной нагрузки<input name="deadLoadFactor" type="number" min="1" max="3" step="0.05"></label>
+          <label>Коэфф. ветровой нагрузки<input name="windLoadFactor" type="number" min="1" max="3" step="0.05"></label>
+          <label>Коэфф. веса оборудования<input name="equipmentLoadFactor" type="number" min="1" max="3" step="0.05"></label>
+          <label>Допустимое отклонение, мм<input name="displacementLimitMm" type="number" min="1" step="1"></label>
+          <label>Мин. множитель общей устойчивости<input name="minimumBucklingFactor" type="number" min="1" step="0.1"></label>
+        </div>
+
         <div class="button-row">
           <button id="calculate-button" class="primary" type="button">Выполнить расчёт</button>
           <button id="optimize-button" class="secondary" type="button">Подобрать диаметр</button>
@@ -54,25 +69,33 @@
     </section>
 
     <section class="panel visual">
-      <h2>Расчётная схема</h2>
-      <p class="hint">Зелёный — малое использование, красный — приближение к пределу.</p>
+      <div class="visual-title-row">
+        <div>
+          <h2>Расчётная схема</h2>
+          <p class="hint">В обычном режиме цвет показывает использование стержня.</p>
+        </div>
+        <label class="viewer-control"><input id="show-buckling-mode" type="checkbox"> Форма общей потери устойчивости</label>
+      </div>
       <canvas id="mast-canvas" aria-label="Трёхмерная расчётная схема мачты"></canvas>
     </section>
 
     <section id="results" class="panel results" hidden>
-      <h2>Основные результаты</h2>
+      <h2>Огибающие результаты</h2>
       <div class="metric-grid">
         <article><span>Высота</span><strong id="metric-height"></strong></article>
         <article><span>Масса стержней</span><strong id="metric-mass"></strong></article>
-        <article><span>Отклонение вершины</span><strong id="metric-displacement"></strong></article>
-        <article><span>Макс. использование</span><strong id="metric-utilization"></strong></article>
+        <article><span>Макс. отклонение вершины</span><strong id="metric-displacement"></strong></article>
+        <article><span>Макс. использование стержня</span><strong id="metric-utilization"></strong></article>
+        <article><span>Множитель общей устойчивости</span><strong id="metric-buckling"></strong></article>
+        <article><span>Определяющее направление ветра</span><strong id="metric-wind-direction"></strong></article>
         <article><span>Критический стержень</span><strong id="metric-critical"></strong></article>
-        <article><span>Численная невязка</span><strong id="metric-residual"></strong></article>
+        <article><span>Макс. невязка узла</span><strong id="metric-residual"></strong></article>
       </div>
       <div class="critical-card">
-        <h3>Критическая проверка</h3>
+        <h3>Определяющие проверки</h3>
         <p id="critical-description"></p>
       </div>
+      <p id="load-summary" class="load-summary"></p>
       <details open>
         <summary>Ограничения текущей модели</summary>
         <ul id="warnings"></ul>

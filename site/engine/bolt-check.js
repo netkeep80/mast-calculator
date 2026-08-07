@@ -84,6 +84,32 @@ export function calculateBoltCapacity({
   }
 }
 
+function externalDemandScaleToDesignLimit(capacity, tensionN, shearN) {
+  const preloadN = capacity.preload.maximumPreloadN
+  if (capacity.tensionCapacityN == null) {
+    if (preloadN > EPSILON_FORCE_N || tensionN > EPSILON_FORCE_N) return 0
+    return shearN > EPSILON_FORCE_N
+      ? capacity.shearCapacityN / shearN
+      : Number.POSITIVE_INFINITY
+  }
+
+  const tensionCapacityN = Math.max(capacity.tensionCapacityN, Number.EPSILON)
+  const shearCapacityN = Math.max(capacity.shearCapacityN, Number.EPSILON)
+  const preloadRatio = preloadN / tensionCapacityN
+  if (preloadRatio > 1 + UTILIZATION_TOLERANCE) return 0
+
+  const externalTensionRatio = tensionN / tensionCapacityN
+  const shearRatio = shearN / shearCapacityN
+  const quadraticA = externalTensionRatio ** 2 + shearRatio ** 2
+  if (quadraticA <= Number.EPSILON) return Number.POSITIVE_INFINITY
+
+  const quadraticB = 2 * preloadRatio * externalTensionRatio
+  const quadraticC = preloadRatio ** 2 - 1
+  const discriminant = Math.max(0, quadraticB ** 2 - 4 * quadraticA * quadraticC)
+  const factor = (-quadraticB + Math.sqrt(discriminant)) / (2 * quadraticA)
+  return Math.max(0, factor)
+}
+
 export function checkBoltDemand(demand, options) {
   const tensionN = Math.max(0, Number(demand.tensionN) || 0)
   const shearN = Math.max(0, Number(demand.shearN) || 0)
@@ -109,10 +135,16 @@ export function checkBoltDemand(demand, options) {
     preloadUtilization,
     interactionUtilization,
   )
-  const loadFactorToDesignLimit = governingUtilization > Number.EPSILON
-    ? 1 / governingUtilization
-    : Number.POSITIVE_INFINITY
+  const loadFactorToDesignLimit = tensionSupported
+    ? externalDemandScaleToDesignLimit(capacity, tensionN, shearN)
+    : 0
   const resultantDemandN = Math.hypot(strengthTensionN, shearN)
+  const equivalentResultantAtDesignLimitN = Number.isFinite(loadFactorToDesignLimit)
+    ? Math.hypot(
+        capacity.preload.maximumPreloadN + tensionN * loadFactorToDesignLimit,
+        shearN * loadFactorToDesignLimit,
+      )
+    : Number.POSITIVE_INFINITY
 
   return {
     ...capacity,
@@ -130,9 +162,7 @@ export function checkBoltDemand(demand, options) {
     passes: tensionSupported && governingUtilization <= 1 + UTILIZATION_TOLERANCE,
     tensionSupported,
     loadFactorToDesignLimit,
-    equivalentResultantAtDesignLimitN: Number.isFinite(loadFactorToDesignLimit)
-      ? resultantDemandN * loadFactorToDesignLimit
-      : Number.POSITIVE_INFINITY,
+    equivalentResultantAtDesignLimitN,
   }
 }
 

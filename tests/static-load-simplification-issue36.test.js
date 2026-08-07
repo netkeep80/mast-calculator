@@ -13,6 +13,7 @@ import { calculateStaticPayloadCapacity } from '../site/engine/static-payload-ca
 
 const usageSource = fs.readFileSync(new URL('../site/usage-scenarios.js', import.meta.url), 'utf8')
 const loadsSource = fs.readFileSync(new URL('../site/engine/loads.js', import.meta.url), 'utf8')
+const completeSource = fs.readFileSync(new URL('../site/engine/complete-calculation.js', import.meta.url), 'utf8')
 
 test('issue #36: раскрой содержит каждый целый вариант 1…48', () => {
   assert.deepEqual(STOCK_BAR_DIVISIONS, Array.from({ length: 48 }, (_, index) => index + 1))
@@ -81,7 +82,7 @@ test('issue #36: статический предел возвращает мас
   assert.equal('equivalentWaterVolumeLiters' in capacity, false)
 })
 
-test('issue #36: боковой предел публикует эквивалент груза консольной стрелы', () => {
+test('issue #36: чистый боковой предел остаётся независимым reference upper bound', () => {
   const parameters = resolveCalculationParameters({
     ...DEFAULT_PARAMETERS,
     moduleCount: 1,
@@ -95,12 +96,18 @@ test('issue #36: боковой предел публикует эквивале
   assert.match(result.craneBoomInterpretation, /собственн.*вес/i)
 })
 
-test('issue #36: браузерный сценарный слой удаляет две дополнительные силы и скрывает воду', () => {
+test('issue #36: полный пользовательский расчёт добавляет отдельную горизонтальную стрелу', () => {
+  assert.match(completeSource, /calculateCraneBoomCapacity/)
+  assert.match(completeSource, /result\.craneBoomCapacity/)
+})
+
+test('issue #36: браузерный сценарный слой удаляет две дополнительные силы, скрывает воду и показывает стрелу', () => {
   assert.match(usageSource, /removeLegacyForceControl\('extraHorizontalLoadN'\)/)
   assert.match(usageSource, /removeLegacyForceControl\('extraVerticalLoadN'\)/)
   assert.match(usageSource, /metric-water-volume/)
   assert.match(usageSource, /waterArticle\.hidden = true/)
   assert.doesNotMatch(usageSource, /equivalentWaterVolumeM3/)
-  assert.match(usageSource, /Стрела крана/)
+  assert.match(usageSource, /Горизонтальная стрела/)
+  assert.match(usageSource, /boomSelfMassEquivalentKg/)
   assert.match(usageSource, /Сколько ещё можно добавить сверху/)
 })

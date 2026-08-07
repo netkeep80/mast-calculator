@@ -57,6 +57,24 @@ test('интерфейс показывает статическую массу 
   assert.match(app, /Статическая нагрузка вершины/)
 })
 
+test('интерфейс показывает многоуровневый паспорт верификации понятный неспециалисту', () => {
+  for (const id of [
+    'metric-verification',
+    'verification-summary-card',
+    'verification-summary',
+    'verification-details',
+    'verification-levels',
+    'verification-checks',
+  ]) {
+    assert.match(html, new RegExp(`id="${id}"`))
+  }
+  assert.match(html, /Паспорт верификации — проверка по шагам/)
+  assert.match(html, /сторонний КЭ-комплекс/)
+  assert.match(app, /renderVerification/)
+  assert.match(app, /Как проверить самому/)
+  assert.match(app, /not-verified/)
+})
+
 test('тяжёлый расчёт вынесен из main thread в модульный Web Worker', () => {
   assert.match(app, /new Worker\('\.\/calculation-worker\.js', \{ type: 'module' \}\)/)
   assert.match(worker, /calculateCompleteMast/)
@@ -97,6 +115,6 @@ test('результирующая таблица показывает N, V, M �
   assert.match(html, /<th>σэкв, МПа<\/th>/)
 })
 
-test('версия пользовательского прототипа обновлена до 0.8', () => {
-  assert.match(html, /прототип 0\.8/)
+test('версия пользовательского прототипа обновлена до 0.9', () => {
+  assert.match(html, /прототип 0\.9/)
 })

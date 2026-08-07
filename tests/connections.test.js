@@ -129,6 +129,7 @@ test('более прочный и крупный болт повышает от
     windEnvelopeEnabled: true,
     windEnvelopeStepDeg: 120,
     lateralCapacityStepDeg: 60,
+    jointConfiguratorMode: 'manual',
   }
   const weak = calculateCompleteMast({
     ...common,
@@ -151,6 +152,7 @@ test('слабый межмодульный болт может стать ре�
     stockBarPieces: 4,
     moduleCount: 4,
     barDiameterMm: 150,
+    jointConfiguratorMode: 'manual',
     jointBoltDiameterMm: 16,
     jointBoltClass: '5.6',
     windEnvelopeEnabled: false,

@@ -88,7 +88,7 @@ test('обычный экспорт бумажного проекта автом
   const result = calculation()
   const html = createCalculationProjectHtml(result, result.parameters)
   assert.match(html, /15\. Комплект конструкторской документации ЕСКД/)
-  assert.match(html, new RegExp(ESKD_EXPORT_SCHEMA.replaceAll('/', '\\/')))
+  assert.ok(html.includes(ESKD_EXPORT_SCHEMA))
   assert.match(html, /ГОСТ Р 2\.102-2023/)
   assert.match(html, /ГОСТ Р 2\.104-2023/)
   assert.match(html, /ГОСТ Р 2\.201-2023/)

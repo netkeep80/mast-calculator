@@ -67,7 +67,7 @@ test('автоконфигуратор для 100 кН растяжения вы
     nodeId: 3,
     level: 1,
     forceGlobalN: [0, 0, -100_000],
-    momentGlobalNm: [0, 0, 0],
+    momentGlobalNm: [100, 0, 0],
   }], {
     ...baseParameters,
     jointConfiguratorMode: 'auto',
@@ -136,7 +136,7 @@ test('полный расчёт фиксирует один автоматиче
   assert.equal(canonical.heightCapacity.design.maximumModules, result.heightCapacity.design.maximumModules)
 })
 
-test('невалидный вручную заданный короткий болт не получает конечную боковую/статическую несущую способность как проходящий узел', { timeout: 30_000 }, () => {
+test('невалидный вручную заданный короткий болт блокирует конструкции, где межмодульный стык действительно существует', { timeout: 30_000 }, () => {
   const result = calculateCompleteMast({
     ...DEFAULT_PARAMETERS,
     moduleCount: 2,
@@ -155,5 +155,12 @@ test('невалидный вручную заданный короткий бо
   assert.equal(result.connections.configurator.geometry.boltLengthPasses, false)
   assert.equal(result.lateralCapacity.boltLimitForceN, 0)
   assert.equal(result.staticPayloadCapacity.maximumTotalTopMassKg, 0)
-  assert.equal(result.heightCapacity.design.maximumModules, 0)
+
+  // Один модуль не имеет межмодульного стыка вообще, поэтому его нельзя
+  // запрещать из-за неиспользуемого M24×70. Первый вариант, где узел нужен,
+  // — два модуля, и он уже обязан провалиться.
+  assert.equal(result.heightCapacity.design.maximumModules, 1)
+  assert.equal(result.heightCapacity.design.firstFailModules, 2)
+  assert.equal(result.heightCapacity.ultimateResistance.maximumModules, 1)
+  assert.equal(result.heightCapacity.ultimateResistance.firstFailModules, 2)
 })

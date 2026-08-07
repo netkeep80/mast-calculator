@@ -9,9 +9,10 @@ export function generateMastModel(parameters) {
   const diameterM = parameters.barDiameterMm / 1000
   const youngModulusPa = parameters.youngModulusGPa * 1e9
   const yieldStrengthPa = parameters.yieldStrengthMPa * 1e6
+  const tensileStrengthPa = parameters.tensileStrengthMPa * 1e6
   const poissonRatio = parameters.poissonRatio
 
-  if (![sideM, heightM, diameterM, youngModulusPa, yieldStrengthPa].every((value) => Number.isFinite(value) && value > 0)) {
+  if (![sideM, heightM, diameterM, youngModulusPa, yieldStrengthPa, tensileStrengthPa].every((value) => Number.isFinite(value) && value > 0)) {
     throw new Error('Геометрические и механические параметры должны быть положительными числами')
   }
   if (!Number.isFinite(poissonRatio) || poissonRatio <= -1 || poissonRatio >= 0.5) {
@@ -50,6 +51,7 @@ export function generateMastModel(parameters) {
       diameterM,
       youngModulusPa,
       yieldStrengthPa,
+      tensileStrengthPa,
       poissonRatio,
       densityKgM3: parameters.densityKgM3,
       effectiveLengthFactor: parameters.effectiveLengthFactor,

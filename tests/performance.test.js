@@ -47,6 +47,15 @@ test('40 модулей считаются одной факторизацией
   assert.ok(Number.isFinite(result.envelope.maxTopDisplacementM))
   assert.ok(Number.isFinite(result.lateralCapacity.criticalForceN))
 
+  for (const loadCase of result.cases) {
+    assert.ok(loadCase.analysis.diagnostics.relativeResidual < 1e-8)
+    assert.ok(loadCase.analysis.diagnostics.maximumNodeEquilibriumResidual < 1e-8)
+    assert.ok(loadCase.analysis.buckling.residual < 1e-5)
+  }
+  for (const lateralCase of result.lateralCapacity.cases) {
+    assert.ok(lateralCase.eigenResidual < 1e-5)
+  }
+
   assert.ok(events.length >= 2)
   for (let index = 1; index < events.length; index += 1) {
     assert.ok(events[index].completed >= events[index - 1].completed)

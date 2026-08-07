@@ -36,9 +36,10 @@ test('конфигуратор узла использует выпадающи�
     'jointClearanceNutThreadMm', 'jointBoltLengthMm', 'jointThreadEngagementFactor',
     'weldConsumableId', 'weldLegMm', 'weldSegmentsPerEnd',
   ]) assert.match(html, new RegExp(`<select name="${name}">`))
-  assert.match(html, /Автоподбор/i)
+  assert.match(html, /подбирается автоматически/i)
   assert.match(html, /Гайка ножки с проходом болта/i)
   assert.match(html, /длинн(?:ая|ой) соединительн(?:ая|ой) гайк/i)
+  assert.match(bootstrap, /modeSelect\.value = 'auto'/)
   assert.match(bootstrap, /jointConfiguratorMode/)
   assert.match(bootstrap, /message\.action === 'optimize' \? 'auto'/)
 })
@@ -52,7 +53,7 @@ test('эффективный радиус и длинная гайка явля�
 
 test('отдельное 3D-окно показывает соединительный узел из двух гаек и болта', () => {
   assert.match(html, /id="joint-canvas"/)
-  assert.match(html, /две гайки и болт/i)
+  assert.match(html, /двух гаек и болта|две гайки и болт/i)
   assert.match(jointViewer, /class JointViewer/)
   assert.match(jointViewer, /topCouplingNut/)
   assert.match(jointViewer, /bottomClearanceNut/)

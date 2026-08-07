@@ -36,8 +36,8 @@ test('конфигуратор узла использует выпадающи�
     'weldConsumableId', 'weldLegMm', 'weldSegmentsPerEnd',
   ]) assert.match(html, new RegExp(`<select name="${name}">`))
   assert.match(html, /Автоподбор/i)
-  assert.match(html, /проходная гайка/i)
-  assert.match(html, /длинная соединительная гайка/i)
+  assert.match(html, /Гайка ножки с проходом болта/i)
+  assert.match(html, /длинн(?:ая|ой) соединительн(?:ая|ой) гайк/i)
   assert.match(bootstrap, /jointConfiguratorMode/)
   assert.match(bootstrap, /message\.action === 'optimize' \? 'auto'/)
 })

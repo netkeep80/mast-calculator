@@ -246,6 +246,7 @@ function renderResult(result) {
   document.querySelector('#metric-critical').textContent = `№ ${strengthCase.analysis.criticalMemberId}`
   document.querySelector('#metric-residual').textContent = result.analysis.diagnostics.maximumNodeEquilibriumResidual.toExponential(2)
   document.querySelector('#metric-lateral-capacity').textContent = `${formatForce(lateral.criticalForceKgf, 1)} кгс`
+  document.querySelector('#metric-lateral-buckling').textContent = `${formatForce(lateral.globalBucklingForceKgf, 1)} кгс`
   document.querySelector('#metric-lateral-mode').textContent = lateralModeLabel(lateral.governingMode)
 
   document.querySelector('#metric-displacement').classList.toggle('danger', topDisplacementMm > parameters.displacementLimitMm)
@@ -256,7 +257,7 @@ function renderResult(result) {
     ? `Ребро № ${critical.memberId}: N = ${format(critical.axialForceN / 1000, 3)} кН, Vmax = ${format(critical.maxShearN / 1000, 3)} кН, Mmax = ${format(critical.maxBendingNm, 2)} Н·м, σэкв = ${format(critical.equivalentStressPa / 1e6, 2)} МПа, использование = ${format(critical.utilization, 4)} при ветре ${angle(strengthCase.windDirectionDeg)}. Максимальный прогиб возникает при ${angle(displacementCase.windDirectionDeg)}, минимальный множитель общей устойчивости — при ${angle(bucklingCase.windDirectionDeg)}.`
     : 'Критическое ребро не определено.'
 
-  document.querySelector('#lateral-capacity-description').textContent = `Чистая горизонтальная сила прикладывается к вершине и распределяется поровну между тремя верхними узлами. Худшее направление ${angle(lateral.directionDeg)}: первый расчётный предел ${formatForce(lateral.criticalForceN / 1000, 3)} кН = ${formatForce(lateral.criticalForceKgf, 1)} кгс; механизм — ${lateralModeLabel(lateral.governingMode)}. Предел по ребру ${formatForce(lateral.memberLimitForceKgf, 1)} кгс, линейный глобальный eigen-buckling ${formatForce(lateral.globalBucklingForceKgf, 1)} кгс. Это отдельный нормированный испытательный случай без ветра, льда, собственного веса и оборудования; реальный натурный тест должен учитывать собственный вес и геометрическую нелинейность.`
+  document.querySelector('#lateral-capacity-description').textContent = `Чистая горизонтальная сила прикладывается к вершине и распределяется поровну между тремя верхними узлами. Худшее направление ${angle(lateral.directionDeg)}: первый расчётный предел ${formatForce(lateral.criticalForceN / 1000, 3)} кН = ${formatForce(lateral.criticalForceKgf, 1)} кгс; механизм — ${lateralModeLabel(lateral.governingMode)}. Предел по ребру ${formatForce(lateral.memberLimitForceKgf, 1)} кгс, линейная общая потеря устойчивости ${formatForce(lateral.globalBucklingForceKgf, 1)} кгс. Это отдельный нормированный испытательный случай без ветра, льда, собственного веса и оборудования; реальный натурный тест должен учитывать собственный вес и геометрическую нелинейность.`
 
   document.querySelector('#load-summary').textContent = `Погода: ${parameters.windPresetLabel}; v = ${format(parameters.windSpeedMs, 1)} м/с; q = ${format(parameters.windPressurePa, 1)} Па до γw. Рассмотрено направлений ветра: ${result.envelope.caseCount}. Вес стали с коэффициентом: ${format(result.loads.selfWeightN / 1000)} кН; вес льда: ${format(result.loads.iceWeightN / 1000)} кН; результирующий ветер на рёбра: ${format(result.loads.memberWindN / 1000)} кН.`
 
@@ -301,7 +302,7 @@ function runOptimization() {
     form.elements.namedItem('barDiameterMm').value = recommended.diameter
     const complete = calculateCompleteResult({ ...parameters, barDiameterMm: recommended.diameter })
     renderResult(complete)
-    optimizationBox.textContent = `Минимальный найденный единый диаметр: ${recommended.diameter} мм. Использование ${format(complete.envelope.maxUtilization, 3)}, прогиб ${format(complete.envelope.maxTopDisplacementM * 1000, 2)} мм, множитель общей устойчивости ${formatFactor(complete.envelope.minimumBucklingFactor)}, чистая боковая нагрузка вершины ${formatForce(complete.lateralCapacity.criticalForceKgf, 1)} кгс.`
+    optimizationBox.textContent = `Минимальный найденный единый диаметр: ${recommended.diameter} мм. Использование ${format(complete.envelope.maxUtilization, 3)}, прогиб ${format(complete.envelope.maxTopDisplacementM * 1000, 2)} мм, множитель общей устойчивости ${formatFactor(complete.envelope.minimumBucklingFactor)}, первый боковой предел ${formatForce(complete.lateralCapacity.criticalForceKgf, 1)} кгс, боковая общая потеря устойчивости ${formatForce(complete.lateralCapacity.globalBucklingForceKgf, 1)} кгс.`
   } catch (error) {
     errorBox.textContent = error instanceof Error ? error.message : String(error)
     errorBox.hidden = false

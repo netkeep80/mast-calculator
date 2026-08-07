@@ -1,11 +1,15 @@
-import { applyReinforcementClass, theoreticalCutLengthMm } from './catalog.js'
+import {
+  applyReinforcementClass,
+  regularOctahedronHeightMm,
+  theoreticalCutLengthMm,
+} from './catalog.js'
 import { generateMastModel } from './geometry.js'
 import { buildLoadCase } from './loads.js'
-import { analyzeTruss } from './solver.js'
+import { analyzeFrame } from './solver.js'
 
 export const CALCULATION_METHOD = Object.freeze({
-  id: 'linear-truss-v0.4',
-  description: 'Линейная пространственная стержневая модель; временный этап до перехода на 3D frame-модель с жёсткими сварными узлами.',
+  id: 'linear-frame-v0.5',
+  description: 'Линейная пространственная Euler-Bernoulli frame-модель с 6 степенями свободы на узел и идеальными жёсткими сварными соединениями рёбер.',
 })
 
 export const DEFAULT_PARAMETERS = Object.freeze({
@@ -14,16 +18,20 @@ export const DEFAULT_PARAMETERS = Object.freeze({
   stockBarPieces: 16,
   ribCutLengthMm: 750,
   triangleSideMm: 750,
-  moduleHeightMm: 540,
+  moduleHeightMm: regularOctahedronHeightMm(750),
   reinforcementClass: 'A400C',
   barDiameterMm: 12,
   youngModulusGPa: 200,
+  poissonRatio: 0.3,
   yieldStrengthMPa: 390,
   tensileStrengthMPa: 590,
   densityKgM3: 7850,
   reinforcementStandard: 'ГОСТ 34028-2016',
   reinforcementWeldabilityGuaranteed: true,
-  effectiveLengthFactor: 1,
+  // Для отдельной локальной проверки стержня по Эйлеру идеализируем оба
+  // конца как жёстко заделанные: μ = 0,5. Системная устойчивость дополнительно
+  // проверяется собственным расчётом всей frame-модели.
+  effectiveLengthFactor: 0.5,
   materialSafetyFactor: 1.1,
   deadLoadFactor: 1.1,
   windLoadFactor: 1.4,
@@ -49,15 +57,15 @@ export function resolveCalculationParameters(parameters = {}) {
   const merged = { ...DEFAULT_PARAMETERS, ...parameters }
   const withMaterial = applyReinforcementClass(merged)
   const ribCutLengthMm = theoreticalCutLengthMm(withMaterial.stockBarLengthMm, withMaterial.stockBarPieces)
+  const moduleHeightMm = regularOctahedronHeightMm(ribCutLengthMm)
 
   return {
     ...withMaterial,
     ribCutLengthMm,
-    // На текущем этапе номинальная длина отрезка задаёт сторону горизонтального
-    // треугольника. Высота модуля остаётся отдельным фактическим размером.
-    // После ввода геометрии реального узла это соответствие будет заменено
-    // преобразованием «длина заготовки -> осевая геометрия между центрами узлов».
     triangleSideMm: ribCutLengthMm,
+    moduleHeightMm,
+    // Концы каждого ребра в глобальном расчёте считаются жёстко сваренными.
+    effectiveLengthFactor: 0.5,
   }
 }
 
@@ -81,7 +89,7 @@ export function calculateMast(inputParameters) {
   const cases = windDirections(parameters).map((direction) => {
     const caseParameters = { ...parameters, windDirectionDeg: direction }
     const loads = buildLoadCase(model, caseParameters)
-    const analysis = analyzeTruss(model, loads, caseParameters)
+    const analysis = analyzeFrame(model, loads, caseParameters)
     return { windDirectionDeg: direction, loads, analysis }
   })
 
@@ -98,18 +106,18 @@ export function calculateMast(inputParameters) {
   const governing = maxBy(cases, score)
 
   const warnings = [
-    'Глобальная модель пока является идеальной шарнирно-стержневой 3D-фермой. По требованиям следующего этапа она должна быть заменена пространственной frame-моделью с жёсткими идеальными узлами; прочность реальных узлов будет проверяться отдельно.',
-    'Номинальная длина отрезка арматуры сейчас используется как сторона горизонтального треугольника. Ширина реза, припуски на сварку и смещение осей внутри реального узла пока не учитываются.',
-    'Локальная устойчивость стержней проверяется по упругой формуле Эйлера с ограничением по текучести; это ещё не нормативная проверка по СП 16.',
-    'Общая устойчивость вычисляется линейным собственным расчётом по геометрической матрице жёсткости. Геометрическая нелинейность и начальные несовершенства пока не учтены.',
-    'Проверки болтов, резьбы, гаек, сварных швов, фундамента и усталости ещё не реализованы.',
+    'Глобальный каркас рассчитан как идеальная 3D frame-модель: сварные пересечения рёбер считаются абсолютно жёсткими и неразрушаемыми. Реальные болты, гайки, резьба и сварные швы должны проверяться отдельным модулем узлов.',
+    'Высота модуля вычисляется из геометрии правильного октаэдра h = a·√(2/3). Высота и нахлёст реального соединительного узла пока не учитываются.',
+    'Распределённые собственный вес, лёд и ветер вводятся в frame-элементы согласованными узловыми силами и моментами. Для оценки напряжений между узлами дополнительно учитывается консервативная добавка qL²/8 к максимуму изгибающего момента.',
+    'Локальная устойчивость отдельного ребра дополнительно проверяется формулой Эйлера с μ = 0,5 (идеально жёсткие концы). Общая устойчивость вычисляется линейным собственным расчётом frame-модели.',
+    'Геометрическая нелинейность, начальные несовершенства, пластичность, усталость, фундамент и нормативный расчёт реальных соединений пока не реализованы.',
   ]
 
   if (governing.analysis.diagnostics.relativeResidual > 1e-8) {
     warnings.unshift('Численная невязка превышает 1e-8: результат требует проверки.')
   }
   if (governing.analysis.diagnostics.maximumNodeEquilibriumResidual > 1e-8) {
-    warnings.unshift('Локальная невязка равновесия узлов превышает 1e-8.')
+    warnings.unshift('Локальная невязка свободных степеней свободы превышает 1e-8.')
   }
   if (governing.analysis.diagnostics.minPivotRatio < 1e-10) {
     warnings.unshift('Матрица жёсткости плохо обусловлена: конструкция близка к механизму или имеет большой разброс жёсткостей.')

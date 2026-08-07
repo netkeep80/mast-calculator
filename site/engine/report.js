@@ -8,7 +8,7 @@ function classifyMember(model, member) {
 
 function ensureResult(result) {
   if (!result?.model?.members?.length || !result?.cases?.length) {
-    throw new Error('Для формирования отчёта отсутствуют расчётные случаи или стержни')
+    throw new Error('Для формирования отчёта отсутствуют расчётные случаи или рёбра')
   }
 }
 
@@ -23,8 +23,13 @@ export function buildMemberEnvelope(result) {
     const governing = candidates.reduce((best, candidate) => (
       candidate.memberResult.utilization > best.memberResult.utilization ? candidate : best
     ), candidates[0])
-    const maxTensionN = Math.max(0, ...candidates.map(({ memberResult }) => memberResult.axialForceN))
-    const maxCompressionN = Math.min(0, ...candidates.map(({ memberResult }) => memberResult.axialForceN))
+    const r = governing.memberResult
+    const maxTensionN = Math.max(0, ...candidates.map(({ memberResult }) => memberResult.maxTensionN ?? memberResult.axialForceN))
+    const maxCompressionN = Math.min(0, ...candidates.map(({ memberResult }) => memberResult.maxCompressionN ?? memberResult.axialForceN))
+    const maxShearN = Math.max(0, ...candidates.map(({ memberResult }) => memberResult.maxShearN ?? 0))
+    const maxTorsionNm = Math.max(0, ...candidates.map(({ memberResult }) => memberResult.maxTorsionNm ?? 0))
+    const maxBendingNm = Math.max(0, ...candidates.map(({ memberResult }) => memberResult.maxBendingNm ?? 0))
+    const maxEquivalentStressPa = Math.max(0, ...candidates.map(({ memberResult }) => memberResult.equivalentStressPa ?? memberResult.stressPa ?? 0))
     const family = classifyMember(result.model, member)
 
     return {
@@ -34,16 +39,36 @@ export function buildMemberEnvelope(result) {
       family,
       familyName: familyName(family),
       diameterMm: member.diameterM * 1000,
-      lengthM: governing.memberResult.lengthM,
+      lengthM: r.lengthM,
       windDirectionDeg: governing.windDirectionDeg,
-      mode: governing.memberResult.mode,
-      axialForceN: governing.memberResult.axialForceN,
+      mode: r.mode,
+      axialForceN: r.axialForceN,
+      axialForceAtAN: r.axialForceAtAN,
+      axialForceAtBN: r.axialForceAtBN,
       maxTensionN,
       maxCompressionN,
-      stressPa: governing.memberResult.stressPa,
-      designCapacityN: governing.memberResult.designCapacityN,
-      slenderness: governing.memberResult.slenderness,
-      utilization: governing.memberResult.utilization,
+      maxShearN,
+      maxTorsionNm,
+      maxBendingNm,
+      distributedBendingAllowanceNm: r.distributedBendingAllowanceNm ?? 0,
+      axialStressPa: r.axialStressPa ?? 0,
+      bendingStressPa: r.bendingStressPa ?? 0,
+      normalStressPa: r.normalStressPa ?? r.stressPa,
+      torsionShearPa: r.torsionShearPa ?? 0,
+      transverseShearPa: r.transverseShearPa ?? 0,
+      shearStressPa: r.shearStressPa ?? 0,
+      equivalentStressPa: r.equivalentStressPa ?? r.stressPa,
+      maxEquivalentStressPa,
+      stressPa: r.equivalentStressPa ?? r.stressPa,
+      designYieldPa: r.designYieldPa,
+      stressUtilization: r.stressUtilization ?? r.utilization,
+      eulerCapacityN: r.eulerCapacityN,
+      bucklingUtilization: r.bucklingUtilization ?? 0,
+      designCapacityN: r.designCapacityN,
+      slenderness: r.slenderness,
+      utilization: r.utilization,
+      localEndForces: [...(r.localEndForces ?? [])],
+      distributedLoadLocalNPerM: [...(r.distributedLoadLocalNPerM ?? [])],
     }
   })
 }
@@ -109,10 +134,10 @@ export function createCalculationCsv(result) {
   const members = buildMemberEnvelope(result)
     .sort((left, right) => right.utilization - left.utilization)
   const rows = [[
-    'Стержень', 'Тип', 'Узел A', 'Узел B', 'Длина, мм', 'Диаметр, мм',
-    'Определяющий режим', 'Направление ветра, град', 'Усилие, кН',
-    'Макс. растяжение, кН', 'Макс. сжатие, кН', 'Напряжение, МПа',
-    'Несущая способность, кН', 'Гибкость', 'Коэффициент использования',
+    'Ребро', 'Тип', 'Узел A', 'Узел B', 'Длина, мм', 'Диаметр, мм',
+    'Направление ветра, град', 'N, кН', 'Vmax, кН', 'Tmax, Н·м', 'Mmax, Н·м',
+    'σN, МПа', 'σM, МПа', 'τ, МПа', 'σэкв, МПа',
+    'Использование по напряжению', 'Использование по Эйлеру', 'Итоговое использование',
   ]]
 
   for (const member of members) {
@@ -121,16 +146,19 @@ export function createCalculationCsv(result) {
       member.familyName,
       member.nodeA,
       member.nodeB,
-      csvNumber(member.lengthM * 1000, 1),
+      csvNumber(member.lengthM * 1000, 2),
       csvNumber(member.diameterMm, 1),
-      member.mode === 'compression' ? 'Сжатие' : 'Растяжение',
       csvNumber(member.windDirectionDeg, 0),
-      csvNumber(member.axialForceN / 1000),
-      csvNumber(member.maxTensionN / 1000),
-      csvNumber(member.maxCompressionN / 1000),
-      csvNumber(member.stressPa / 1e6),
-      csvNumber(member.designCapacityN / 1000),
-      csvNumber(member.slenderness, 1),
+      csvNumber(member.axialForceN / 1000, 4),
+      csvNumber(member.maxShearN / 1000, 4),
+      csvNumber(member.maxTorsionNm, 3),
+      csvNumber(member.maxBendingNm, 3),
+      csvNumber(member.axialStressPa / 1e6, 3),
+      csvNumber(member.bendingStressPa / 1e6, 3),
+      csvNumber(member.shearStressPa / 1e6, 3),
+      csvNumber(member.equivalentStressPa / 1e6, 3),
+      csvNumber(member.stressUtilization, 4),
+      csvNumber(member.bucklingUtilization, 4),
       csvNumber(member.utilization, 4),
     ])
   }
@@ -154,6 +182,7 @@ function exportModel(model) {
       diameterM: member.diameterM,
       youngModulusPa: member.youngModulusPa,
       yieldStrengthPa: member.yieldStrengthPa,
+      poissonRatio: member.poissonRatio,
       densityKgM3: member.densityKgM3,
       effectiveLengthFactor: member.effectiveLengthFactor,
     })),
@@ -165,6 +194,7 @@ function exportLoadCase(loadCase) {
     windDirectionDeg: loadCase.windDirectionDeg,
     loads: {
       nodalLoadsN: loadCase.loads.nodalLoads.map((load) => [...load]),
+      memberDistributedLoadsNPerM: (loadCase.loads.memberDistributedLoads ?? []).map((load) => [...load]),
       totalAppliedLoadN: [...loadCase.loads.totalAppliedLoad],
       selfWeightN: loadCase.loads.selfWeightN,
       iceWeightN: loadCase.loads.iceWeightN,
@@ -172,9 +202,18 @@ function exportLoadCase(loadCase) {
       equipmentWindN: loadCase.loads.equipmentWindN,
     },
     analysis: {
+      solver: loadCase.analysis.solver,
+      degreesOfFreedomPerNode: loadCase.analysis.degreesOfFreedomPerNode,
       displacementsM: loadCase.analysis.displacements.map((value) => [...value]),
+      rotationsRad: (loadCase.analysis.rotations ?? []).map((value) => [...value]),
       reactionsN: loadCase.analysis.reactions.map((value) => [...value]),
-      memberResults: loadCase.analysis.memberResults.map((value) => ({ ...value })),
+      reactionMomentsNm: (loadCase.analysis.reactionMoments ?? []).map((value) => [...value]),
+      memberResults: loadCase.analysis.memberResults.map((value) => ({
+        ...value,
+        localAxes: value.localAxes?.map((axis) => [...axis]),
+        localEndForces: [...(value.localEndForces ?? [])],
+        distributedLoadLocalNPerM: [...(value.distributedLoadLocalNPerM ?? [])],
+      })),
       maxDisplacementM: loadCase.analysis.maxDisplacementM,
       maxTopDisplacementM: loadCase.analysis.maxTopDisplacementM,
       maxUtilization: loadCase.analysis.maxUtilization,
@@ -183,6 +222,7 @@ function exportLoadCase(loadCase) {
       buckling: {
         criticalLoadFactor: loadCase.analysis.buckling.criticalLoadFactor,
         mode: loadCase.analysis.buckling.mode.map((value) => [...value]),
+        rotations: (loadCase.analysis.buckling.rotations ?? []).map((value) => [...value]),
         residual: loadCase.analysis.buckling.residual,
         eigenResidual: loadCase.analysis.buckling.eigenResidual,
         iterations: loadCase.analysis.buckling.iterations,
@@ -192,6 +232,9 @@ function exportLoadCase(loadCase) {
   }
 }
 
+// Internal verification snapshot. It is intentionally not exposed as a paper
+// report: the human-readable calculation project is generated separately from
+// the same result object, so its figures cannot diverge from the UI.
 export function createCalculationExport(
   result,
   parameters = result?.parameters,
@@ -204,7 +247,7 @@ export function createCalculationExport(
   const members = buildMemberEnvelope(result)
 
   return {
-    schema: 'mast-calculator/calculation-report/v2',
+    schema: 'mast-calculator/calculation-snapshot/v3',
     generatedAt,
     software: {
       method: result.method ?? null,
@@ -235,6 +278,8 @@ export function createCalculationExport(
   }
 }
 
+// Kept for automated reproducibility tests and external debugging. The browser
+// UI does not offer JSON export and the paper calculation project contains no JSON.
 export function createCalculationJson(result, parameters, generatedAt, buildInfo) {
   return `${JSON.stringify(createCalculationExport(result, parameters, generatedAt, buildInfo), null, 2)}\n`
 }

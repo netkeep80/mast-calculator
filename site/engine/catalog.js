@@ -10,36 +10,39 @@ export const STANDARD_DIAMETERS_MM = Object.freeze([
   6, 8, 10, 12, 14, 16, 18, 20, 22, 25, 28, 32, 36, 40,
 ])
 
+const COMMON_STEEL = Object.freeze({
+  youngModulusGPa: 200,
+  poissonRatio: 0.3,
+  densityKgM3: 7850,
+})
+
 export const REINFORCEMENT_CLASSES = Object.freeze({
   A400C: Object.freeze({
     id: 'A400C',
     label: 'А400С',
     standard: 'ГОСТ 34028-2016',
     weldabilityGuaranteed: true,
-    youngModulusGPa: 200,
+    ...COMMON_STEEL,
     yieldStrengthMPa: 390,
     tensileStrengthMPa: 590,
-    densityKgM3: 7850,
   }),
   A500C: Object.freeze({
     id: 'A500C',
     label: 'А500С',
     standard: 'ГОСТ 34028-2016',
     weldabilityGuaranteed: true,
-    youngModulusGPa: 200,
+    ...COMMON_STEEL,
     yieldStrengthMPa: 500,
     tensileStrengthMPa: 600,
-    densityKgM3: 7850,
   }),
   A600C: Object.freeze({
     id: 'A600C',
     label: 'А600С',
     standard: 'ГОСТ 34028-2016',
     weldabilityGuaranteed: true,
-    youngModulusGPa: 200,
+    ...COMMON_STEEL,
     yieldStrengthMPa: 600,
     tensileStrengthMPa: 700,
-    densityKgM3: 7850,
   }),
 })
 
@@ -58,6 +61,11 @@ export function theoreticalCutLengthMm(stockBarLengthMm, stockBarPieces) {
   return stockLength / pieces
 }
 
+export function regularOctahedronHeightMm(edgeLengthMm) {
+  const edge = positiveNumber(edgeLengthMm, 'Длина ребра октаэдра')
+  return edge * Math.sqrt(2 / 3)
+}
+
 export function getReinforcementClass(classId) {
   const material = REINFORCEMENT_CLASSES[classId]
   if (!material) throw new Error(`Неизвестный класс арматуры: ${classId}`)
@@ -69,6 +77,7 @@ export function applyReinforcementClass(parameters) {
   return {
     ...parameters,
     youngModulusGPa: material.youngModulusGPa,
+    poissonRatio: material.poissonRatio,
     yieldStrengthMPa: material.yieldStrengthMPa,
     tensileStrengthMPa: material.tensileStrengthMPa,
     densityKgM3: material.densityKgM3,

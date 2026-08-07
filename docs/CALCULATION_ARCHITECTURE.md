@@ -1,51 +1,70 @@
 # Архитектура расчётного ядра
 
-Этот документ фиксирует разделение ответственности между глобальным расчётом арматурного каркаса, расчётом реальных соединений и отчётностью.
+Документ фиксирует границы между изготовлением, геометрией, глобальным FEM-расчётом, будущим расчётом реальных узлов и бумажной отчётностью.
 
-## Поток данных
+## 1. Поток данных
 
 ```text
-Практические исходные данные
+Практический ввод
+  stock length / parts / diameter / material / loads
         │
         ▼
-Каталог материалов и изготовление
+Fabrication + Material catalogue
         │
-        ├── свойства арматуры
-        ├── закупочная длина / раскрой
-        └── расчётная геометрия
-        │
-        ▼
-Глобальная FEM-модель арматурного каркаса
-        │
-        ├── перемещения
-        ├── реакции
-        ├── усилия/моменты элементов
-        └── устойчивость
+        ├── a = Lstock / nparts
+        ├── h = a*sqrt(2/3)
+        └── E, nu, Ry, Rm, rho
         │
         ▼
-Demand envelope физических узлов
+Regular-octahedron geometry
         │
         ▼
-Расчёт реальных узлов
+Global 3D frame FEM
+  rigid ideal welded joints
         │
-        ├── болт / шпилька
-        ├── резьба
-        ├── гайка
-        ├── сварная группа
-        └── электрод / проволока
+        ├── displacements / rotations
+        ├── reactions / reaction moments
+        ├── member N/V/T/M
+        ├── stresses / local Euler check
+        └── global eigen-buckling
+        │
+        ├──────────────► UI / CSV
+        │
+        ├──────────────► Printable calculation project
+        │
+        └──────────────► Internal CalculationSnapshot
+                           regression / cross-check only
+
+Future:
+Global frame FEM
         │
         ▼
-CalculationSnapshot
+Physical joint demand N/Vy/Vz/T/My/Mz
         │
-        ├── UI
-        ├── CSV
-        ├── JSON
-        └── HTML/PDF расчётная записка
+        ▼
+Bolt + thread + nut + weld-group checks
 ```
 
-## 1. Fabrication model
+## 2. Fabrication model
 
-Производственная модель не должна смешиваться с КЭ-геометрией.
+Пользователь оперирует закупкой, а не абстрактной длиной КЭ-элемента.
+
+```js
+{
+  stockBarLengthMm,
+  stockBarPieces,
+  barDiameterMm,
+  reinforcementClass
+}
+```
+
+Пока:
+
+```text
+ribCutLengthMm = stockBarLengthMm / stockBarPieces
+```
+
+Будущее расширение:
 
 ```js
 {
@@ -53,63 +72,270 @@ CalculationSnapshot
   stockBarPieces,
   cutKerfMm,
   trimAllowanceMm,
-  nominalCutLengthMm,
-  diameterMm,
-  reinforcementClass
+  overlapAllowanceMm,
+  usefulCutLengthMm,
+  axialMemberLengthMm
 }
 ```
 
-Временная версия 0.4 использует теоретическое деление без ширины реза.
+Fabrication model не должна незаметно менять FEM geometry.
 
-## 2. Material model
+## 3. Material model
 
-Материал выбирается идентификатором, а механические характеристики берутся из каталога:
+Материал выбирается идентификатором.
 
 ```js
 {
   id: 'A500C',
   standard: 'ГОСТ 34028-2016',
+  weldabilityGuaranteed: true,
+  youngModulusGPa: 200,
+  poissonRatio: 0.3,
   yieldStrengthMPa: 500,
   tensileStrengthMPa: 600,
-  youngModulusGPa: 200,
-  densityKgM3: 7850,
-  weldabilityGuaranteed: true
+  densityKgM3: 7850
 }
 ```
 
-Расчётный код не должен содержать копии этих чисел в разных модулях.
+Расчётные модули получают уже разрешённые свойства и не должны дублировать каталожные значения.
 
-## 3. Global frame model
+## 4. Geometry model
 
-Целевой узел:
+### 4.1. Regular octahedron
 
-```text
-q = [ux, uy, uz, rx, ry, rz]
-```
-
-Целевой элемент — пространственный beam/frame element круглого сечения.
-
-Для круглого сплошного сечения:
+Для длины ребра `a`:
 
 ```text
-A = π d² / 4
-Iy = Iz = π d⁴ / 64
-J = π d⁴ / 32
+R = a/sqrt(3)
+h = a*sqrt(2/3)
 ```
 
-Локальная жёсткость должна учитывать `EA`, `EIy`, `EIz`, `GJ`.
+Каждый уровень содержит три узла на окружности радиуса `R`.
 
-Глобальная модель считает идеальные неразрушаемые узлы. Она не должна снижать жёсткость/прочность из-за конкретного болта или сварного шва.
+Уровни чередуются по углу:
 
-## 4. Joint demand
+```text
+0°, +60°, 0°, +60°, ...
+```
 
-На границе global FEM → joint check формируется структура:
+или эквивалентно соседний переход геометрически зеркален предыдущему.
+
+Каждый модуль содержит:
+
+```text
+3 horizontal edges
+6 diagonal edges
+= 9 edges
+```
+
+Все девять рёбер правильного октаэдра обязаны иметь одну длину `a`; это regression invariant.
+
+### 4.2. Nodes
+
+Frame node:
+
+```js
+{
+  id,
+  position: [x, y, z],
+  restrained: [ux, uy, uz, rx, ry, rz]
+}
+```
+
+В версии 0.5 нижние три узла полностью заделаны.
+
+## 5. Frame element
+
+### 5.1. Degrees of freedom
+
+На каждом конце элемента:
+
+```text
+[ux, uy, uz, rx, ry, rz]
+```
+
+На элемент — 12 DOF.
+
+### 5.2. Section properties
+
+Круглое сплошное сечение:
+
+```text
+A = pi*d²/4
+Iy = Iz = pi*d⁴/64
+J = pi*d⁴/32
+G = E/[2*(1+nu)]
+```
+
+### 5.3. Local stiffness
+
+Euler–Bernoulli frame element использует коэффициенты:
+
+```text
+EA/L
+GJ/L
+12EI/L³
+6EI/L²
+4EI/L
+2EI/L
+```
+
+Локальная 12×12 матрица `ke` строится в ортонормированном локальном базисе элемента.
+
+### 5.4. Coordinate transformation
+
+```text
+Ke = T^T * ke * T
+```
+
+Локальные оси выбираются из направления элемента и устойчивого reference vector. Аналитический тест проверяет, что поворот всей консоли в глобальной системе не меняет физический результат.
+
+## 6. Distributed loads
+
+`buildLoadCase` разделяет:
+
+```js
+nodalLoads[nodeId]                  // N
+nodalMoments[nodeId]                // Nm, зарезервировано
+memberDistributedLoads[memberId]   // N/m, global XYZ
+```
+
+Собственный вес, лёд и ветер являются распределёнными нагрузками элемента.
+
+### 6.1. Consistent nodal load vector
+
+Равномерная локальная нагрузка преобразуется в 12-компонентный consistent load vector. Для поперечных компонент возникают не только силы `qL/2`, но и конечные моменты `qL²/12`.
+
+Это принципиальное отличие от старой truss-модели.
+
+### 6.2. Wind projection
+
+Для цилиндрического элемента:
+
+```text
+qwind_vec = p * cd * dout * gamma_w * (ew - ex*(ex dot ew))
+```
+
+Ветер, направленный вдоль оси ребра, даёт нулевую распределённую аэродинамическую силу.
+
+## 7. Global assembly and solution
+
+Для каждого элемента:
+
+```text
+Ke -> global K
+feq -> global F
+```
+
+После сборки и исключения restrained DOFs:
+
+```text
+Kfree * ufree = Ffree
+```
+
+Текущий prototype использует плотный решатель с partial pivoting. Для размеров рассматриваемой мачты это допустимо; при существенном росте числа DOF потребуется sparse solver.
+
+Результат:
+
+```js
+{
+  displacements,
+  rotations,
+  reactions,
+  reactionMoments,
+  memberResults,
+  diagnostics
+}
+```
+
+## 8. Member end actions and stresses
+
+Локальный вектор конечных усилий:
+
+```text
+fend = ke * ue - feq
+```
+
+Он содержит на двух концах:
+
+```text
+N, Vy, Vz, T, My, Mz
+```
+
+Из него рассчитываются:
+
+```text
+sigma_N = |N|/A
+sigma_M = M/W
+sigma = sigma_N + sigma_M
+
+tau_T = T*(d/2)/J
+tau_V = 4V/(3A)
+tau = sqrt(tau_T² + tau_V²)
+
+sigma_eq = sqrt(sigma² + 3*tau²)
+```
+
+Для равномерной поперечной нагрузки текущая версия консервативно добавляет:
+
+```text
+DeltaM = q_perp*L²/8
+```
+
+к максимуму конечных изгибающих моментов, чтобы не потерять возможный внутренний максимум одноэлементной балки.
+
+## 9. Local Euler check
+
+Отдельно от frame stress check:
+
+```text
+Leff = mu*L
+N_E = pi²*E*I/Leff²/gamma_M
+```
+
+В версии 0.5:
+
+```text
+mu = 0.5
+```
+
+из-за идеализации двух жёстко заделанных концов.
+
+Итог:
+
+```text
+eta_member = max(eta_stress, eta_Euler)
+```
+
+## 10. Global eigen-buckling
+
+После статического решения по продольным усилиям строится initial-stress/geometric stiffness matrix frame-elements.
+
+```text
+(K + lambda*KG) * phi = 0
+```
+
+Сохраняются:
+
+- `criticalLoadFactor`;
+- translational mode;
+- rotational mode;
+- residual/eigenResidual;
+- iterations.
+
+Это линейная собственная задача, а не nonlinear collapse analysis.
+
+## 11. Physical joint demand — следующий слой
+
+Глобальный FEM не знает, какой конкретно болт или сварной шов реализует идеальный узел.
+
+Интерфейс global FEM → joint check:
 
 ```js
 {
   jointId,
   loadCaseId,
-  force: {
+  action: {
     N,
     Vy,
     Vz,
@@ -120,9 +346,9 @@ J = π d⁴ / 32
 }
 ```
 
-Для подбора узла строится огибающая по всем расчётным случаям. Нельзя формировать искусственный вектор из независимых максимумов, если такие компоненты не возникали одновременно. Поэтому вместе с экстремумом хранится идентификатор исходного расчётного случая.
+Критическое правило: связанный набор `N/V/T/M` должен происходить из одного load case. Нельзя комбинировать независимые максимумы из разных случаев и выдавать их за реально существующий vector demand.
 
-## 5. Joint definition
+## 12. Joint definition — планируемая модель
 
 ```js
 {
@@ -152,54 +378,117 @@ J = π d⁴ / 32
 }
 ```
 
-Расчёт узла возвращает перечень отдельных limit states и определяющую проверку.
+`jointCheck()` должен вернуть отдельные limit states и governing result.
 
-## 6. CalculationSnapshot
+## 13. Reporting contract
 
-Snapshot — неизменяемый контракт между solver, интерфейсом, экспортами и верификацией.
+### 13.1. Screen and CSV
 
-Минимальные разделы:
+UI и CSV читают готовые результаты solver/envelope. Они не решают FEM повторно.
+
+### 13.2. Printable calculation project
+
+Пользовательский отчёт — человекочитаемый инженерный документ:
 
 ```text
-schema
-software
-parameters
-model
-loadCases
-memberEnvelope
-jointDemands
-jointChecks
-summary
+inputs
+geometry derivation
+section-property formulas
+load formulas
+frame FEM equations
+critical member substitutions
+Euler check
+eigen-buckling
+result tables
 diagnostics
-warnings
+limitations
 ```
 
-В snapshot должны попадать значения до форматирования и округления для UI.
+В бумажном документе **нет JSON dump**.
 
-## 7. Правило отчётности
+### 13.3. Internal CalculationSnapshot
+
+Для regression/cross-check допускается внутренний snapshot:
+
+```text
+software/method/Git SHA
+parameters
+nodes/members/restraints
+loadCases
+member results
+buckling
+diagnostics
+```
+
+Он не является пользовательским отчётом и не экспортируется отдельной кнопкой.
+
+## 14. Reporting source-of-truth rule
 
 Report renderer запрещено:
 
-- заново собирать расчётную схему;
-- повторно решать систему уравнений;
-- повторно вычислять несущую способность;
-- заменять значения из snapshot «более красивыми» значениями.
+- повторно решать `K*u=F`;
+- заново вычислять member forces из другой модели;
+- подменять solver values вручную введёнными числами;
+- округлять значения до того, как они попали в проверки.
 
-Допускается только:
+Разрешено:
 
-- форматирование единиц;
-- округление отображаемой копии;
-- сортировка строк;
-- группировка для чтения.
+- вычислять наглядные алгебраические подстановки из тех же исходных параметров;
+- форматировать единицы;
+- округлять только отображаемое значение;
+- сортировать таблицы.
 
-Полный snapshot прикладывается к записке без потери чисел.
+## 15. Numerical diagnostics
 
-## 8. Верификация solver
+Каждый solve сохраняет:
 
-Для каждого численного метода нужны три уровня тестов:
+```text
+relativeResidual
+minPivotRatio
+maximumNodeEquilibriumResidual
+globalMomentResidual
+buckling residual
+```
 
-1. **аналитика** — задачи с известным точным решением;
-2. **инварианты** — равновесие, симметрия, независимость от нумерации/поворота координат;
-3. **cross-check** — независимый КЭ-комплекс.
+Результат с неудовлетворительной диагностикой не должен молча отображаться как надёжный.
 
-Любое изменение solver, которое меняет эталонные результаты выше установленного допуска, должно явно отображаться в pull request.
+## 16. Verification layers
+
+### Analytical
+
+- axial `FL/EA`;
+- cantilever `PL³/(3EI)`;
+- cantilever rotation `PL²/(2EI)`;
+- fixed-fixed uniform load `qL/2`, `qL²/12`;
+- analytical eigensystems.
+
+### Invariants
+
+- force equilibrium;
+- moment equilibrium;
+- regular-octahedron equal edges;
+- alternating geometry regression;
+- coordinate-rotation invariance;
+- UI/report contracts.
+
+### Independent FEM cross-check
+
+Reference models from a separate solver must eventually live under a dedicated validation directory and be compared in CI with explicit tolerances.
+
+## 17. CI as part of calculation architecture
+
+Calculation software is not considered changed safely until:
+
+```text
+syntax checks
+CI policy tests
+unit/analytical tests on Linux
+unit/analytical tests on macOS
+unit/analytical tests on Windows
+secret scan
+static-site smoke test
+```
+
+have passed.
+
+Подробности: [`CI_CD_REVIEW.md`](CI_CD_REVIEW.md).

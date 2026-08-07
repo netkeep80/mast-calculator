@@ -35,8 +35,7 @@ input:disabled, input[readonly] { background: #eef1f4; color: #596674; cursor: n
 .advanced-inputs { margin-top: 1.15rem; padding: .8rem; border: 1px solid #e0e6eb; border-radius: 9px; background: #fafbfc; }
 .advanced-inputs summary { color: #465361; font-size: .82rem; }
 .advanced-grid { margin-top: .8rem; }
-.button-row { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; margin-top: 1rem; }
-.export-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: .65rem; margin-top: 1rem; }
+.button-row, .export-row { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; margin-top: 1rem; }
 button { border: 0; border-radius: 8px; padding: .75rem .9rem; cursor: pointer; font-weight: 800; }
 button:disabled { opacity: .55; cursor: not-allowed; }
 .primary { background: #168565; color: white; }
@@ -59,11 +58,10 @@ summary { cursor: pointer; font-weight: 800; }
 li { margin: .45rem 0; color: #43515e; }
 .material-summary { margin: .8rem 0; line-height: 1.45; }
 .table-scroll { width: 100%; overflow: auto; border: 1px solid #dde4eb; border-radius: 9px; }
-.member-table { width: 100%; min-width: 960px; border-collapse: collapse; font-size: .78rem; font-variant-numeric: tabular-nums; }
+.member-table { width: 100%; min-width: 1040px; border-collapse: collapse; font-size: .78rem; font-variant-numeric: tabular-nums; }
 .member-table th, .member-table td { padding: .55rem .65rem; border-bottom: 1px solid #e3e8ed; text-align: right; white-space: nowrap; }
 .member-table th { position: sticky; top: 0; z-index: 1; background: #eef3f7; color: #384958; font-size: .72rem; }
-.member-table th:nth-child(2), .member-table td:nth-child(2),
-.member-table th:nth-child(5), .member-table td:nth-child(5) { text-align: left; }
+.member-table th:nth-child(2), .member-table td:nth-child(2) { text-align: left; }
 .member-table tbody tr:nth-child(even) { background: #f8fafc; }
 .member-table tbody tr:hover { background: #edf6f2; }
 .member-table .danger-row { background: #fff0f0; color: #9d1f2d; font-weight: 700; }
@@ -72,7 +70,6 @@ li { margin: .45rem 0; color: #43515e; }
   .layout { grid-template-columns: 1fr; }
   .parameters, .results { grid-row: auto; grid-column: 1; }
 }
-@media (max-width: 760px) { .export-row { grid-template-columns: 1fr; } }
 @media (max-width: 620px) {
   .form-grid, .metric-grid, .button-row, .export-row { grid-template-columns: 1fr; }
   .checkbox { grid-column: 1; }

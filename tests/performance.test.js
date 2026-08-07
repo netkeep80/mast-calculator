@@ -24,7 +24,7 @@ test('120° симметрия удаляет только эквивалент�
   assert.deepEqual(directions45, [0, 15, 30, 45, 60, 75, 90, 105])
 })
 
-test('40 модулей считаются одной факторизацией с монотонным прогрессом', { timeout: 30_000 }, () => {
+test('40 модулей считаются одной факторизацией с монотонным прогрессом и зелёной внутренней верификацией', { timeout: 30_000 }, () => {
   const events = []
   const started = performance.now()
   const result = calculateCompleteMast({
@@ -42,6 +42,7 @@ test('40 модулей считаются одной факторизацией
   assert.equal(result.performance.operationalCaseCount, 4)
   assert.equal(result.performance.lateralCaseCount, 8)
   assert.equal(result.performance.staticPayloadEvaluationCount, STATIC_PAYLOAD_PROGRESS_STEPS)
+  assert.equal(result.performance.verificationInternalCheckCount, result.verification.counts.internal)
   assert.equal(result.envelope.caseCount, 4)
   assert.ok(Number.isFinite(result.envelope.maxUtilization))
   assert.ok(Number.isFinite(result.envelope.maxTopDisplacementM))
@@ -51,6 +52,13 @@ test('40 модулей считаются одной факторизацией
   assert.ok(result.staticPayloadCapacity.diagnostics.relativeResidual < 1e-8)
   assert.ok(result.staticPayloadCapacity.diagnostics.maximumNodeEquilibriumResidual < 1e-8)
   assert.ok(result.staticPayloadCapacity.diagnostics.bucklingResidual < 1e-5)
+
+  assert.equal(result.verification.status, 'internal-passed-external-pending')
+  assert.equal(result.verification.counts.failed, 0)
+  assert.ok(result.verification.counts.internal > 0)
+  for (const level of result.verification.levels.filter((item) => item.number <= 4)) {
+    assert.equal(level.status, 'pass', `внутренний уровень ${level.number}`)
+  }
 
   for (const loadCase of result.cases) {
     assert.ok(loadCase.analysis.diagnostics.relativeResidual < 1e-8)
@@ -71,6 +79,6 @@ test('40 модулей считаются одной факторизацией
   assert.equal(final.phase, 'done')
   assert.equal(final.completed, final.total)
 
-  console.info(`40-module benchmark: ${elapsedMs.toFixed(1)} ms; DOF=${result.performance.freeDofCount}; bandwidth=${result.performance.stiffnessBandwidth}; cases=${result.performance.operationalCaseCount}+${result.performance.lateralCaseCount}+${result.performance.staticPayloadEvaluationCount}`)
+  console.info(`40-module benchmark: ${elapsedMs.toFixed(1)} ms; DOF=${result.performance.freeDofCount}; bandwidth=${result.performance.stiffnessBandwidth}; cases=${result.performance.operationalCaseCount}+${result.performance.lateralCaseCount}+${result.performance.staticPayloadEvaluationCount}; verification=${result.verification.counts.internal}`)
   assert.ok(elapsedMs < 20_000, `40-модульный расчёт занял ${elapsedMs.toFixed(0)} мс`)
 })

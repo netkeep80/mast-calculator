@@ -241,9 +241,15 @@ function exportLateralCapacity(lateralCapacity) {
   }
 }
 
-// Internal verification snapshot. It is intentionally not exposed as a paper
-// report: the human-readable calculation project is generated separately from
-// the same result object, so its figures cannot diverge from the UI.
+function exportStaticPayloadCapacity(staticPayloadCapacity) {
+  if (!staticPayloadCapacity) return null
+  return {
+    ...staticPayloadCapacity,
+    purePayloadReference: { ...staticPayloadCapacity.purePayloadReference },
+    diagnostics: { ...staticPayloadCapacity.diagnostics },
+  }
+}
+
 export function createCalculationExport(
   result,
   parameters = result?.parameters,
@@ -255,9 +261,10 @@ export function createCalculationExport(
   const material = buildMaterialSummary(result)
   const members = buildMemberEnvelope(result)
   const lateralCapacity = exportLateralCapacity(result.lateralCapacity)
+  const staticPayloadCapacity = exportStaticPayloadCapacity(result.staticPayloadCapacity)
 
   return {
-    schema: 'mast-calculator/calculation-snapshot/v4',
+    schema: 'mast-calculator/calculation-snapshot/v5',
     generatedAt,
     software: {
       method: result.method ?? null,
@@ -286,19 +293,22 @@ export function createCalculationExport(
       lateralCriticalForceKgf: lateralCapacity?.criticalForceKgf ?? null,
       lateralGoverningMode: lateralCapacity?.governingMode ?? null,
       lateralDirectionDeg: lateralCapacity?.directionDeg ?? null,
+      maximumTotalTopMassKg: staticPayloadCapacity?.maximumTotalTopMassKg ?? null,
+      remainingAdditionalTopMassKg: staticPayloadCapacity?.remainingAdditionalMassKg ?? null,
+      equivalentWaterVolumeM3: staticPayloadCapacity?.equivalentWaterVolumeM3 ?? null,
+      staticPayloadGoverningMode: staticPayloadCapacity?.governingMode ?? null,
     },
     diagnostics: { ...result.analysis.diagnostics },
     model: exportModel(result.model),
     loadCases: result.cases.map(exportLoadCase),
     lateralCapacity,
+    staticPayloadCapacity,
     material,
     members,
     warnings: [...result.warnings],
   }
 }
 
-// Kept for automated reproducibility tests and external debugging. The browser
-// UI does not offer JSON export and the paper calculation project contains no JSON.
 export function createCalculationJson(result, parameters, generatedAt, buildInfo) {
   return `${JSON.stringify(createCalculationExport(result, parameters, generatedAt, buildInfo), null, 2)}\n`
 }

@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS, calculateMast } from '../site/engine/calculate.js'
+import { DEFAULT_PARAMETERS, calculateCompleteMast } from '../site/engine/calculate.js'
 import { createCalculationProjectHtml } from '../site/engine/calculation-project.js'
-import { calculateLateralCapacity } from '../site/engine/lateral-capacity.js'
 import {
   buildMaterialSummary,
   buildMemberEnvelope,
@@ -19,8 +18,7 @@ const parameters = {
   lateralCapacityStepDeg: 60,
 }
 
-const result = calculateMast(parameters)
-result.lateralCapacity = calculateLateralCapacity(result.model, result.parameters)
+const result = calculateCompleteMast(parameters)
 
 test('ведомость содержит каждое ребро и frame-результаты определяющего случая', () => {
   const members = buildMemberEnvelope(result)
@@ -61,18 +59,21 @@ test('CSV содержит усилия, моменты и эквивалент�
   assert.equal(csv.trim().split('\r\n').length, result.model.members.length + 1)
 })
 
-test('внутренний snapshot v4 содержит погоду, боковую нагрузку и полную frame-модель', () => {
+test('внутренний snapshot v5 содержит погоду, боковую и статическую нагрузку и полную frame-модель', () => {
   const generatedAt = '2026-08-07T08:00:00.000Z'
   const buildInfo = { repository: 'netkeep80/mast-calculator', ref: 'main', sha: 'abc123', runId: '42' }
   const snapshot = createCalculationExport(result, result.parameters, generatedAt, buildInfo)
 
-  assert.equal(snapshot.schema, 'mast-calculator/calculation-snapshot/v4')
+  assert.equal(snapshot.schema, 'mast-calculator/calculation-snapshot/v5')
   assert.equal(snapshot.software.sha, 'abc123')
   assert.equal(snapshot.summary.loadCaseCount, 4)
   assert.equal(snapshot.summary.windPresetId, 'custom')
   assert.ok(snapshot.summary.windSpeedMs > 0)
   assert.ok(snapshot.summary.lateralCriticalForceKgf > 0)
+  assert.ok(snapshot.summary.maximumTotalTopMassKg > 0)
+  assert.ok(snapshot.summary.equivalentWaterVolumeM3 >= 0)
   assert.ok(snapshot.lateralCapacity.criticalForceN > 0)
+  assert.ok(snapshot.staticPayloadCapacity.maximumTotalTopMassKg > 0)
   assert.equal(snapshot.model.nodes.length, result.model.nodes.length)
   assert.equal(snapshot.model.nodes[0].restrained.length, 6)
   assert.equal(snapshot.loadCases.length, result.cases.length)
@@ -90,12 +91,13 @@ test('машинный JSON остаётся внутренним средств
     '2026-08-07T08:00:00.000Z',
     { sha: 'abc123' },
   ))
-  assert.equal(report.schema, 'mast-calculator/calculation-snapshot/v4')
+  assert.equal(report.schema, 'mast-calculator/calculation-snapshot/v5')
   assert.equal(report.software.sha, 'abc123')
   assert.ok(report.lateralCapacity.criticalForceKgf > 0)
+  assert.ok(report.staticPayloadCapacity.maximumTotalTopMassKg > 0)
 })
 
-test('бумажный расчётный проект содержит пошаговые формулы, погоду и боковую нагрузку', () => {
+test('бумажный расчётный проект содержит пошаговые формулы, погоду, боковую и статическую нагрузку', () => {
   const html = createCalculationProjectHtml(
     result,
     result.parameters,
@@ -114,6 +116,9 @@ test('бумажный расчётный проект содержит поша
   assert.match(html, /q = ρv²\/2/)
   assert.match(html, /Fmember = 1\/U\(1 Н\)/)
   assert.match(html, /Flim = min\(Fmember, Fglobal\)/)
+  assert.match(html, /Pdesign\(m\) = m·g·γpayload/)
+  assert.match(html, /Vwater = mreserve \/ ρwater/)
+  assert.match(html, /Максимальная статическая масса на вершине/)
   assert.match(html, /кгс/)
   assert.match(html, /abc123/)
 })
@@ -122,7 +127,7 @@ test('бумажный расчётный проект не содержит JSO
   const html = createCalculationProjectHtml(result, result.parameters)
   assert.doesNotMatch(html, /Полный JSON/i)
   assert.doesNotMatch(html, /Машинное приложение/i)
-  assert.doesNotMatch(html, /calculation-snapshot\/v4/)
+  assert.doesNotMatch(html, /calculation-snapshot\/v5/)
   assert.doesNotMatch(html, /<pre>/i)
 })
 

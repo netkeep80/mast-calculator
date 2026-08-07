@@ -45,6 +45,18 @@ test('интерфейс разделяет первый боковой пред
   assert.match(app, /кгс/)
 })
 
+test('интерфейс показывает статическую массу вершины, резерв и объём воды', () => {
+  assert.match(html, /id="metric-static-payload"/)
+  assert.match(html, /id="metric-static-reserve"/)
+  assert.match(html, /id="metric-water-volume"/)
+  assert.match(html, /id="metric-static-mode"/)
+  assert.match(html, /id="static-payload-description"/)
+  assert.match(app, /maximumTotalTopMassKg/)
+  assert.match(app, /remainingAdditionalMassKg/)
+  assert.match(app, /equivalentWaterVolumeM3/)
+  assert.match(app, /Статическая нагрузка вершины/)
+})
+
 test('тяжёлый расчёт вынесен из main thread в модульный Web Worker', () => {
   assert.match(app, /new Worker\('\.\/calculation-worker\.js', \{ type: 'module' \}\)/)
   assert.match(worker, /calculateCompleteMast/)
@@ -85,6 +97,6 @@ test('результирующая таблица показывает N, V, M �
   assert.match(html, /<th>σэкв, МПа<\/th>/)
 })
 
-test('версия пользовательского прототипа обновлена до 0.7', () => {
-  assert.match(html, /прототип 0\.7/)
+test('версия пользовательского прототипа обновлена до 0.8', () => {
+  assert.match(html, /прототип 0\.8/)
 })

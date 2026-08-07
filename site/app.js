@@ -191,10 +191,11 @@ function exportFilename(extension) {
   return `mast-project-${modules}x-${cutLength}mm.${extension}`
 }
 
-function lateralModeLabel(mode) {
+function limitModeLabel(mode) {
   if (mode === 'global-buckling') return 'общая потеря устойчивости'
   if (mode === 'local-member-buckling') return 'локальная устойчивость ребра'
   if (mode === 'material-strength') return 'прочность материала'
+  if (mode === 'self-weight-overlimit') return 'собственный вес уже превышает предел'
   return 'не определён'
 }
 
@@ -233,6 +234,7 @@ function renderMemberReport(result) {
 function renderResult(result) {
   const parameters = result.parameters
   const lateral = result.lateralCapacity
+  const staticPayload = result.staticPayloadCapacity
   lastResult = result
   lastParameters = { ...parameters }
   exportNoteButton.disabled = false
@@ -257,21 +259,31 @@ function renderResult(result) {
   document.querySelector('#metric-residual').textContent = result.analysis.diagnostics.maximumNodeEquilibriumResidual.toExponential(2)
   document.querySelector('#metric-lateral-capacity').textContent = `${formatForce(lateral.criticalForceKgf, 1)} кгс`
   document.querySelector('#metric-lateral-buckling').textContent = `${formatForce(lateral.globalBucklingForceKgf, 1)} кгс`
-  document.querySelector('#metric-lateral-mode').textContent = lateralModeLabel(lateral.governingMode)
+  document.querySelector('#metric-lateral-mode').textContent = limitModeLabel(lateral.governingMode)
+  document.querySelector('#metric-static-payload').textContent = `${formatForce(staticPayload.maximumTotalTopMassKg, 1)} кг`
+  document.querySelector('#metric-static-reserve').textContent = `${formatForce(staticPayload.remainingAdditionalMassKg, 1)} кг`
+  document.querySelector('#metric-water-volume').textContent = `${formatForce(staticPayload.equivalentWaterVolumeM3, 3)} м³ (${formatForce(staticPayload.equivalentWaterVolumeLiters, 0)} л)`
+  document.querySelector('#metric-static-mode').textContent = limitModeLabel(staticPayload.governingMode)
 
   document.querySelector('#metric-displacement').classList.toggle('danger', topDisplacementMm > parameters.displacementLimitMm)
   document.querySelector('#metric-utilization').classList.toggle('danger', result.envelope.maxUtilization > 1)
   document.querySelector('#metric-buckling').classList.toggle('danger', bucklingFactor < parameters.minimumBucklingFactor)
+  document.querySelector('#metric-static-reserve').classList.toggle('danger', staticPayload.remainingAdditionalMassKg <= 0)
 
   document.querySelector('#critical-description').textContent = critical
     ? `Ребро № ${critical.memberId}: N = ${format(critical.axialForceN / 1000, 3)} кН, Vmax = ${format(critical.maxShearN / 1000, 3)} кН, Mmax = ${format(critical.maxBendingNm, 2)} Н·м, σэкв = ${format(critical.equivalentStressPa / 1e6, 2)} МПа, использование = ${format(critical.utilization, 4)} при ветре ${angle(strengthCase.windDirectionDeg)}. Максимальный прогиб возникает при ${angle(displacementCase.windDirectionDeg)}, минимальный множитель общей устойчивости — при ${angle(bucklingCase.windDirectionDeg)}.`
     : 'Критическое ребро не определено.'
 
-  document.querySelector('#lateral-capacity-description').textContent = `Чистая горизонтальная сила прикладывается к вершине и распределяется поровну между тремя верхними узлами. Худшее направление ${angle(lateral.directionDeg)}: первый расчётный предел ${formatForce(lateral.criticalForceN / 1000, 3)} кН = ${formatForce(lateral.criticalForceKgf, 1)} кгс; механизм — ${lateralModeLabel(lateral.governingMode)}. Предел по ребру ${formatForce(lateral.memberLimitForceKgf, 1)} кгс, линейная общая потеря устойчивости ${formatForce(lateral.globalBucklingForceKgf, 1)} кгс.`
+  document.querySelector('#lateral-capacity-description').textContent = `Чистая горизонтальная сила прикладывается к вершине и распределяется поровну между тремя верхними узлами. Худшее направление ${angle(lateral.directionDeg)}: первый расчётный предел ${formatForce(lateral.criticalForceN / 1000, 3)} кН = ${formatForce(lateral.criticalForceKgf, 1)} кгс; механизм — ${limitModeLabel(lateral.governingMode)}. Предел по ребру ${formatForce(lateral.memberLimitForceKgf, 1)} кгс, линейная общая потеря устойчивости ${formatForce(lateral.globalBucklingForceKgf, 1)} кгс.`
+
+  const boundedNote = staticPayload.bounded
+    ? ''
+    : ' Численный предел не был достигнут до программной верхней границы поиска, поэтому результат является нижней оценкой.'
+  document.querySelector('#static-payload-description').textContent = `Гравитационный расчёт включает собственный вес мачты с γg = ${format(parameters.deadLoadFactor, 2)} и суммарную массу на вершине с γ = ${format(parameters.equipmentLoadFactor, 2)}, но исключает ветер и лёд. Максимальная суммарная масса на вершине ${formatForce(staticPayload.maximumTotalTopMassKg, 1)} кг (${formatForce(staticPayload.maximumNominalTopForceN / 1000, 3)} кН номинально); механизм — ${limitModeLabel(staticPayload.governingMode)}. После уже заданных оборудования и дополнительной вертикальной силы остаётся ${formatForce(staticPayload.remainingAdditionalMassKg, 1)} кг, что соответствует примерно ${formatForce(staticPayload.equivalentWaterVolumeM3, 3)} м³ воды при ρ = ${format(staticPayload.waterDensityKgM3, 0)} кг/м³. На пределе: использование ребра ${format(staticPayload.utilizationAtLimit, 4)}, λcr = ${formatFactor(staticPayload.bucklingFactorAtLimit)}, осадка вершины ${format(staticPayload.topSettlementAtLimitM * 1000, 2)} мм.${boundedNote}`
 
   const performance = result.performance
   const performanceText = performance
-    ? ` Solver: ${performance.linearSystemSolver}; ${performance.freeDofCount} свободных DOF; полуширина ленты ${performance.stiffnessBandwidth}; факторизация K выполнена ${performance.stiffnessFactorizationCount} раз; ветровых случаев ${performance.operationalCaseCount}, боковых ${performance.lateralCaseCount}.`
+    ? ` Solver: ${performance.linearSystemSolver}; ${performance.freeDofCount} свободных DOF; полуширина ленты ${performance.stiffnessBandwidth}; факторизация K выполнена ${performance.stiffnessFactorizationCount} раз; ветровых случаев ${performance.operationalCaseCount}, боковых ${performance.lateralCaseCount}, оценок статического груза ${performance.staticPayloadEvaluationCount}.`
     : ''
   document.querySelector('#load-summary').textContent = `Погода: ${parameters.windPresetLabel}; v = ${format(parameters.windSpeedMs, 1)} м/с; q = ${format(parameters.windPressurePa, 1)} Па до γw. Рассмотрено направлений ветра: ${result.envelope.caseCount}. Вес стали с коэффициентом: ${format(result.loads.selfWeightN / 1000)} кН; вес льда: ${format(result.loads.iceWeightN / 1000)} кН; результирующий ветер на рёбра: ${format(result.loads.memberWindN / 1000)} кН.${performanceText}`
 
@@ -314,7 +326,9 @@ function renderProgress(progress) {
   const percent = Math.round(latestProgressFraction * 100)
   progressBar.value = percent
   progressPercent.textContent = `${percent}%`
-  progressStage.textContent = progress.phase === 'optimize' ? 'Подбор диаметра' : 'Расчёт мачты'
+  if (progress.phase === 'optimize') progressStage.textContent = 'Подбор диаметра'
+  else if (progress.phase === 'static-payload') progressStage.textContent = 'Статическая нагрузка вершины'
+  else progressStage.textContent = 'Расчёт мачты'
   progressDetail.textContent = progress.label ?? 'Вычисление…'
   updateProgressClock()
 }
@@ -368,7 +382,10 @@ function renderOptimization(summary, result) {
   }
   const diameter = summary.recommendedDiameter
   form.elements.namedItem('barDiameterMm').value = diameter
-  optimizationBox.textContent = `Минимальный найденный единый диаметр: ${diameter} мм. Использование ${format(result.envelope.maxUtilization, 3)}, прогиб ${format(result.envelope.maxTopDisplacementM * 1000, 2)} мм, множитель общей устойчивости ${formatFactor(result.envelope.minimumBucklingFactor)}, первый боковой предел ${formatForce(result.lateralCapacity.criticalForceKgf, 1)} кгс, боковая общая потеря устойчивости ${formatForce(result.lateralCapacity.globalBucklingForceKgf, 1)} кгс.`
+  const payloadText = result?.staticPayloadCapacity
+    ? `, статическая масса на вершине ${formatForce(result.staticPayloadCapacity.maximumTotalTopMassKg, 1)} кг`
+    : ''
+  optimizationBox.textContent = `Минимальный найденный единый диаметр: ${diameter} мм. Использование ${format(result.envelope.maxUtilization, 3)}, прогиб ${format(result.envelope.maxTopDisplacementM * 1000, 2)} мм, множитель общей устойчивости ${formatFactor(result.envelope.minimumBucklingFactor)}, первый боковой предел ${formatForce(result.lateralCapacity.criticalForceKgf, 1)} кгс, боковая общая потеря устойчивости ${formatForce(result.lateralCapacity.globalBucklingForceKgf, 1)} кгс${payloadText}.`
 }
 
 function startWorkerJob(action, parameters) {

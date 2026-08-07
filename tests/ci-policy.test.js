@@ -86,6 +86,7 @@ test('static-site smoke загружает worker и все новые browser-�
     'engine/buckling.js',
     'engine/weather.js',
     'engine/lateral-capacity.js',
+    'engine/static-payload-capacity.js',
     'engine/calculation-project.js',
   ]) {
     assert.ok(ci.includes(modulePath), `ci.yml smoke не проверяет ${modulePath}`)

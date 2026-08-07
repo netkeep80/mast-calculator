@@ -1,7 +1,8 @@
 import { selectedBoltUtilizationForAnalysis } from './connection-check.js'
 import { STANDARD_GRAVITY_M_S2 } from './lateral-capacity.js'
 import { buildLoadCase } from '../../structural-analysis/index.js'
-import { analyzeFrame, compileFrameSystem } from '../../structural-analysis/index.js'
+import { compileFrameSystem } from '../../structural-analysis/index.js'
+import { analyzeCheckedFrame } from './member-check.js'
 
 export const CRANE_BOOM_BISECTION_ITERATIONS = 16
 export const CRANE_BOOM_MAX_PAYLOAD_KG = 1e7
@@ -132,7 +133,7 @@ function ratios(model, parameters, analysis) {
 
 function evaluate(model, parameters, frameSystem, payloadMassKg, directionDeg) {
   const loads = buildHorizontalBoomLoadCase(model, parameters, payloadMassKg, directionDeg)
-  const analysis = analyzeFrame(model, loads, parameters, frameSystem)
+  const analysis = analyzeCheckedFrame(model, loads, parameters, frameSystem)
   return {
     payloadMassKg,
     directionDeg,

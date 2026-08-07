@@ -4,7 +4,8 @@ import {
 } from './connection-check.js'
 import { buildLoadCase } from '../../structural-analysis/index.js'
 import { STANDARD_GRAVITY_M_S2 } from './lateral-capacity.js'
-import { analyzeFrame, compileFrameSystem } from '../../structural-analysis/index.js'
+import { compileFrameSystem } from '../../structural-analysis/index.js'
+import { analyzeCheckedFrame } from './member-check.js'
 
 export const STATIC_PAYLOAD_BISECTION_ITERATIONS = 18
 export const STATIC_PAYLOAD_PROGRESS_STEPS = STATIC_PAYLOAD_BISECTION_ITERATIONS + 3
@@ -27,7 +28,7 @@ function payloadParameters(parameters, payloadMassKg, includeSelfWeight) {
 function evaluatePayload(model, parameters, frameSystem, payloadMassKg, includeSelfWeight = true) {
   const caseParameters = payloadParameters(parameters, payloadMassKg, includeSelfWeight)
   const loads = buildLoadCase(model, caseParameters)
-  const analysis = analyzeFrame(model, loads, caseParameters, frameSystem)
+  const analysis = analyzeCheckedFrame(model, loads, caseParameters, frameSystem)
   return { payloadMassKg, loads, analysis, parameters: caseParameters }
 }
 

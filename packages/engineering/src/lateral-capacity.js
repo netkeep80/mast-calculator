@@ -5,7 +5,8 @@ import {
   selectedBoltUtilizationForAnalysis,
 } from './connection-check.js'
 import { buildLoadCase } from '../../structural-analysis/index.js'
-import { analyzeFrame, compileFrameSystem } from '../../structural-analysis/index.js'
+import { compileFrameSystem } from '../../structural-analysis/index.js'
+import { analyzeCheckedFrame } from './member-check.js'
 
 export const STANDARD_GRAVITY_M_S2 = 9.80665
 const ROTATIONAL_SYMMETRY_DEG = 120
@@ -89,7 +90,7 @@ function evaluateDirection(model, parameters, directionDeg, frameSystem) {
   const loads = buildLoadCase(model, unitParameters, {
     topPointLoadN: unitTopPointLoad(directionDeg),
   })
-  const analysis = analyzeFrame(model, loads, unitParameters, frameSystem)
+  const analysis = analyzeCheckedFrame(model, loads, unitParameters, frameSystem)
   const memberLimit = governingMemberLimit(analysis)
   const unitCompressionN = meaningfulCompressionN(analysis)
   const globalBucklingForceN = unitCompressionN > MIN_COMPRESSION_FOR_GLOBAL_BUCKLING_N

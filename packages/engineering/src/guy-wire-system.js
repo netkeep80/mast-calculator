@@ -1,12 +1,15 @@
 import {
+  buildLoadCase,
+  compileFrameSystem,
+  generateMastModel,
+} from '../../structural-analysis/index.js'
+import { analyzeCheckedFrame } from './member-check.js'
+import {
   addBandValue,
   cloneSymmetricBandMatrix,
   factorSymmetricBand,
 } from '../../numerics/index.js'
 import { resolveCalculationParameters } from '../../domain/index.js'
-import { generateMastModel } from './geometry.js'
-import { buildLoadCase } from './loads.js'
-import { analyzeFrame, compileFrameSystem } from './solver.js'
 import {
   DEFAULT_GUY_SAFETY_FACTOR,
   DEFAULT_GUY_TERMINATION_EFFICIENCY,
@@ -381,7 +384,7 @@ export function solveGuyedLoadCase(model, parameters, cableSystem, windDirection
     states = cableSystem.cables.map((cable) => cableState(cable, trialDisplacements[cable.attachmentNodeId]))
     system = compileWithCableTangents(baseSystem, cableSystem, states)
     solverLoadCase = buildNewtonLoadCase(baseLoadCase, cableSystem, states)
-    analysis = analyzeFrame(model, solverLoadCase, caseParameters, system)
+    analysis = analyzeCheckedFrame(model, solverLoadCase, caseParameters, system)
     const nextDisplacements = analysis.displacements.map((value) => [...value])
     const nextStates = cableSystem.cables.map((cable) => cableState(cable, nextDisplacements[cable.attachmentNodeId]))
     displacementChangeM = maxDisplacementChange(trialDisplacements, nextDisplacements)
@@ -399,7 +402,7 @@ export function solveGuyedLoadCase(model, parameters, cableSystem, windDirection
 
   if (!analysis) {
     solverLoadCase = baseLoadCase
-    analysis = analyzeFrame(model, baseLoadCase, caseParameters, baseSystem)
+    analysis = analyzeCheckedFrame(model, baseLoadCase, caseParameters, baseSystem)
     trialDisplacements = analysis.displacements.map((value) => [...value])
     states = cableSystem.cables.map((cable) => cableState(cable, trialDisplacements[cable.attachmentNodeId]))
     displacementChangeM = 0

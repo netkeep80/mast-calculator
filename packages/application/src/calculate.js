@@ -1,5 +1,5 @@
 import { DEFAULT_PARAMETERS, resolveCalculationParameters } from '../../domain/index.js'
-import { calculateConnectionChecks } from '../../engineering/index.js'
+import { analyzeCheckedFrame, calculateConnectionChecks } from '../../engineering/index.js'
 import {
   calculateLateralCapacity,
   lateralDirections,
@@ -7,7 +7,7 @@ import {
 import { generateMastModel } from '../../structural-analysis/index.js'
 import { buildLoadCase } from '../../structural-analysis/index.js'
 import { compileModuleStack, solveModuleStack } from '../../structural-analysis/index.js'
-import { analyzeFrame, compileFrameSystem } from '../../structural-analysis/index.js'
+import { compileFrameSystem } from '../../structural-analysis/index.js'
 import {
   calculateStaticPayloadCapacity,
   STATIC_PAYLOAD_PROGRESS_STEPS,
@@ -163,7 +163,7 @@ function calculateOperationalCases(parameters, model, frameSystem, moduleStack, 
     const direction = directions[index]
     const caseParameters = { ...parameters, windDirectionDeg: direction }
     const loads = buildLoadCase(model, caseParameters)
-    const analysis = analyzeFrame(model, loads, caseParameters, frameSystem)
+    const analysis = analyzeCheckedFrame(model, loads, caseParameters, frameSystem)
     attachModularAnalysis(model, frameSystem, moduleStack, analysis, loads, caseParameters)
     cases.push({ windDirectionDeg: direction, loads, analysis })
     onCaseProgress?.({ completed: index + 1, total: directions.length, directionDeg: direction })

@@ -1,5 +1,6 @@
 import { resolveCalculationParameters } from '../../domain/index.js'
-import { calculateGuyedMast, augmentVerificationWithModuleChecks } from '../../structural-analysis/index.js'
+import { augmentVerificationWithModuleChecks } from '../../structural-analysis/index.js'
+import { calculateGuyedMast } from '../../engineering/index.js'
 import { calculateCompleteMastWithConfiguredJoint } from './complete-calculation.js'
 import { selectUniformDiameter, STANDARD_DIAMETERS_MM } from './optimize.js'
 

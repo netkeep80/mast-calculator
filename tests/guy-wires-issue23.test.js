@@ -11,7 +11,7 @@ import {
   buildGuyWireSystem,
   calculateGuyedMast,
   guyWindDirections,
-} from '../packages/structural-analysis/index.js'
+} from '../packages/engineering/index.js'
 
 const approximately = (actual, expected, relative = 1e-8, absolute = 1e-8) => {
   const tolerance = Math.max(absolute, Math.abs(expected) * relative)

@@ -157,72 +157,12 @@ function elementGlobalDofs(member) {
   ]
 }
 
-function memberStrengthResult(member, geometry, localEndForces, parameters, distributedLocal) {
-  const diameter = member.diameterM
-  const area = geometry.areaM2
-  const inertia = geometry.inertiaM4
-  const torsionConstant = geometry.torsionConstantM4
-  const sectionModulus = inertia / (diameter / 2)
+function memberActionResult(localEndForces) {
   const axialA = -localEndForces[0]
   const axialB = localEndForces[6]
-  const axialForceN = Math.abs(axialA) >= Math.abs(axialB) ? axialA : axialB
-  const maxCompressionN = Math.max(0, -axialA, -axialB)
-  const maxTensionN = Math.max(0, axialA, axialB)
-  const shearA = Math.hypot(localEndForces[1], localEndForces[2])
-  const shearB = Math.hypot(localEndForces[7], localEndForces[8])
-  const maxShearN = Math.max(shearA, shearB)
-  const maxTorsionNm = Math.max(Math.abs(localEndForces[3]), Math.abs(localEndForces[9]))
-  const bendingA = Math.hypot(localEndForces[4], localEndForces[5])
-  const bendingB = Math.hypot(localEndForces[10], localEndForces[11])
-  const endBendingNm = Math.max(bendingA, bendingB)
-  const transverseDistributedNPerM = Math.hypot(distributedLocal[1], distributedLocal[2])
-  const distributedBendingAllowanceNm = transverseDistributedNPerM * geometry.lengthM ** 2 / 8
-  const maxBendingNm = endBendingNm + distributedBendingAllowanceNm
-  const axialStressPa = Math.abs(axialForceN) / area
-  const bendingStressPa = maxBendingNm / sectionModulus
-  const normalStressPa = axialStressPa + bendingStressPa
-  const torsionShearPa = maxTorsionNm * (diameter / 2) / torsionConstant
-  const transverseShearPa = 4 * maxShearN / (3 * area)
-  const shearStressPa = Math.hypot(torsionShearPa, transverseShearPa)
-  const equivalentStressPa = Math.sqrt(normalStressPa ** 2 + 3 * shearStressPa ** 2)
-  const designYieldPa = member.yieldStrengthPa / parameters.materialSafetyFactor
-  const stressUtilization = equivalentStressPa / Math.max(designYieldPa, Number.EPSILON)
-  const effectiveLengthM = member.effectiveLengthFactor * geometry.lengthM
-  const eulerCapacityN = Math.PI ** 2 * member.youngModulusPa * inertia
-    / effectiveLengthM ** 2 / parameters.materialSafetyFactor
-  const bucklingUtilization = maxCompressionN / Math.max(eulerCapacityN, Number.EPSILON)
-  const radiusOfGyrationM = Math.sqrt(inertia / area)
-  const slenderness = effectiveLengthM / radiusOfGyrationM
-  const utilization = Math.max(stressUtilization, bucklingUtilization)
-  const mode = axialForceN >= 0 ? 'tension' : 'compression'
-  const axialYieldCapacityN = designYieldPa * area
-  const designCapacityN = mode === 'compression' ? Math.min(axialYieldCapacityN, eulerCapacityN) : axialYieldCapacityN
   return {
-    axialForceN,
     axialForceAtAN: axialA,
     axialForceAtBN: axialB,
-    maxTensionN,
-    maxCompressionN: -maxCompressionN,
-    maxShearN,
-    maxTorsionNm,
-    maxBendingNm,
-    distributedBendingAllowanceNm,
-    axialStressPa,
-    bendingStressPa,
-    normalStressPa,
-    torsionShearPa,
-    transverseShearPa,
-    shearStressPa,
-    equivalentStressPa,
-    stressPa: equivalentStressPa,
-    designYieldPa,
-    stressUtilization,
-    eulerCapacityN,
-    bucklingUtilization,
-    designCapacityN,
-    slenderness,
-    utilization,
-    mode,
   }
 }
 
@@ -385,14 +325,13 @@ function calculateMemberResults(model, parameters, system, memberLoads, displace
     )
     const globalEndForces = transformVectorToGlobal(localEndForces, geometry.transform)
     for (let index = 0; index < 12; index += 1) equilibriumVector[geometry.dofs[index]] += globalEndForces[index]
-    const strength = memberStrengthResult(member, geometry, localEndForces, parameters, load.distributedLocal)
     return {
       memberId: member.id,
       lengthM: geometry.lengthM,
       localAxes: geometry.rotation.map((axis) => [...axis]),
       distributedLoadLocalNPerM: [...load.distributedLocal],
       localEndForces: [...localEndForces],
-      ...strength,
+      ...memberActionResult(localEndForces),
     }
   })
   return { memberResults, equilibriumVector }
@@ -511,10 +450,6 @@ export function analyzeFrame(model, loadCase, parameters, compiledSystem = null)
 
   const maxDisplacementM = Math.max(...displacements.map(norm3))
   const maxTopDisplacementM = Math.max(...model.topNodeIds.map((nodeId) => norm3(displacements[nodeId])))
-  const critical = memberResults.reduce((current, candidate) => (
-    candidate.utilization > current.utilization ? candidate : current
-  ), memberResults[0])
-
   return {
     solver: 'linear-3d-frame-euler-bernoulli',
     linearSystemSolver: system.method,
@@ -526,8 +461,8 @@ export function analyzeFrame(model, loadCase, parameters, compiledSystem = null)
     memberResults,
     maxDisplacementM,
     maxTopDisplacementM,
-    maxUtilization: critical.utilization,
-    criticalMemberId: critical.memberId,
+    maxUtilization: null,
+    criticalMemberId: null,
     totalMassKg: system.totalMassKg,
     buckling: {
       criticalLoadFactor: buckling.factor,

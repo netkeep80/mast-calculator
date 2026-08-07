@@ -1,6 +1,6 @@
 import { DEFAULT_PARAMETERS, calculateMast, resolveCalculationParameters } from '../packages/application/index.js'
 import { calculateCompleteMastWithConfiguredJoint } from '../packages/application/index.js'
-import { calculateGuyedMast } from '../packages/structural-analysis/index.js'
+import { calculateGuyedMast } from '../packages/engineering/index.js'
 import {
   buildDesignPackage,
   designResultFromPackage,

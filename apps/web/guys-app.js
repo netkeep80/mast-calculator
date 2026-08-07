@@ -1,4 +1,4 @@
-import { DEFAULT_PARAMETERS, calculateMast, resolveCalculationParameters } from '../../packages/application/index.js'
+import { DEFAULT_PARAMETERS, calculateGuyedProject, calculateMast, resolveCalculationParameters } from '../../packages/application/index.js'
 import {
   REINFORCEMENT_CLASS_IDS,
   STANDARD_DIAMETERS_MM,
@@ -10,7 +10,6 @@ import {
   DEFAULT_GUY_WIRE_ID,
   GUY_WIRE_CATALOG,
 } from '../../packages/domain/index.js'
-import { calculateGuyedMast } from '../../packages/structural-analysis/index.js'
 
 const $ = (selector) => document.querySelector(selector)
 const moduleCount = $('#module-count')
@@ -305,7 +304,7 @@ function calculate() {
       terminationEfficiency: readNumber(terminationEfficiency, 'Эффективность заделки', 0.01),
     }
     const bare = calculateMast(p)
-    const guyed = calculateGuyedMast(p, tiers, guyOptions)
+    const guyed = calculateGuyedProject(p, tiers, guyOptions)
     renderResults(bare, guyed)
   } catch (error) {
     errorBox.textContent = error.stack || error.message

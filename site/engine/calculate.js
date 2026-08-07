@@ -3,6 +3,7 @@ import {
   regularOctahedronHeightMm,
   theoreticalCutLengthMm,
 } from './catalog.js'
+import { calculateConnectionChecks } from './connection-check.js'
 import {
   calculateLateralCapacity,
   DEFAULT_LATERAL_CAPACITY_STEP_DEG,
@@ -21,8 +22,8 @@ import { resolveWindParameters, windSpeedFromPressurePa } from './weather.js'
 const ROTATIONAL_SYMMETRY_DEG = 120
 
 export const CALCULATION_METHOD = Object.freeze({
-  id: 'linear-frame-v0.9',
-  description: 'Линейная пространственная Euler-Bernoulli frame-модель с ленточной SPD-факторизацией, generalized Lanczos, боковой и статической проверками и многоуровневым паспортом верификации.',
+  id: 'linear-frame-v1.0',
+  description: 'Линейная пространственная Euler-Bernoulli frame-модель с ленточной SPD-факторизацией, generalized Lanczos, боковой и статической проверками, расчетом межмодульных болтов и сварных концов и многоуровневым паспортом верификации.',
 })
 
 export const DEFAULT_PARAMETERS = Object.freeze({
@@ -64,6 +65,17 @@ export const DEFAULT_PARAMETERS = Object.freeze({
   closeTopRing: true,
   displacementLimitMm: 65,
   minimumBucklingFactor: 2,
+  jointBoltDiameterMm: 24,
+  jointBoltClass: '8.8',
+  jointBoltShearPlanes: 1,
+  jointEffectiveRadiusMm: 22,
+  connectionConditionFactor: 1,
+  jointBaseMetalTensileStrengthMPa: 490,
+  weldConsumableId: 'electrode-e50a-uoni-13-55',
+  weldLegMm: 4,
+  weldSegmentsPerEnd: 3,
+  weldBetaF: 0.7,
+  weldBetaZ: 1,
 })
 
 export function resolveCalculationParameters(parameters = {}) {
@@ -107,14 +119,17 @@ const minBy = (items, selector) => items.reduce((best, item) => selector(item) <
 
 function createWarnings(parameters, governing, buckling) {
   const warnings = [
-    'Глобальный каркас рассчитан как идеальная 3D frame-модель: сварные пересечения рёбер считаются абсолютно жёсткими и неразрушаемыми. Реальные болты, гайки, резьба и сварные швы должны проверяться отдельным модулем узлов.',
+    'Глобальный каркас рассчитан как идеальная 3D frame-модель с абсолютно жёсткими общими узлами. Межмодульный болт и сварные концы теперь проверяются отдельным post-processing слоем по усилиям этой модели; конечная податливость реального соединения пока не возвращается в глобальную матрицу жёсткости.',
+    'Межмодульный болт моделируется вертикальным. Изгибающий момент приводитcя к дополнительному растяжению, а кручение — к дополнительному срезу через задаваемый эффективный радиус узла. Этот радиус должен соответствовать реальной контактной геометрии шайбы/гайки/упора.',
+    'Болтовая проверка использует СП 16.13330.2017: расчетные сопротивления таблицы Г.5, площади Ab/Abn таблицы Г.9 и эллиптическое взаимодействие растяжения со срезом. Смятие, вырыв внутренней резьбы, податливость гайки, затяжка и проскальзывание пока не входят в эту проверку.',
+    'Минимальная длина сварки считается по совпадающему N/V/T/M каждого конца ребра и идеализированной круговой группе угловых швов. Реальная геометрия шва на гайке должна подтвердить принятые βf, βz, катет и эффективный радиус.',
     'Высота модуля вычисляется из геометрии правильного октаэдра h = a·√(2/3). Высота и нахлёст реального соединительного узла пока не учитываются.',
     'Погодные пресеты по шкале Бофорта — удобные сценарии для сравнения. Они не заменяют нормативное ветровое районирование, порывы, коэффициенты высоты и требования СП 20.',
     'Ветровая огибающая использует точную 120° вращательную симметрию треугольной расчётной модели: эквивалентные направления полной окружности не решаются повторно.',
     'Матрица упругой жёсткости собирается и факторизуется один раз для всех направлений нагрузки. Решение использует симметричную ленточную Cholesky-факторизацию, а общая устойчивость — matrix-free generalized Lanczos.',
-    'Расчёт статической массы на вершине учитывает собственный вес мачты, но сознательно исключает ветер и лёд. Он показывает гравитационный резерв, а не полную несущую способность водонапорной башни во всех сочетаниях.',
+    'Расчёт статической массы на вершине учитывает собственный вес мачты и выбранный межмодульный болт, но сознательно исключает ветер и лёд. Он показывает гравитационный резерв, а не полную несущую способность водонапорной башни во всех сочетаниях.',
     'Паспорт верификации подтверждает внутренние формулы, равновесие и эталонные задачи, но не заменяет независимый расчёт сторонним КЭ-комплексом, инженерную рецензию и натурное испытание.',
-    'Геометрическая нелинейность, начальные несовершенства, пластичность, усталость, фундамент и нормативный расчёт реальных соединений пока не реализованы.',
+    'Геометрическая нелинейность, начальные несовершенства, пластичность, усталость и фундамент пока не реализованы.',
   ]
   if (governing.analysis.diagnostics.relativeResidual > 1e-8) {
     warnings.unshift('Численная невязка превышает 1e-8: результат требует проверки.')
@@ -192,7 +207,9 @@ export function calculateMast(inputParameters, options = {}) {
       total: directions.length + 1,
     })
   })
-  return buildMastResult(parameters, model, cases)
+  const result = buildMastResult(parameters, model, cases)
+  result.connections = calculateConnectionChecks(result)
+  return result
 }
 
 export function calculateCompleteMast(inputParameters, options = {}) {
@@ -247,6 +264,7 @@ export function calculateCompleteMast(inputParameters, options = {}) {
     }),
   })
 
+  result.connections = calculateConnectionChecks(result)
   result.verification = buildVerificationPassport(result)
   result.performance = {
     linearSystemSolver: frameSystem.method,
@@ -259,6 +277,6 @@ export function calculateCompleteMast(inputParameters, options = {}) {
     verificationInternalCheckCount: result.verification.counts.internal,
     rotationalSymmetryDeg: ROTATIONAL_SYMMETRY_DEG,
   }
-  options.onProgress?.({ phase: 'done', label: 'Расчёт и внутренняя верификация завершены', completed: total, total })
+  options.onProgress?.({ phase: 'done', label: 'Расчёт, соединения и внутренняя верификация завершены', completed: total, total })
   return result
 }

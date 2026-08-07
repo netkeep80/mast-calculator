@@ -6,6 +6,7 @@ import {
 } from './connection-catalog.js'
 
 const EPSILON_FORCE_N = 1e-9
+const UTILIZATION_TOLERANCE = 1e-12
 
 const positiveFactor = (value, name) => {
   const numeric = Number(value)
@@ -75,7 +76,7 @@ export function checkBoltDemand(demand, options) {
     tensionUtilization,
     interactionUtilization,
     utilization: governingUtilization,
-    passes: tensionSupported && governingUtilization <= 1,
+    passes: tensionSupported && governingUtilization <= 1 + UTILIZATION_TOLERANCE,
     tensionSupported,
     loadFactorToDesignLimit,
     equivalentResultantAtDesignLimitN: Number.isFinite(loadFactorToDesignLimit)

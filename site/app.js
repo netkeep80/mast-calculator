@@ -1,6 +1,7 @@
 import { calculateMast, DEFAULT_PARAMETERS, resolveCalculationParameters } from './engine/calculate.js'
 import {
   getReinforcementClass,
+  regularOctahedronHeightMm,
   REINFORCEMENT_CLASS_IDS,
   STANDARD_DIAMETERS_MM,
   STOCK_BAR_DIVISIONS,
@@ -13,7 +14,6 @@ import {
   buildMaterialSummary,
   buildMemberEnvelope,
   createCalculationCsv,
-  createCalculationJson,
 } from './engine/report.js'
 import { MastViewer } from './viewer.js'
 
@@ -22,7 +22,6 @@ const calculateButton = document.querySelector('#calculate-button')
 const optimizeButton = document.querySelector('#optimize-button')
 const exportNoteButton = document.querySelector('#export-note-button')
 const exportCsvButton = document.querySelector('#export-csv-button')
-const exportJsonButton = document.querySelector('#export-json-button')
 const errorBox = document.querySelector('#error')
 const resultsSection = document.querySelector('#results')
 const warningsList = document.querySelector('#warnings')
@@ -48,8 +47,8 @@ fetch('./build-info.json', { cache: 'no-store' })
   .catch(() => {})
 
 const numericFieldNames = [
-  'moduleCount', 'moduleHeightMm', 'stockBarLengthMm', 'stockBarPieces', 'barDiameterMm',
-  'effectiveLengthFactor', 'materialSafetyFactor', 'deadLoadFactor', 'windLoadFactor',
+  'moduleCount', 'stockBarLengthMm', 'stockBarPieces', 'barDiameterMm',
+  'materialSafetyFactor', 'deadLoadFactor', 'windLoadFactor',
   'equipmentLoadFactor', 'windPressurePa', 'dragCoefficient', 'windDirectionDeg',
   'windEnvelopeStepDeg', 'equipmentMassKg', 'equipmentWindAreaM2',
   'equipmentDragCoefficient', 'extraHorizontalLoadN', 'extraVerticalLoadN',
@@ -96,10 +95,12 @@ function syncFabricationFields() {
   const stockLength = Number(form.elements.namedItem('stockBarLengthMm').value)
   const pieces = Number(form.elements.namedItem('stockBarPieces').value)
   const cutLength = theoreticalCutLengthMm(stockLength, pieces)
+  const moduleHeight = regularOctahedronHeightMm(cutLength)
   form.elements.namedItem('ribCutLengthMm').value = cutLength.toFixed(2)
+  form.elements.namedItem('moduleHeightMm').value = moduleHeight.toFixed(2)
 
   const material = getReinforcementClass(form.elements.namedItem('reinforcementClass').value)
-  materialInfoBox.textContent = `${material.label}, ${material.standard}: Rp/Ry = ${material.yieldStrengthMPa} МПа, Rm = ${material.tensileStrengthMPa} МПа, E = ${material.youngModulusGPa} ГПа. Для выбранных классов предусмотрена гарантия свариваемости.`
+  materialInfoBox.textContent = `${material.label}, ${material.standard}: Rp/Ry = ${material.yieldStrengthMPa} МПа, Rm = ${material.tensileStrengthMPa} МПа, E = ${material.youngModulusGPa} ГПа, ν = ${material.poissonRatio}. Для выбранных классов предусмотрена гарантия свариваемости.`
 }
 
 function readParameters() {
@@ -133,7 +134,7 @@ function downloadText(filename, content, type) {
 function exportFilename(extension) {
   const modules = lastParameters?.moduleCount ?? 'mast'
   const cutLength = lastParameters?.ribCutLengthMm ? Math.round(lastParameters.ribCutLengthMm) : ''
-  return `mast-calculation-${modules}m-${cutLength}mm.${extension}`
+  return `mast-project-${modules}x-${cutLength}mm.${extension}`
 }
 
 function renderMemberReport(result) {
@@ -147,11 +148,11 @@ function renderMemberReport(result) {
       member.familyName,
       `${member.nodeA}–${member.nodeB}`,
       format(member.lengthM * 1000, 1),
-      member.mode === 'compression' ? 'Сжатие' : 'Растяжение',
       format(member.axialForceN / 1000, 3),
+      format(member.maxShearN / 1000, 3),
+      format(member.maxBendingNm, 2),
+      format(member.equivalentStressPa / 1e6, 2),
       angle(member.windDirectionDeg),
-      format(member.designCapacityN / 1000, 3),
-      format(member.slenderness, 1),
       format(member.utilization, 4),
     ]
     row.replaceChildren(...values.map((value) => {
@@ -166,7 +167,7 @@ function renderMemberReport(result) {
   const groupDescription = material.groups.map((group) => (
     `${group.familyName.toLowerCase()} Ø${format(group.diameterMm, 0)} × ${format(group.lengthMm, 0)} мм — ${group.count} шт.`
   )).join('; ')
-  materialSummaryBox.textContent = `Всего ${material.totalCount} стержней, ${format(material.totalLengthM, 2)} м и ${format(material.totalMassKg, 1)} кг стали. ${groupDescription}`
+  materialSummaryBox.textContent = `Всего ${material.totalCount} рёбер, ${format(material.totalLengthM, 2)} м и ${format(material.totalMassKg, 1)} кг стали. ${groupDescription}`
 }
 
 function renderResult(result) {
@@ -175,7 +176,6 @@ function renderResult(result) {
   lastParameters = { ...parameters }
   exportNoteButton.disabled = false
   exportCsvButton.disabled = false
-  exportJsonButton.disabled = false
   viewer.setResult(result)
   resultsSection.hidden = false
 
@@ -200,10 +200,10 @@ function renderResult(result) {
   document.querySelector('#metric-buckling').classList.toggle('danger', bucklingFactor < parameters.minimumBucklingFactor)
 
   document.querySelector('#critical-description').textContent = critical
-    ? `Прочность: стержень № ${critical.memberId}, ${critical.mode === 'compression' ? 'сжатие' : 'растяжение'}, ветер ${angle(strengthCase.windDirectionDeg)}, усилие ${format(critical.axialForceN / 1000)} кН, несущая способность ${format(critical.designCapacityN / 1000)} кН. Максимальный прогиб возникает при ${angle(displacementCase.windDirectionDeg)}, минимальный множитель общей устойчивости — при ${angle(bucklingCase.windDirectionDeg)}.`
-    : 'Критический стержень не определён.'
+    ? `Ребро № ${critical.memberId}: N = ${format(critical.axialForceN / 1000, 3)} кН, Vmax = ${format(critical.maxShearN / 1000, 3)} кН, Mmax = ${format(critical.maxBendingNm, 2)} Н·м, σэкв = ${format(critical.equivalentStressPa / 1e6, 2)} МПа, использование = ${format(critical.utilization, 4)} при ветре ${angle(strengthCase.windDirectionDeg)}. Максимальный прогиб возникает при ${angle(displacementCase.windDirectionDeg)}, минимальный множитель общей устойчивости — при ${angle(bucklingCase.windDirectionDeg)}.`
+    : 'Критическое ребро не определено.'
 
-  document.querySelector('#load-summary').textContent = `Рассмотрено направлений ветра: ${result.envelope.caseCount}. Вес стали с коэффициентом: ${format(result.loads.selfWeightN / 1000)} кН; вес льда: ${format(result.loads.iceWeightN / 1000)} кН; ветер на стержни: ${format(result.loads.memberWindN / 1000)} кН.`
+  document.querySelector('#load-summary').textContent = `Рассмотрено направлений ветра: ${result.envelope.caseCount}. Вес стали с коэффициентом: ${format(result.loads.selfWeightN / 1000)} кН; вес льда: ${format(result.loads.iceWeightN / 1000)} кН; результирующий ветер на рёбра: ${format(result.loads.memberWindN / 1000)} кН.`
 
   warningsList.replaceChildren(...result.warnings.map((warning) => {
     const item = document.createElement('li')
@@ -268,14 +268,6 @@ exportNoteButton.addEventListener('click', () => {
 exportCsvButton.addEventListener('click', () => {
   if (!lastResult) return
   downloadText(exportFilename('csv'), createCalculationCsv(lastResult), 'text/csv;charset=utf-8')
-})
-exportJsonButton.addEventListener('click', () => {
-  if (!lastResult || !lastParameters) return
-  downloadText(
-    exportFilename('json'),
-    createCalculationJson(lastResult, lastParameters, undefined, buildInfo),
-    'application/json;charset=utf-8',
-  )
 })
 form.elements.namedItem('windEnvelopeEnabled').addEventListener('change', syncWindFields)
 form.elements.namedItem('stockBarLengthMm').addEventListener('change', syncFabricationFields)

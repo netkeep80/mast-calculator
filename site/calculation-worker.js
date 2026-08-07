@@ -1,4 +1,4 @@
-import { calculateCompleteMast } from './engine/calculate.js'
+import { calculateCompleteMastWithConfiguredJoint } from './engine/complete-calculation.js'
 import { augmentVerificationWithModuleChecks } from './engine/module-verification.js'
 import { selectUniformDiameter, STANDARD_DIAMETERS_MM } from './engine/optimize.js'
 
@@ -48,7 +48,7 @@ function summarizeOptimization(optimization) {
 }
 
 function runCalculation(jobId, parameters) {
-  const result = addModuleVerification(calculateCompleteMast(parameters, {
+  const result = addModuleVerification(calculateCompleteMastWithConfiguredJoint(parameters, {
     onProgress: (progress) => calculationProgress(jobId, progress),
   }))
   self.postMessage({ type: 'result', jobId, result, optimization: null })
@@ -56,12 +56,13 @@ function runCalculation(jobId, parameters) {
 
 function runOptimization(jobId, parameters) {
   const optimizationShare = 0.78
+  const automaticParameters = { ...parameters, jointConfiguratorMode: 'auto' }
   postProgress(jobId, {
     phase: 'optimize',
     label: `Подбор диаметра: до ${STANDARD_DIAMETERS_MM.length} стандартных вариантов`,
     fraction: 0,
   })
-  const optimization = selectUniformDiameter(parameters, STANDARD_DIAMETERS_MM, {
+  const optimization = selectUniformDiameter(automaticParameters, STANDARD_DIAMETERS_MM, {
     stopAtFirstPassing: true,
     onProgress: (event) => {
       postProgress(jobId, {
@@ -84,7 +85,10 @@ function runOptimization(jobId, parameters) {
     label: `Минимальный проходящий диаметр найден после ${optimization.evaluatedCount} вариантов: Ø${diameter} мм`,
     fraction: optimizationShare,
   })
-  const result = addModuleVerification(calculateCompleteMast({ ...parameters, barDiameterMm: diameter }, {
+  const result = addModuleVerification(calculateCompleteMastWithConfiguredJoint({
+    ...automaticParameters,
+    barDiameterMm: diameter,
+  }, {
     onProgress: (progress) => calculationProgress(
       jobId,
       progress,
@@ -108,7 +112,7 @@ self.onmessage = (event) => {
       runOptimization(jobId, parameters)
       return
     }
-    throw new Error(`Неизвестная операция worker: ${action}`)
+    throw new Error(`Неизвестная операция расчёта: ${action}`)
   } catch (error) {
     self.postMessage({
       type: 'error',

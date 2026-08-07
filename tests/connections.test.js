@@ -122,7 +122,7 @@ test('для одного модуля внутренний соединител
   assert.equal(result.connections.bolt.selected.utilization, 0)
 })
 
-test('более прочный и крупный болт повышает отдельный боковой предел соединения', () => {
+test('более прочный и крупный валидный узел повышает отдельный боковой предел соединения', () => {
   const common = {
     ...DEFAULT_PARAMETERS,
     moduleCount: 2,
@@ -135,12 +135,20 @@ test('более прочный и крупный болт повышает от
     ...common,
     jointBoltDiameterMm: 16,
     jointBoltClass: '5.6',
+    jointClearanceNutThreadMm: 20,
+    jointBoltLengthMm: 50,
+    jointThreadEngagementFactor: 2,
   })
   const strong = calculateCompleteMast({
     ...common,
     jointBoltDiameterMm: 48,
     jointBoltClass: '12.9',
+    jointClearanceNutThreadMm: 56,
+    jointBoltLengthMm: 150,
+    jointThreadEngagementFactor: 2,
   })
+  assert.equal(weak.connections.passesJointGeometry, true)
+  assert.equal(strong.connections.passesJointGeometry, true)
   assert.ok(strong.lateralCapacity.boltLimitForceN > weak.lateralCapacity.boltLimitForceN)
   assert.ok(strong.staticPayloadCapacity.purePayloadReference.boltLimitKg >= weak.staticPayloadCapacity.purePayloadReference.boltLimitKg)
 })
@@ -155,9 +163,13 @@ test('слабый межмодульный болт может стать ре�
     jointConfiguratorMode: 'manual',
     jointBoltDiameterMm: 16,
     jointBoltClass: '5.6',
+    jointClearanceNutThreadMm: 20,
+    jointBoltLengthMm: 50,
+    jointThreadEngagementFactor: 2,
     windEnvelopeEnabled: false,
     lateralCapacityStepDeg: 60,
   })
+  assert.equal(result.connections.passesJointGeometry, true)
   assert.equal(result.lateralCapacity.governingMode, 'bolt-connection')
   assert.equal(result.lateralCapacity.criticalForceN, result.lateralCapacity.boltLimitForceN)
   assert.ok(result.lateralCapacity.boltLimitForceN < result.lateralCapacity.memberLimitForceN)

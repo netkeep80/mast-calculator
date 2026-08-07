@@ -46,10 +46,19 @@ export function generateMastModel(parameters) {
       addMember(levelNodeId(module, corner), levelNodeId(module, (corner + 1) % 3))
     }
 
-    // Шесть наклонных рёбер к следующему уровню, повёрнутому на 60°.
+    // Шесть одинаковых наклонных рёбер соединяют каждую вершину нижнего
+    // треугольника с двумя ближайшими вершинами следующего уровня.
+    // Уровни поочерёдно повёрнуты на +60° и -60°, поэтому направление
+    // второй диагонали также должно чередоваться. Если всегда использовать
+    // corner + 2, то каждый второй модуль получает три длинные диагонали,
+    // пересекающие треугольник почти по диаметру.
+    const adjacentCornerOffset = module % 2 === 0 ? 2 : 1
     for (let corner = 0; corner < 3; corner += 1) {
       addMember(levelNodeId(module, corner), levelNodeId(module + 1, corner))
-      addMember(levelNodeId(module, corner), levelNodeId(module + 1, (corner + 2) % 3))
+      addMember(
+        levelNodeId(module, corner),
+        levelNodeId(module + 1, (corner + adjacentCornerOffset) % 3),
+      )
     }
   }
 

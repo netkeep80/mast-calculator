@@ -1,359 +1,291 @@
-# Аудит CI/CD по шаблонам link-foundation
+# Аудит и контракт CI/CD
 
-Дата аудита: 2026-08-07.
+Дата последней актуализации: **2026-08-07**. Текущая конфигурация соответствует прототипу **1.2**.
 
-Цель: сопоставить CI/CD Mast Calculator с четырьмя эталонными шаблонами link-foundation и перенести практики, которые применимы к статическому браузерному JavaScript-приложению без npm-зависимостей и без package-release процесса.
+## 1. База аудита
 
-Проверены репозитории:
+CI/CD Mast Calculator ранее был сопоставлен с четырьмя шаблонами link-foundation:
 
 - `link-foundation/js-ai-driven-development-pipeline-template`;
 - `link-foundation/rust-ai-driven-development-pipeline-template`;
 - `link-foundation/python-ai-driven-development-pipeline-template`;
 - `link-foundation/csharp-ai-driven-development-pipeline-template`.
 
-Аудит охватывал workflow-файлы, CI/CD-скрипты, тесты самих pipeline-механизмов и документацию о Pages/release. Языково-специфичные release-операции (npm/PyPI/crates.io/NuGet) анализировались, но не копировались в Mast Calculator, потому что приложение не публикует библиотечный пакет.
+Проверялись workflow-файлы, CI/CD/release scripts, pipeline tests и Pages documentation. Языково-специфичный publish в npm/PyPI/crates.io/NuGet не переносился, потому что Mast Calculator является статическим browser application, а не registry package.
 
-## 1. CI/CD-релевантное дерево шаблонов
+## 2. Принятые практики из шаблонов
 
-### JavaScript template
+В репозитории зафиксированы:
 
-Workflow-файлы:
-
-```text
-.github/workflows/release.yml
-.github/workflows/links.yml
-.github/workflows/example-app.yml
-```
-
-CI/CD и release scripts, найденные в текущем дереве и используемые/проверяемые pipeline:
-
-```text
-scripts/check-mjs-syntax.sh
-scripts/simulate-fresh-merge.sh
-scripts/check-file-line-limits.sh
-scripts/detect-code-changes.mjs
-scripts/check-version.mjs
-scripts/check-changesets.mjs
-scripts/validate-changeset.mjs
-scripts/create-manual-changeset.mjs
-scripts/merge-changesets.mjs
-scripts/instant-version-bump.mjs
-scripts/version-and-commit.mjs
-scripts/check-release-needed.mjs
-scripts/wait-for-npm.mjs
-scripts/publish-to-npm.mjs
-scripts/create-github-release.mjs
-scripts/format-release-notes.mjs
-scripts/format-github-release.mjs
-scripts/package-info.mjs
-scripts/npm-registry.mjs
-scripts/check-docker-build.mjs
-scripts/check-web-archive.mjs
-scripts/update-preview-images.mjs
-```
-
-Особенно релевантные Mast Calculator практики:
-
-- fast-fail checks;
+- explicit `timeout-minutes` для каждого job;
+- least-privilege `contents: read` по умолчанию;
+- write permissions только в Pages deploy job;
+- современные official GitHub Actions;
+- Node.js 24.x;
 - fresh-merge simulation для PR;
-- explicit timeouts;
-- cross-platform test matrix;
-- secretlint;
-- контроль длины файлов;
-- тесты CI/CD-логики;
-- современные major-версии official actions;
-- отдельная безопасная Pages publication.
+- Linux/macOS/Windows test matrix;
+- secret scan;
+- file line-limit guard;
+- tests для policy самих workflows;
+- отдельные узкие verification gates;
+- safe writer concurrency для Pages;
+- полный test/check до публикации;
+- Git SHA опубликованной сборки в `build-info.json`.
 
-### Rust template
+## 3. Current PR checks
 
-Workflow-файлы:
-
-```text
-.github/workflows/release.yml
-```
-
-Документация публикуется отдельным job внутри `release.yml`.
-
-CI/CD scripts, перечисленные текущей структурой/документацией и release workflow:
-
-```text
-scripts/bump-version.rs
-scripts/check-cargo-lock.rs
-scripts/check-changelog-fragment.rs
-scripts/check-crate-size.rs
-scripts/check-file-size.rs
-scripts/check-release-needed.rs
-scripts/check-version-modification.rs
-scripts/collect-changelog.rs
-scripts/create-changelog-fragment.rs
-scripts/create-github-release.rs
-scripts/detect-code_changes.rs
-scripts/get-bump-type.rs
-scripts/get-version.rs
-scripts/git-config.rs
-scripts/publish-crate.rs
-scripts/release-naming.rs
-scripts/rust-paths.rs
-scripts/smoke-test-published-crate.rs
-scripts/version-and-commit.rs
-scripts/wait-for-crate.rs
-```
-
-Также шаблон содержит CI/CD unit tests под `tests/unit/ci-cd/`.
-
-Полезные практики:
-
-- проверка lockfile/determinism;
-- job-scoped concurrency;
-- explicit timeouts;
-- cross-platform tests;
-- отдельная проверка опубликованного артефакта;
-- явная документация одноразовой настройки Pages Source = GitHub Actions.
-
-Lockfile-guard к Mast Calculator сейчас неприменим: у проекта нет npm-зависимостей и lockfile не участвует в расчёте/сборке.
-
-### Python template
-
-Workflow-файлы:
-
-```text
-.github/workflows/release.yml
-.github/workflows/docs.yml
-```
-
-CI/CD scripts, найденные в текущем дереве/поиске и упомянутые workflow:
-
-```text
-scripts/check_file_size.py
-scripts/bump_version.py
-scripts/version_and_commit.py
-scripts/publish_to_pypi.py
-scripts/create_github_release.py
-scripts/validate_changeset.py
-scripts/create_manual_changeset.py
-scripts/format_release_notes.py
-scripts/detect_code_changes.py
-```
-
-Pipeline-тесты включают, в частности:
-
-```text
-tests/test_workflows.py
-tests/test_check_file_size.py
-tests/test_smoke_test_published_package.py
-tests/test_create_github_release.py
-```
-
-Полезные практики:
-
-- workflow-конфигурация проверяется обычными unit tests;
-- Pages build выполняется и на PR, deploy — только в разрешённом контексте;
-- Pages deployment может иметь явный opt-in repository variable;
-- build/test должны завершиться до publication.
-
-### C# template
-
-Workflow-файлы:
-
-```text
-.github/workflows/release.yml
-.github/workflows/docs.yml
-```
-
-CI/CD scripts из текущей структуры:
-
-```text
-scripts/bump-version.mjs
-scripts/check-file-size.mjs
-scripts/create-github-release.mjs
-scripts/merge-changesets.mjs
-scripts/validate-changeset.mjs
-scripts/version-and-commit.mjs
-```
-
-Полезные практики:
-
-- cross-platform matrix Ubuntu/macOS/Windows;
-- warnings-as-errors / strict quality gate как общий принцип;
-- Pages deploy не должен ждать первого package release;
-- official GitHub Pages actions;
-- явная одноразовая настройка Source = GitHub Actions.
-
-## 2. Общие лучшие практики, подтверждённые несколькими шаблонами
-
-| Практика | JS | Rust | Python | C# | Mast Calculator |
-|---|---:|---:|---:|---:|---:|
-| Explicit `timeout-minutes` | да | да | да | да | принято |
-| Least-privilege permissions | да | да | да | да | принято |
-| Современные official actions | да | да | да | да | принято |
-| Cross-platform tests | да | да | частично/по задаче | да | принято: 3 ОС |
-| Fresh merge PR validation | да | да | используется в release pipeline | используется в release pipeline | принято |
-| Secret scan | да | да/quality layer | да/quality layer | по pipeline | принято |
-| File-size/line guard | да | да | да | да | принято |
-| CI/CD tests | да | да | да | частично | принято |
-| Safe writer concurrency | да | да | да | да | принято |
-| Pages official artifact flow | да | да | да | да | принято |
-| Проверка опубликованного package | да | да | да | release-specific | неприменимо |
-| Changelog/version release machinery | да | да | да | да | пока неприменимо |
-
-## 3. Изменения, перенесённые в Mast Calculator
-
-### `.github/workflows/ci.yml`
-
-Теперь pipeline разделён на независимые проверки:
+`.github/workflows/ci.yml` содержит независимые jobs:
 
 ```text
 Syntax, policy and maintainability
 Secrets scan
 Triple FEM equivalence
+Joint configurator
 Tests (ubuntu-latest)
 Tests (macos-latest)
 Tests (windows-latest)
 Static site smoke test
 ```
 
-Принято:
+Все jobs кроме publication являются read-only и могут отменяться новым commit того же PR.
 
-- `actions/checkout@v6`;
-- `actions/setup-node@v6`;
-- Node.js `24.x`;
-- `contents: read` по умолчанию;
-- explicit timeout для каждого job;
-- job-scoped concurrency с `cancel-in-progress: true` для read-only checks;
-- `scripts/simulate-fresh-merge.sh` перед PR-проверками;
-- 3-OS test matrix;
-- secretlint с recommended preset;
-- `scripts/check-file-line-limits.mjs`;
-- smoke-test реального статического HTTP-site;
-- workflow policy включён в обычный `npm test`;
-- отдельный `Triple FEM equivalence` gate для numerical identity трёх независимых solve paths.
+## 4. Syntax, policy and maintainability
 
-### Triple FEM equivalence
+Job выполняет:
 
-Для issue #18 добавлен отдельный verification job:
+```text
+fresh-merge simulation
+npm run check
+node scripts/check-file-line-limits.mjs
+```
+
+`npm run check` включает browser entry points, Worker, FEM modules, reference solver и новые модули issue #21:
+
+```text
+app-bootstrap.js
+joint-viewer.js
+joint-hardware-catalog.js
+joint-configurator.js
+complete-calculation.js
+```
+
+## 5. Secrets scan
+
+Используется `secretlint` с recommended preset.
+
+Задача отделена от functional tests, чтобы случайный secret не маскировался обычным test failure.
+
+## 6. Triple FEM equivalence
+
+Dedicated job:
 
 ```bash
 npm run test:triple
 ```
 
-Он сравнивает:
+Он проверяет одну и ту же linear frame model тремя путями:
 
 ```text
-global symmetric-band FEM
-module Schur top-down/bottom-up solver
-independent dense Gaussian reference FEM
+global banded FEM
+module Schur solver
+independent dense reference FEM
 ```
 
-на нескольких физических размерах и нагрузочных сценариях. Сравниваются все 6 DOF каждого узла, реакции основания и все 12 local end-force components каждого member. Для малых/средних cases дополнительно сравнивается `lambda_cr` production Lanczos и dense generalized eigen reference.
+Сравниваются DOF, reactions, local member end-forces и для выбранных cases `lambda_cr`.
 
-Этот job намеренно выделен отдельно от общей test matrix: ошибка solver-equivalence видна как отдельный PR gate. При этом тот же файл `tests/triple-solver-crosscheck.test.js` входит в обычный `npm test`, поэтому проверяется ещё и на Ubuntu/macOS/Windows.
+Это отдельный visible PR gate, хотя те же tests входят в общий `npm test`.
 
-Подробности: [`TRIPLE_SOLVER_VERIFICATION.md`](TRIPLE_SOLVER_VERIFICATION.md).
+## 7. Joint configurator — новый gate 1.2
 
-### `.github/workflows/pages.yml`
+Issue #21 получил отдельный job:
 
-Принято:
+```bash
+npm run test:joint
+```
 
-- `actions/checkout@v6`;
-- `actions/setup-node@v6`, Node 24.x;
-- `actions/configure-pages@v6`;
-- `actions/upload-pages-artifact@v5`;
-- `actions/deploy-pages@v5`;
-- полный `npm test` перед упаковкой;
-- syntax и line-limit checks перед deploy;
-- build job имеет только `contents: read`;
-- права `pages: write` и `id-token: write` выданы только deploy job;
-- publication является writer operation с `cancel-in-progress: false` — уже начатый deploy не уничтожается более новым запуском;
-- build-info содержит точный Git SHA опубликованного расчётного кода.
+Он проверяет не просто UI, а физическую consistency конфигуратора:
 
-## 4. Ошибки прежней конфигурации и защита от повторения
+```text
+M24 bolt -> minimum clearance nut M30
+M24 -> coupling nut M24x72
+2d engagement -> 48 mm -> 16 turns
+M24/M30 -> required 75.6 mm -> standard bolt 80 mm
+M24x70 -> geometry FAIL
+auto 100 kN -> minimum passing M20 8.8 with matching hardware
+manual M24/M30/80 -> parameters are preserved
+complete calculation -> selected joint is frozen for lateral/static/height searches
+```
 
-### Старые major-версии GitHub Actions
+Задача нужна отдельно, потому что ошибка в catalogue/geometry/configurator не обязана проявиться как ошибка FEM.
 
-Ранее workflow использовали `checkout@v4`, `setup-node@v4`, `configure-pages@v5`, `upload-pages-artifact@v4`, `deploy-pages@v4`. GitHub уже выдавал предупреждения о Node.js 20 deprecation.
+## 8. Full cross-platform suite
 
-Исправление: версии синхронизированы с актуальными link-foundation templates.
+Один и тот же:
 
-Защита: `tests/ci-policy.test.js` падает, если в workflows снова появятся запрещённые старые major versions или Node 22.
+```bash
+npm test
+```
 
-### Pages publication и первая настройка репозитория
+обязан проходить на:
 
-Ранее публикация не происходила, пока Pages source не был вручную настроен. Это не ошибка YAML: GitHub требует одноразово выбрать **Settings → Pages → Source = GitHub Actions** для custom Pages workflow.
+```text
+ubuntu-latest
+macos-latest
+windows-latest
+```
 
-Та же особенность прямо документирована в актуальных link-foundation templates; в Python template дополнительно применяется opt-in variable, а C# template отдельно документирует проблему первого 404/deploy.
+`fail-fast: false` сохраняется, чтобы platform-specific failure не скрывал результаты остальных ОС.
 
-Для Mast Calculator источник уже настроен, поэтому дополнительный opt-in variable сейчас не нужен.
+## 9. Static-site smoke
 
-### Отмена writer job
+Smoke запускает реальный HTTP server и проверяет browser resources через `curl`.
 
-Старый Pages workflow имел `cancel-in-progress: true` на весь workflow. Для read-only test job это полезно, но для уже начавшейся публикации потенциально опасно.
+Для prototype 1.2 дополнительно проверяются:
 
-Исправление: проверки могут отменяться, deploy serialization использует `cancel-in-progress: false`.
+```text
+logo.jpg
+app-bootstrap.js
+joint-viewer.js
+complete-calculation.js
+joint-hardware-catalog.js
+joint-configurator.js
+reference-frame.js
+```
 
-### CI как непроверяемая конфигурация
+Так как исходный `logo.jpg` хранится в корне repository, smoke перед запуском копирует его в `site/logo.jpg`. Это воспроизводит структуру Pages artifact.
 
-Ранее YAML проверял сам себя только фактом успешного запуска.
+Проверяется и пользовательский title:
 
-Исправление: `tests/ci-policy.test.js` проверяет policy-инварианты workflows, а значит изменения CI/CD проходят через тот же PR test gate, что и расчётный код.
+```html
+<title>Калькулятор мачты</title>
+```
 
-### Два production solver могли разделять одну ошибку постановки
+## 10. Pages publication
 
-Global banded FEM и module Schur solver имеют разные assembly/solution path, но описывают одну Euler–Bernoulli frame-модель. Для дополнительной защиты от общей implementation regression добавлен третий dense reference path, который не импортирует `solver.js`, `module-stack.js` или `banded.js`.
+`.github/workflows/pages.yml` выполняет:
 
-`tests/ci-policy.test.js` отдельно требует наличие `Triple FEM equivalence`, а numerical test отдельно проверяет архитектурную независимость reference module и совпадение результатов.
+```text
+checkout
+Node 24
+npm test
+npm run check
+line-limit guard
+prepare _site
+configure Pages
+upload artifact
+deploy
+```
 
-## 5. Практики, которые сознательно не перенесены
+Сайт формируется:
 
-### Changesets / Scriv / package release
+```bash
+cp -R site _site
+cp logo.jpg _site/logo.jpg
+```
 
-Mast Calculator сейчас публикует статическое приложение, а не npm/PyPI/NuGet/crates.io package. Автоматический semantic release, package registry publishing и changelog fragments добавили бы сложность без текущей пользы.
+Таким образом используется именно пользовательский `logo.jpg` из корня репозитория.
 
-### Dependency cache и lockfile guard
+`build-info.json` содержит:
 
-У приложения нет runtime npm dependencies. Node используется как test runner. Нет смысла создавать lockfile только ради cache-key.
+```text
+repository
+ref
+sha
+runId
+```
 
-Если появятся внешние npm dependencies, обязательными становятся:
+Git SHA затем может попасть в расчётный проект как идентификатор фактически опубликованного кода.
 
-1. committed lockfile;
-2. `npm ci` вместо плавающей установки;
-3. dependency cache по hash lockfile;
-4. обновление CI policy tests.
+## 11. Writer concurrency
 
-### Change detection для пропуска тестов
+Read-only checks допускают:
 
-Шаблоны используют сложное определение code changes, потому что выполняют дорогие package-release pipelines. Полный тест Mast Calculator остаётся достаточно дешёвым, а расчётное ПО выигрывает от запуска всего набора тестов на каждый PR. Поэтому сейчас selective skip сознательно не используется.
+```text
+cancel-in-progress: true
+```
 
-## 6. Проверка самих шаблонов на наши найденные проблемы
+Для Pages deploy используется отдельная writer group:
 
-Проверялись две проблемы, которые уже реально возникали в Mast Calculator:
+```text
+main-writer-${{ github.repository }}-pages
+cancel-in-progress: false
+```
 
-1. устаревшие action versions / Node.js 20 deprecation warnings;
-2. некорректные ожидания относительно автоматического первоначального включения GitHub Pages.
+Уже начавшаяся публикация не должна обрываться новым push.
 
-В актуальных версиях четырёх шаблонов эти проблемы уже исправлены или явно документированы:
+## 12. Workflow policy tests
 
-- используются актуальные major versions official actions;
-- Pages Source = GitHub Actions описан как обязательный одноразовый шаг;
-- Python template имеет дополнительный безопасный Pages opt-in;
-- C# template документирует случай, когда привязка deploy к release оставляла сайт 404 до первого релиза.
+`tests/ci-policy.test.js` проверяет CI/CD как обычный код.
 
-**Поэтому новые issues в template repositories по этим двум проблемам не создавались: воспроизводимого дефекта в текущих шаблонах не найдено.**
+Среди invariants:
 
-Если в дальнейшем CI Mast Calculator обнаружит дефект, который воспроизводится и в актуальном template-файле/скрипте, сначала фиксируется минимальный воспроизводимый пример, затем создаётся issue в соответствующем template repository со ссылкой на failing workflow/log.
+- `contents: read` по умолчанию;
+- timeout у каждого runner job;
+- official actions не старее разрешённых major versions;
+- Node 24.x;
+- fresh-merge script;
+- три ОС;
+- dedicated Triple FEM gate;
+- dedicated Joint configurator gate;
+- smoke resources issue #21;
+- logo packaging;
+- safe Pages writer concurrency.
 
-## 7. Инварианты CI/CD Mast Calculator
+То есть случайное ослабление CI должно упасть в том же PR, где оно внесено.
 
-Эти правила считаются частью архитектуры проекта:
+## 13. Fresh-merge validation
 
-1. Ни один PR с изменением расчётного кода не должен обходить `npm test`.
-2. FEM regression tests должны проходить минимум на Linux, macOS и Windows.
-3. Для изменений production solver/module solver обязателен отдельный `Triple FEM equivalence` gate.
-4. Третий reference solver не должен импортировать production global/Schur/banded implementation.
-5. Каждый job обязан иметь конечный timeout.
-6. Default token permissions — только read; write-права выдаются локально конкретному deploy job.
-7. PR должен проверяться относительно актуального `main`.
-8. Writer operations нельзя отменять посередине только потому, что появился более новый push.
-9. Версии GitHub Actions должны контролироваться тестом.
-10. Pages publication запускается только после успешной повторной проверки сайта.
-11. Git SHA опубликованной версии должен попадать в расчётный проект.
-12. CI/CD scripts являются тестируемым кодом и подчиняются тем же ограничениям размера/поддерживаемости, что и расчётное ядро.
+PR workflow перед code/test jobs вызывает:
+
+```bash
+scripts/simulate-fresh-merge.sh
+```
+
+Проверки относятся не только к isolated head branch, но и к её совместимости с текущим `main`.
+
+## 14. Практики, которые сознательно не применяются
+
+Пока не нужны:
+
+```text
+npm package release
+changesets/Scriv package changelog machinery
+registry smoke tests
+lockfile cache
+selective test skipping
+```
+
+Причины:
+
+- runtime npm dependencies отсутствуют;
+- сайт не является registry package;
+- полный test suite остаётся достаточно дешёвым;
+- расчётное ПО выигрывает от запуска всех regression tests на каждый PR.
+
+Если появятся npm dependencies, обязательными станут committed lockfile, `npm ci` и cache key по lockfile hash.
+
+## 15. Проверка исходных шаблонов
+
+При первоначальном аудите были специально сопоставлены две ранее реальные проблемы Mast Calculator:
+
+1. устаревшие versions GitHub Actions / Node deprecation;
+2. misunderstanding initial Pages Source setup.
+
+В актуальных версиях исследованных link-foundation templates эти проблемы уже были исправлены или документированы, поэтому искусственные issues в templates не создавались.
+
+Правило на будущее сохраняется: если Mast Calculator обнаружит CI/CD defect, который воспроизводится в актуальном template-файле/скрипте, сначала создаётся минимальный reproducible case, затем issue в соответствующем template repository.
+
+## 16. CI/CD invariants проекта
+
+1. Ни один PR с расчётным кодом не обходит `npm test`.
+2. Frame tests проходят минимум на Linux/macOS/Windows.
+3. Три внутренних solver имеют отдельный visible gate.
+4. Physical joint configurator имеет отдельный visible gate.
+5. Каждый job имеет timeout.
+6. Default permissions read-only.
+7. PR проверяется относительно latest `main`.
+8. Writer operation не отменяется посередине более новым push.
+9. Pages deploy получает только прошедший test/check artifact.
+10. Root `logo.jpg` входит в published artifact и smoke-tested.
+11. Git SHA published build сохраняется.
+12. CI/CD scripts/workflows тестируются как часть repository code.

@@ -1,4 +1,4 @@
-import { resolveProjectInput } from '../../domain/index.js'
+import { resolveProjectInput, validateProjectInput } from '../../domain/index.js'
 import { augmentVerificationWithModuleChecks } from '../../structural-analysis/index.js'
 import { calculateGuyedMast } from '../../engineering/index.js'
 import { calculateCompleteMastWithConfiguredJoint } from './complete-calculation.js'
@@ -21,13 +21,17 @@ function finalizedVerification(result) {
   }
 }
 
+function resolveValidatedProject(input) {
+  return resolveProjectInput(validateProjectInput(input))
+}
+
 /**
  * Canonical headless project calculation entrypoint.
- * ProjectInput is resolved exactly once at the application boundary.
+ * ProjectInput is validated and resolved exactly once at the application boundary.
  */
 export function calculateProject(input, options = {}) {
   try {
-    const parameters = resolveProjectInput(input)
+    const parameters = resolveValidatedProject(input)
     const calculated = calculateCompleteMastWithConfiguredJoint(parameters, {
       ...options,
       resolvedProject: parameters,
@@ -39,11 +43,11 @@ export function calculateProject(input, options = {}) {
 }
 
 /**
- * Headless uniform-diameter optimization over the same resolved project contract.
+ * Headless uniform-diameter optimization over the same validated/resolved project contract.
  */
 export function optimizeProject(input, options = {}) {
   try {
-    const parameters = resolveProjectInput(input)
+    const parameters = resolveValidatedProject(input)
     const diameters = options.diameters ?? STANDARD_DIAMETERS_MM
     return immutablePublicResult(selectUniformDiameter(parameters, diameters, {
       ...options,
@@ -60,7 +64,7 @@ export function optimizeProject(input, options = {}) {
  */
 export function calculateGuyedProject(input, tiers = [], options = {}) {
   try {
-    const parameters = resolveProjectInput(input)
+    const parameters = resolveValidatedProject(input)
     return immutablePublicResult(calculateGuyedMast(parameters, tiers, {
       ...options,
       resolvedProject: parameters,

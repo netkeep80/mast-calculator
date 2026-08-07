@@ -136,7 +136,7 @@ test('более прочный и крупный валидный узел по
     jointBoltDiameterMm: 16,
     jointBoltClass: '5.6',
     jointClearanceNutThreadMm: 20,
-    jointBoltLengthMm: 50,
+    jointBoltLengthMm: 55,
     jointThreadEngagementFactor: 2,
   })
   const strong = calculateCompleteMast({
@@ -164,7 +164,7 @@ test('слабый межмодульный болт может стать ре�
     jointBoltDiameterMm: 16,
     jointBoltClass: '5.6',
     jointClearanceNutThreadMm: 20,
-    jointBoltLengthMm: 50,
+    jointBoltLengthMm: 55,
     jointThreadEngagementFactor: 2,
     windEnvelopeEnabled: false,
     lateralCapacityStepDeg: 60,

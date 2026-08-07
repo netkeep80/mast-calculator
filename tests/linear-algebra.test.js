@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { relativeResidual, solveDenseSystem } from '../site/engine/linear-algebra.js'
+import { relativeResidual, solveDenseSystem } from '../packages/numerics/index.js'
 
 test('решатель использует выбор главного элемента', () => {
   const matrix = [[0, 2], [1, 3]]

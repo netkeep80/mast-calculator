@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS, calculateMast, resolveCalculationParameters } from '../site/engine/calculate.js'
-import { generateMastModel } from '../site/engine/geometry.js'
+import { DEFAULT_PARAMETERS, calculateMast, resolveCalculationParameters } from '../packages/application/index.js'
+import { generateMastModel } from '../packages/structural-analysis/index.js'
 import {
   DEFAULT_GUY_WIRE_ID,
   calculateGuyWireCapacity,
   getGuyWireSpec,
-} from '../site/engine/guy-wire-catalog.js'
+} from '../packages/domain/index.js'
 import {
   buildGuyWireSystem,
   calculateGuyedMast,
   guyWindDirections,
-} from '../site/engine/guy-wire-system.js'
+} from '../packages/engineering/index.js'
 
 const approximately = (actual, expected, relative = 1e-8, absolute = 1e-8) => {
   const tolerance = Math.max(absolute, Math.abs(expected) * relative)

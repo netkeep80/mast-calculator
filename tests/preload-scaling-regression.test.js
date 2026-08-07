@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calculateBoltCapacity, checkBoltDemand } from '../site/engine/bolt-check.js'
+import { calculateBoltCapacity, checkBoltDemand } from '../packages/engineering/index.js'
 
 const approximately = (actual, expected, relative = 1e-9, absolute = 1e-9) => {
   const tolerance = Math.max(absolute, Math.abs(expected) * relative)

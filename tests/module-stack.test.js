@@ -5,11 +5,11 @@ import {
   calculateMaximumHeight,
   DEFAULT_PARAMETERS,
   resolveCalculationParameters,
-} from '../site/engine/calculate.js'
-import { generateMastModel } from '../site/engine/geometry.js'
-import { buildLoadCase } from '../site/engine/loads.js'
-import { compileModuleStack, solveModuleStack } from '../site/engine/module-stack.js'
-import { analyzeFrame, compileFrameSystem } from '../site/engine/solver.js'
+} from '../packages/application/index.js'
+import { generateMastModel } from '../packages/structural-analysis/index.js'
+import { buildLoadCase } from '../packages/structural-analysis/index.js'
+import { compileModuleStack, solveModuleStack } from '../packages/structural-analysis/index.js'
+import { analyzeFrame, compileFrameSystem } from '../packages/structural-analysis/index.js'
 
 const norm = (vector) => Math.hypot(...vector)
 

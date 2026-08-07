@@ -3,9 +3,9 @@ import test from 'node:test'
 import {
   calculateCriticalBucklingFactor,
   calculateCriticalBucklingFactorBanded,
-} from '../site/engine/buckling.js'
-import { denseToSymmetricBand, factorSymmetricBand } from '../site/engine/banded.js'
-import { largestEigenpairSymmetric } from '../site/engine/linear-algebra.js'
+} from '../packages/structural-analysis/index.js'
+import { denseToSymmetricBand, factorSymmetricBand } from '../packages/numerics/index.js'
+import { largestEigenpairSymmetric } from '../packages/numerics/index.js'
 
 test('поиск максимального собственного значения для диагональной матрицы', () => {
   const result = largestEigenpairSymmetric([

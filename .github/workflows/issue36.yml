@@ -40,10 +40,12 @@ jobs:
         run: npm run test:issue36
       - name: Check JavaScript syntax
         run: npm run check
-      - name: Check browser module is deployable
+      - name: Check canonical modules are deployable through public APIs
         shell: bash
         run: |
           set -euo pipefail
-          test -s site/engine/crane-boom-capacity.js
-          grep --quiet 'crane-boom-capacity.js' site/engine/complete-calculation.js
-          grep --quiet 'craneBoomCapacity' site/usage-scenarios.js
+          test -s packages/engineering/src/crane-boom-capacity.js
+          grep --quiet 'calculateCraneBoomCapacity' packages/application/src/complete-calculation.js
+          grep --quiet "from '../../engineering/index.js'" packages/application/src/complete-calculation.js
+          ! grep --quiet "engineering/src/" packages/application/src/complete-calculation.js
+          grep --quiet 'craneBoomCapacity' apps/web/usage-scenarios.js

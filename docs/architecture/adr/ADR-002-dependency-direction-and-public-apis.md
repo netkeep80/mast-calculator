@@ -6,7 +6,7 @@ Follow-up: #52, #53, #54
 
 ## Context
 
-Today Web code imports many individual files under `site/engine/**`. This makes internal modules accidental public APIs and lets presentation code bypass orchestration.
+Today Web code imports many individual files under `apps/web/engine/**`. This makes internal modules accidental public APIs and lets presentation code bypass orchestration.
 
 ## Decision
 

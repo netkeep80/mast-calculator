@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS, resolveCalculationParameters } from '../site/engine/calculate.js'
-import { generateMastModel } from '../site/engine/geometry.js'
+import { DEFAULT_PARAMETERS, resolveCalculationParameters } from '../packages/application/index.js'
+import { generateMastModel } from '../packages/structural-analysis/index.js'
 
 const memberLength = (model, member) => {
   const a = model.nodes[member.nodeA].position

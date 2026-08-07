@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
-import { selectUniformDiameter } from '../site/engine/optimize.js'
+import { DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { selectUniformDiameter } from '../packages/application/index.js'
 
 const unloadedParameters = {
   ...DEFAULT_PARAMETERS,

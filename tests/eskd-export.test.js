@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
-import { createCalculationProjectHtml } from '../site/engine/calculation-project.js'
-import { calculateCompleteMastWithConfiguredJoint } from '../site/engine/complete-calculation.js'
+import { DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { createCalculationProjectHtml } from '../packages/reporting/index.js'
+import { calculateCompleteMastWithConfiguredJoint } from '../packages/application/index.js'
 import {
   buildEskdConstructionDocumentationModel,
   createEskdConstructionDocumentation,
   createEskdConstructionDocumentationHtml,
   ESKD_EXPORT_SCHEMA,
   ESKD_STANDARDS,
-} from '../site/engine/eskd-construction-documentation.js'
-import { TECHNICAL_PROJECTION_SCHEMA } from '../site/engine/technical-projection.js'
+} from '../packages/reporting/index.js'
+import { TECHNICAL_PROJECTION_SCHEMA } from '../packages/design/index.js'
 
 function calculation(overrides = {}) {
   return calculateCompleteMastWithConfiguredJoint({

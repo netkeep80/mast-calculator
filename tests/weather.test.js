@@ -7,7 +7,7 @@ import {
   WEATHER_PRESETS,
   windPressureFromSpeedMs,
   windSpeedFromPressurePa,
-} from '../site/engine/weather.js'
+} from '../packages/domain/index.js'
 
 test('погодные сценарии покрывают полную шкалу Бофорта 0–12', () => {
   assert.equal(WEATHER_PRESETS.length, 13)

@@ -4,22 +4,22 @@ import test from 'node:test'
 import {
   calculateBoltCapacity,
   checkBoltDemand,
-} from '../site/engine/bolt-check.js'
-import { calculateBoltPreload } from '../site/engine/bolt-preload.js'
-import { buildJointHardwareGeometry } from '../site/engine/joint-hardware-catalog.js'
-import { configureIntermoduleJoint } from '../site/engine/joint-configurator.js'
-import { splitJointDemandForBolt } from '../site/engine/joint-demand.js'
+} from '../packages/engineering/index.js'
+import { calculateBoltPreload } from '../packages/engineering/index.js'
+import { buildJointHardwareGeometry } from '../packages/domain/index.js'
+import { configureIntermoduleJoint } from '../packages/engineering/index.js'
+import { splitJointDemandForBolt } from '../packages/engineering/index.js'
 import {
   checkJointNutSections,
   hexAreaAcrossFlatsMm2,
-} from '../site/engine/joint-section-check.js'
+} from '../packages/engineering/index.js'
 import {
   buildJointVisualGeometry,
   OCTAHEDRON_LEG_ANGLE_TO_BOLT_DEG,
   representativeOctahedronJointDirections,
-} from '../site/engine/joint-visual-geometry.js'
-import { calculateMinimumWeldLength } from '../site/engine/weld-check.js'
-import { DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
+} from '../packages/design/index.js'
+import { calculateMinimumWeldLength } from '../packages/engineering/index.js'
+import { DEFAULT_PARAMETERS } from '../packages/application/index.js'
 
 const approximately = (actual, expected, relative = 1e-10, absolute = 1e-8) => {
   const tolerance = Math.max(absolute, Math.abs(expected) * relative)
@@ -209,8 +209,8 @@ test('issue #33: 3D-геометрия содержит 4+2 реальных р�
 })
 
 test('issue #33: browser bootstrap содержит управление затяжкой и area-reserve, viewer — текстурированные грани', () => {
-  const bootstrap = readFileSync(new URL('../site/app-bootstrap.js', import.meta.url), 'utf8')
-  const viewer = readFileSync(new URL('../site/joint-viewer.js', import.meta.url), 'utf8')
+  const bootstrap = readFileSync(new URL('../apps/web/app-bootstrap.js', import.meta.url), 'utf8')
+  const viewer = readFileSync(new URL('../apps/web/joint-viewer.js', import.meta.url), 'utf8')
   assert.match(bootstrap, /jointTighteningTorqueNm/)
   assert.match(bootstrap, /jointNutFactor/)
   assert.match(bootstrap, /jointNutSectionAreaRatio/)

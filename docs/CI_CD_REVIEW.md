@@ -152,7 +152,7 @@ joint-configurator.js
 reference-frame.js
 ```
 
-Так как исходный `logo.jpg` хранится в корне repository, smoke перед запуском копирует его в `site/logo.jpg`. Это воспроизводит структуру Pages artifact.
+Так как исходный `logo.jpg` хранится в корне repository, smoke перед запуском копирует его в `apps/web/logo.jpg`. Это воспроизводит структуру Pages artifact.
 
 Проверяется и пользовательский title:
 

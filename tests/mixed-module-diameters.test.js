@@ -1,22 +1,22 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { calculateAssemblyMass } from '../site/engine/assembly-mass.js'
+import { calculateAssemblyMass } from '../packages/design/index.js'
 import {
   calculateMast,
   DEFAULT_PARAMETERS,
   resolveCalculationParameters,
-} from '../site/engine/calculate.js'
+} from '../packages/application/index.js'
 import {
   buildDiameterTiers,
   resolveModuleDiameters,
-} from '../site/engine/diameter-profile.js'
-import { generateMastModel } from '../site/engine/geometry.js'
-import { buildLoadCase } from '../site/engine/loads.js'
-import { repairMixedDiameterVerificationPassport } from '../site/engine/mixed-diameter-verification.js'
-import { selectUniformDiameter } from '../site/engine/optimize.js'
-import { buildMaterialSummary } from '../site/engine/report.js'
-import { buildVerificationPassport } from '../site/engine/verification.js'
+} from '../packages/domain/index.js'
+import { generateMastModel } from '../packages/structural-analysis/index.js'
+import { buildLoadCase } from '../packages/structural-analysis/index.js'
+import { repairMixedDiameterVerificationPassport } from '../packages/engineering/index.js'
+import { selectUniformDiameter } from '../packages/application/index.js'
+import { buildMaterialSummary } from '../packages/reporting/index.js'
+import { buildVerificationPassport } from '../packages/engineering/index.js'
 
 const close = (actual, expected, tolerance = 1e-9) => {
   assert.ok(Math.abs(actual - expected) <= tolerance * Math.max(1, Math.abs(expected)), `${actual} != ${expected}`)

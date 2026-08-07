@@ -23,7 +23,7 @@ Production path не требует dense global storage/inverse.
 
 ## 2. Symmetric band Cholesky
 
-`site/engine/banded.js` хранит нижнюю симметричную ленту.
+`packages/numerics/src/banded.js` хранит нижнюю симметричную ленту.
 
 Для `n=720`, `b=35`:
 

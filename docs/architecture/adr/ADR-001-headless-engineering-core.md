@@ -6,7 +6,7 @@ Follow-up: #52
 
 ## Context
 
-The current engineering implementation already lives mostly under `site/engine/**`, but the directory is not a true architectural boundary. Web modules deep-import engineering internals, and `design-package.js` contains browser persistence.
+The current engineering implementation already lives mostly under `apps/web/engine/**`, but the directory is not a true architectural boundary. Web modules deep-import engineering internals, and `design-package.js` contains browser persistence.
 
 CLI and Desktop require the same calculations without DOM, Worker, localStorage, filesystem or Tauri assumptions.
 

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
-import { calculateMast, DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
-import { buildLoadCase } from '../site/engine/loads.js'
+import { calculateMast, DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { buildLoadCase } from '../packages/structural-analysis/index.js'
 
 const GRAVITY = 9.80665
 const norm3 = (value) => Math.hypot(...value)
@@ -84,8 +84,8 @@ test('issue #36: масса оборудования остаётся единс
 })
 
 test('issue #36: UI оставляет одну массу и удаляет произвольные силы из пользовательской формы', () => {
-  const viewer = fs.readFileSync(new URL('../site/module-viewer.js', import.meta.url), 'utf8')
-  const usage = fs.readFileSync(new URL('../site/usage-scenarios.js', import.meta.url), 'utf8')
+  const viewer = fs.readFileSync(new URL('../apps/web/module-viewer.js', import.meta.url), 'utf8')
+  const usage = fs.readFileSync(new URL('../apps/web/usage-scenarios.js', import.meta.url), 'utf8')
 
   assert.match(viewer, /нагрузка на верхнюю грань/i)
   assert.doesNotMatch(viewer, /нагрузка от стека сверху/i)

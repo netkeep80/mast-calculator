@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calculateCompleteMast, DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
-import { augmentVerificationWithModuleChecks } from '../site/engine/module-verification.js'
+import { calculateCompleteMast, DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { augmentVerificationWithModuleChecks } from '../packages/structural-analysis/index.js'
 
 test('модульный паспорт добавляет topology, interface equilibrium и Schur/global cross-check', () => {
   const result = calculateCompleteMast({

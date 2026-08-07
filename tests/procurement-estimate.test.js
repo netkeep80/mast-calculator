@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { getWeldConsumable } from '../site/engine/connection-catalog.js'
-import { buildJointHardwareGeometry } from '../site/engine/joint-hardware-catalog.js'
+import { getWeldConsumable } from '../packages/domain/index.js'
+import { buildJointHardwareGeometry } from '../packages/domain/index.js'
 import {
   buildProcurementEstimate,
   createProcurementEstimateHtml,
   PROCUREMENT_ESTIMATE_SCHEMA,
-} from '../site/engine/procurement-estimate.js'
+} from '../packages/design/index.js'
 
 function estimateInput(overrides = {}) {
   return {

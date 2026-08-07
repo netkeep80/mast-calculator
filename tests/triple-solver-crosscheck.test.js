@@ -4,15 +4,15 @@ import test from 'node:test'
 import {
   DEFAULT_PARAMETERS,
   resolveCalculationParameters,
-} from '../site/engine/calculate.js'
-import { generateMastModel } from '../site/engine/geometry.js'
-import { buildLoadCase } from '../site/engine/loads.js'
-import { compileModuleStack, solveModuleStack } from '../site/engine/module-stack.js'
+} from '../packages/application/index.js'
+import { generateMastModel } from '../packages/structural-analysis/index.js'
+import { buildLoadCase } from '../packages/structural-analysis/index.js'
+import { compileModuleStack, solveModuleStack } from '../packages/structural-analysis/index.js'
 import {
   analyzeIndependentDenseFrame,
   compileIndependentDenseSystem,
-} from '../site/engine/reference-frame.js'
-import { analyzeFrame, compileFrameSystem } from '../site/engine/solver.js'
+} from '../packages/structural-analysis/testing.js'
+import { analyzeFrame, compileFrameSystem } from '../packages/structural-analysis/index.js'
 
 const flatten = (values) => values.flatMap((value) => value)
 const maxAbs = (values) => Math.max(0, ...values.map((value) => Math.abs(value)))
@@ -136,7 +136,7 @@ function assertBucklingIdentity(state) {
 }
 
 test('третий solver действительно независим от production global/Schur implementation', () => {
-  const source = fs.readFileSync(new URL('../site/engine/reference-frame.js', import.meta.url), 'utf8')
+  const source = fs.readFileSync(new URL('../packages/structural-analysis/src/reference-frame.js', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /from ['"]\.\/solver\.js['"]/)
   assert.doesNotMatch(source, /from ['"]\.\/module-stack\.js['"]/)
   assert.doesNotMatch(source, /from ['"]\.\/banded\.js['"]/)

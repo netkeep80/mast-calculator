@@ -46,12 +46,14 @@ jobs:
       - name: Check design package, shared 3D, OBJ and ESKD
         run: npm run test:design
 
+      - name: Build static web tree
+        run: npm run build:web
+
       - name: Smoke-test separate design page
         shell: bash
         run: |
           set -euo pipefail
-          cp logo.jpg site/logo.jpg
-          python3 -m http.server 4174 --directory site >/tmp/mast-design-http.log 2>&1 &
+          python3 -m http.server 4174 --directory _site >/tmp/mast-design-http.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid"' EXIT
 
@@ -71,12 +73,10 @@ jobs:
           grep --quiet '<title>3D и конструкторская документация мачты</title>' /tmp/mast-design.html
           grep --quiet 'Модуль 3D и конструкторской документации' /tmp/mast-design.html
           grep --quiet 'Скачать КД по ЕСКД' /tmp/mast-design.html
-          curl --fail --silent http://127.0.0.1:4174/design-app.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4174/design.css >/dev/null
-          curl --fail --silent http://127.0.0.1:4174/viewer.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4174/joint-viewer.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4174/engine/design-package.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4174/engine/detailed-mast-model.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4174/engine/technical-projection.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4174/engine/eskd-construction-documentation.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4174/engine/obj-export.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4174/apps/web/design-app.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4174/apps/web/design-storage.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4174/apps/web/design.css >/dev/null
+          curl --fail --silent http://127.0.0.1:4174/apps/web/viewer.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4174/apps/web/joint-viewer.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4174/packages/design/index.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4174/packages/reporting/index.js >/dev/null

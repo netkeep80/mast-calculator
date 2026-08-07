@@ -4,9 +4,9 @@ import {
   DEFAULT_PARAMETERS,
   calculateMast,
   resolveCalculationParameters,
-} from '../site/engine/calculate.js'
-import { generateMastModel } from '../site/engine/geometry.js'
-import { buildLoadCase } from '../site/engine/loads.js'
+} from '../packages/application/index.js'
+import { generateMastModel } from '../packages/structural-analysis/index.js'
+import { buildLoadCase } from '../packages/structural-analysis/index.js'
 import { assertClose } from './helpers/regression-tolerances.js'
 
 const SEED = 0x51A7E2

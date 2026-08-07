@@ -1,14 +1,14 @@
-import { DEFAULT_PARAMETERS, calculateMast, resolveCalculationParameters } from '../site/engine/calculate.js'
-import { calculateCompleteMastWithConfiguredJoint } from '../site/engine/complete-calculation.js'
-import { calculateGuyedMast } from '../site/engine/guy-wire-system.js'
+import { DEFAULT_PARAMETERS, calculateMast, resolveCalculationParameters } from '../packages/application/index.js'
+import { calculateCompleteMastWithConfiguredJoint } from '../packages/application/index.js'
+import { calculateGuyedMast } from '../packages/engineering/index.js'
 import {
   buildDesignPackage,
   designResultFromPackage,
   parseDesignPackage,
   serializeDesignPackage,
-} from '../site/engine/design-package.js'
-import { buildDetailedMastModel } from '../site/engine/detailed-mast-model.js'
-import { createMastObj } from '../site/engine/obj-export.js'
+} from '../packages/design/index.js'
+import { buildDetailedMastModel } from '../packages/design/index.js'
+import { createMastObj } from '../packages/design/index.js'
 import {
   CANONICAL_SCENARIO_SCHEMA,
   CANONICAL_SCENARIOS,

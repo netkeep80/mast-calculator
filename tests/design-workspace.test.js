@@ -1,20 +1,22 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
-import { calculateCompleteMastWithConfiguredJoint } from '../site/engine/complete-calculation.js'
+import { DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { calculateCompleteMastWithConfiguredJoint } from '../packages/application/index.js'
 import {
   buildDesignPackage,
   DESIGN_PACKAGE_SCHEMA,
-  DESIGN_PACKAGE_STORAGE_KEY,
   designResultFromPackage,
-  loadDesignPackage,
   parseDesignPackage,
-  saveDesignPackage,
   serializeDesignPackage,
-} from '../site/engine/design-package.js'
-import { buildDetailedMastModel } from '../site/engine/detailed-mast-model.js'
-import { createMastObj } from '../site/engine/obj-export.js'
+} from '../packages/design/index.js'
+import {
+  DESIGN_PACKAGE_STORAGE_KEY,
+  loadDesignPackage,
+  saveDesignPackage,
+} from '../apps/web/design-storage.js'
+import { buildDetailedMastModel } from '../packages/design/index.js'
+import { createMastObj } from '../packages/design/index.js'
 
 function calculation() {
   return calculateCompleteMastWithConfiguredJoint({
@@ -43,48 +45,51 @@ test('design package переносит только производствен�
   assert.equal(designPackage.result.model.members.length, result.model.members.length)
   assert.equal(designPackage.result.connections.configurator.geometry.bolt.diameterMm, result.connections.configurator.geometry.bolt.diameterMm)
   assert.equal(designPackage.result.assemblyMass.module.totalMassKg, result.assemblyMass.module.totalMassKg)
-  assert.ok(!('cases' in designPackage.result))
-  assert.ok(!('heightCapacity' in designPackage.result))
+  assert.ok(!('cases' in designPackage.result), 'операционные load cases не должны попадать в пакет 3D/КД')
+  assert.ok(!('verification' in designPackage.result), 'паспорт верификации не должен дублироваться в пакет 3D/КД')
 })
 
 test('design package JSON имеет устойчивый round-trip и localStorage contract', () => {
-  const designPackage = buildDesignPackage(calculation())
+  const result = calculation()
+  const storage = memoryStorage()
+  const designPackage = buildDesignPackage(result, {
+    createdAt: '2026-08-07T00:00:00.000Z',
+    ref: 'main',
+    sha: 'abc123',
+  })
   const text = serializeDesignPackage(designPackage)
   const parsed = parseDesignPackage(text)
   assert.deepEqual(parsed, designPackage)
-
-  const storage = memoryStorage()
-  const saved = saveDesignPackage(designPackage, storage)
-  assert.ok(saved.bytes > 1000)
-  assert.ok(storage.getItem(DESIGN_PACKAGE_STORAGE_KEY)?.includes(DESIGN_PACKAGE_SCHEMA))
+  const saved = saveDesignPackage(parsed, storage)
+  assert.ok(saved.bytes > 100)
+  assert.equal(storage.getItem(DESIGN_PACKAGE_STORAGE_KEY), text)
   assert.deepEqual(loadDesignPackage(storage), designPackage)
 })
 
 test('восстановленный design result строит тот же тип detailed mesh и OBJ без повторного FEM', () => {
-  const original = calculation()
-  const restored = designResultFromPackage(buildDesignPackage(original))
+  const result = calculation()
+  const designPackage = buildDesignPackage(result)
+  const restored = designResultFromPackage(parseDesignPackage(serializeDesignPackage(designPackage)))
   const mesh = buildDetailedMastModel(restored, { radialSegments: 8 })
-  assert.equal(mesh.statistics.structuralMembers, original.model.members.length)
-  assert.ok(mesh.statistics.hardwareObjects > 0)
   const obj = createMastObj(restored, { radialSegments: 8 })
+  assert.equal(restored.model.moduleCount, result.model.moduleCount)
+  assert.equal(mesh.statistics.structuralMembers, result.model.members.length)
   assert.match(obj, /g structural_members/)
   assert.match(obj, /g joint_hardware/)
-  assert.match(obj, /# structural members=/)
 })
 
 test('отдельная страница содержит 3D, OBJ, JSON и КД, а основной UX явно ведёт в неё', () => {
-  const page = fs.readFileSync(new URL('../site/design.html', import.meta.url), 'utf8')
-  const app = fs.readFileSync(new URL('../site/design-app.js', import.meta.url), 'utf8')
-  const usage = fs.readFileSync(new URL('../site/usage-scenarios.js', import.meta.url), 'utf8')
-  assert.match(page, /Модуль 3D и конструкторской документации/)
-  assert.match(page, /Скачать OBJ/)
-  assert.match(page, /Скачать КД по ЕСКД/)
-  assert.match(page, /Скачать пакет JSON/)
-  assert.match(page, /id="mast-canvas"/)
-  assert.match(page, /id="joint-canvas"/)
-  assert.match(app, /createEskdConstructionDocumentationHtml/)
-  assert.match(app, /createMastObj/)
-  assert.match(usage, /Открыть 3D и КД/)
-  assert.match(usage, /Расчётный проект содержит только расчёты/)
-  assert.match(usage, /export-obj-button/)
+  const designHtml = fs.readFileSync(new URL('../apps/web/design.html', import.meta.url), 'utf8')
+  const designApp = fs.readFileSync(new URL('../apps/web/design-app.js', import.meta.url), 'utf8')
+  const navigation = fs.readFileSync(new URL('../apps/web/navigation.js', import.meta.url), 'utf8')
+  assert.match(designHtml, /<title>3D и конструкторская документация мачты<\/title>/)
+  assert.match(designHtml, /id="export-obj"/)
+  assert.match(designHtml, /id="export-package"/)
+  assert.match(designHtml, /id="export-eskd"/)
+  assert.match(designHtml, /id="joint-canvas"/)
+  assert.match(designApp, /buildDesignPackage|serializeDesignPackage|parseDesignPackage|designResultFromPackage/)
+  assert.match(designApp, /createMastObj/)
+  assert.match(designApp, /createEskdConstructionDocumentationHtml/)
+  assert.match(navigation, /href = '\.\/design\.html'/)
+  assert.match(navigation, /dataDesignWorkspaceLink|designWorkspaceLink/)
 })

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS, calculateMast } from '../site/engine/calculate.js'
+import { DEFAULT_PARAMETERS, calculateMast } from '../packages/application/index.js'
 import {
   buildHorizontalBoomLoadCase,
   calculateCraneBoomCapacity,
-} from '../site/engine/crane-boom-capacity.js'
-import { calculateLateralCapacity } from '../site/engine/lateral-capacity.js'
+} from '../packages/engineering/index.js'
+import { calculateLateralCapacity } from '../packages/engineering/index.js'
 
 const approximately = (actual, expected, relative = 1e-9, absolute = 1e-8) => {
   const tolerance = Math.max(absolute, Math.abs(expected) * relative)

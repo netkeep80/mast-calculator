@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calculateCompleteMast, DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
-import { buildVerificationPassport } from '../site/engine/verification.js'
+import { calculateCompleteMast, DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { buildVerificationPassport } from '../packages/engineering/index.js'
 
 const result = calculateCompleteMast({
   ...DEFAULT_PARAMETERS,

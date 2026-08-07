@@ -4,16 +4,16 @@ import test from 'node:test'
 import {
   STOCK_BAR_DIVISIONS,
   theoreticalCutLengthMm,
-} from '../site/engine/catalog.js'
-import { DEFAULT_PARAMETERS, calculateMast, resolveCalculationParameters } from '../site/engine/calculate.js'
-import { generateMastModel } from '../site/engine/geometry.js'
-import { calculateLateralCapacity } from '../site/engine/lateral-capacity.js'
-import { buildLoadCase } from '../site/engine/loads.js'
-import { calculateStaticPayloadCapacity } from '../site/engine/static-payload-capacity.js'
+} from '../packages/domain/index.js'
+import { DEFAULT_PARAMETERS, calculateMast, resolveCalculationParameters } from '../packages/application/index.js'
+import { generateMastModel } from '../packages/structural-analysis/index.js'
+import { calculateLateralCapacity } from '../packages/engineering/index.js'
+import { buildLoadCase } from '../packages/structural-analysis/index.js'
+import { calculateStaticPayloadCapacity } from '../packages/engineering/index.js'
 
-const usageSource = fs.readFileSync(new URL('../site/usage-scenarios.js', import.meta.url), 'utf8')
-const loadsSource = fs.readFileSync(new URL('../site/engine/loads.js', import.meta.url), 'utf8')
-const completeSource = fs.readFileSync(new URL('../site/engine/complete-calculation.js', import.meta.url), 'utf8')
+const usageSource = fs.readFileSync(new URL('../apps/web/usage-scenarios.js', import.meta.url), 'utf8')
+const loadsSource = fs.readFileSync(new URL('../packages/structural-analysis/src/loads.js', import.meta.url), 'utf8')
+const completeSource = fs.readFileSync(new URL('../packages/application/src/complete-calculation.js', import.meta.url), 'utf8')
 
 test('issue #36: раскрой содержит каждый целый вариант 1…48', () => {
   assert.deepEqual(STOCK_BAR_DIVISIONS, Array.from({ length: 48 }, (_, index) => index + 1))

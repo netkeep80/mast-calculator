@@ -6,8 +6,8 @@ import {
   STANDARD_DIAMETERS_MM,
   STOCK_BAR_DIVISIONS,
   theoreticalCutLengthMm,
-} from '../site/engine/catalog.js'
-import { resolveCalculationParameters } from '../site/engine/calculate.js'
+} from '../packages/domain/index.js'
+import { resolveCalculationParameters } from '../packages/application/index.js'
 
 test('закупочный пруток делится на заданное число равных заготовок', () => {
   assert.equal(theoreticalCutLengthMm(12000, 1), 12000)

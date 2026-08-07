@@ -1,8 +1,8 @@
 # Architecture Foundation 2.0 — current architecture
 
-Status: current repository architecture after issue #52.
+Status: current repository architecture after issue #61.
 
-This document is the single source of truth for package ownership, environment boundaries and dependency direction. Numerical/FEM details live separately in [`CALCULATION_ARCHITECTURE.md`](CALCULATION_ARCHITECTURE.md); the pre-migration audit is historical evidence in `docs/architecture/FOUNDATION_AUDIT.md`.
+This document is the single source of truth for package ownership, environment boundaries and dependency direction. Canonical public data contracts are specified in [`architecture/CONTRACTS.md`](architecture/CONTRACTS.md) and ADR-006; numerical/FEM details live separately in [`CALCULATION_ARCHITECTURE.md`](CALCULATION_ARCHITECTURE.md). The pre-migration audit is historical evidence in `docs/architecture/FOUNDATION_AUDIT.md`.
 
 ## Repository layout
 
@@ -71,10 +71,13 @@ The policy implementation is `scripts/architecture-audit-lib.mjs`; negative fixt
 
 Pure project/reference semantics:
 
-- canonical project defaults and `resolveCalculationParameters()`;
+- canonical grouped `ProjectInput`, runtime validation and `ProjectInput -> ResolvedProject` resolution;
+- versioned `mast-calculator/project/v1` package schema and serialization helpers;
 - reinforcement, bolt, nut, thread, guy-wire and weld reference catalogues;
 - weather conversion/presets;
 - diameter profile and fabrication geometry rules that do not require FEM.
+
+Derived geometry, material catalogue properties and solver/internal values belong to `ResolvedProject`, not public user input. `DEFAULT_PARAMETERS` / `resolveCalculationParameters()` remain transitional low-level fixture helpers only until issue #62 and are not transport contracts.
 
 No solver, report rendering or environment API belongs here.
 
@@ -152,15 +155,18 @@ calculateGuyedProject(input, tiers, options)
 createVerification(result)
 ```
 
-`calculateProject()` owns the complete headless calculation result exposed to environment adapters. `calculateGuyedProject()` delegates the engineering guy-wire use case without exposing solver ownership to Web. Progress is a callback passed through `options`; the application layer does not know about `self.postMessage`, DOM or filesystems.
+Every public use case validates canonical grouped `ProjectInput`, resolves it exactly once to `ResolvedProject`, and passes that resolved value down the calculation chain. `calculateProject()` owns assembly of the complete public `CalculationResult`; enrichment is copy-on-write and the completed result is deeply frozen by default. Application failures cross the boundary as typed `MastApplicationError` values.
 
-Legacy calculation functions remain inside the same canonical application package for internal/focused tests during the foundation sequence, but no old `site/engine` compatibility path exists. Issue #53/#54 will tighten result/contracts and orchestration further without another physical core copy.
+`calculateGuyedProject()` delegates the engineering guy-wire use case without exposing solver ownership to Web. Progress is a callback passed through `options`; the application layer does not know about `self.postMessage`, DOM or filesystems.
+
+Legacy low-level calculation functions remain inside the same canonical application package for focused internal tests during issue #62, but no old `site/engine` compatibility path or second public parameter model exists.
 
 ## Web adapter
 
 `apps/web` owns environment concerns only:
 
 - DOM/forms and scenario UX;
+- construction of canonical grouped `ProjectInput` from HTML controls;
 - Web Worker transport;
 - Canvas viewers;
 - `localStorage` design-package persistence;
@@ -168,9 +174,9 @@ Legacy calculation functions remain inside the same canonical application packag
 - Blob/URL downloads;
 - navigation.
 
-The calculation Worker imports the application public API and calls `calculateProject()` / `optimizeProject()`. The guys UI calls `calculateGuyedProject()` rather than importing structural or engineering implementation paths directly. Web no longer performs module-verification enrichment itself.
+The calculation Worker imports the application public API and calls `calculateProject()` / `optimizeProject()` with grouped `ProjectInput`. The guys UI calls `calculateGuyedProject()` rather than importing structural or engineering implementation paths directly. Web no longer transports derived values such as `jointEffectiveRadiusMm` or the dead `extraHorizontalLoadN` / `extraVerticalLoadN` fields.
 
-Some UI preview/orchestration logic is intentionally still scheduled for issue #54; issue #52 establishes the hard physical boundary and public API so that cleanup can occur without moving physics again.
+Some UI preview/orchestration logic is intentionally still scheduled for issue #54; the package/application contract is already environment-neutral.
 
 ## Public entrypoints
 
@@ -188,15 +194,41 @@ This exposes the independent dense oracle only to verification/tests. It is not 
 
 ## Node/headless execution
 
-A plain Node process can import:
+A plain Node process uses the same public contract as Web and future CLI/Desktop adapters:
 
 ```js
-import { calculateProject } from './packages/application/index.js'
+import {
+  calculateProject,
+  createProjectInput,
+} from './packages/application/index.js'
 
-const result = calculateProject({ moduleCount: 1 })
+const input = createProjectInput({
+  geometry: { moduleCount: 1 },
+})
+const result = calculateProject(input)
 ```
 
-`tests/headless-api.test.js` exercises project calculation, optimization and guy-wire calculation without browser globals. The #51 canonical and triple-FEM suites simultaneously prove numerical equivalence after the physical move.
+`tests/headless-api.test.js` exercises project calculation, optimization and guy-wire calculation without browser globals. `tests/contracts.test.js` guards user-only input, runtime schema versioning, typed errors and immutable complete results. The #51 canonical and triple-FEM suites simultaneously prove numerical equivalence.
+
+## External project JSON
+
+Portable project input uses a versioned envelope:
+
+```json
+{
+  "schema": "mast-calculator/project/v1",
+  "project": {
+    "geometry": {},
+    "material": {},
+    "environment": {},
+    "equipment": {},
+    "connection": {},
+    "criteria": {}
+  }
+}
+```
+
+Unknown schema ids and unknown package/input fields fail closed. Any incompatible future format requires a new schema id and an explicit migration; silent reinterpretation is forbidden. See [`architecture/CONTRACTS.md`](architecture/CONTRACTS.md) and [`architecture/adr/ADR-006-canonical-project-contract-and-result-lifecycle.md`](architecture/adr/ADR-006-canonical-project-contract-and-result-lifecycle.md).
 
 ## Web build and GitHub Pages
 
@@ -220,6 +252,8 @@ Relevant foundation gates:
 
 ```bash
 npm run check
+npm run typecheck
+npm run test:contracts
 npm run audit:architecture
 npm run test:architecture
 npm run test:headless
@@ -229,7 +263,7 @@ npm test
 npm run build:web
 ```
 
-The full engineering suite is owned once by Ubuntu CI; canonical equivalence runs on Ubuntu/macOS/Windows. The 40-module performance test remains a separate wall-clock budget while sharing the same calculation with its correctness assertions.
+The architecture workflow makes strict TypeScript typechecking and runtime contract validation mandatory. The full engineering suite is owned once by Ubuntu CI; canonical equivalence runs on Ubuntu/macOS/Windows. The 40-module performance test remains a separate wall-clock budget while sharing the same calculation with its correctness assertions.
 
 ## Migration/deletion policy
 
@@ -246,4 +280,4 @@ add/strengthen behavioral tests
 → merge
 ```
 
-Git history stores the old implementation.
+Issue #62 is the immediate next step: convert the remaining canonical implementation to strict TypeScript and delete transitional flat fixture/runtime helpers where consumers have migrated. Git history stores the old implementation.

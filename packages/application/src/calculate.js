@@ -144,17 +144,20 @@ function enrichModuleStates(model, analysis, modular, parameters) {
   })
 }
 
-function attachModularAnalysis(model, frameSystem, moduleStack, analysis, loads, parameters) {
-  if (!moduleStack) return
-  const modular = solveModuleStack(model, moduleStack, loads)
+function withModularAnalysis(model, frameSystem, moduleStack, analysis, loads, parameters) {
+  if (!moduleStack) return analysis
+  const solved = solveModuleStack(model, moduleStack, loads)
   const globalVector = analysisDofVector(analysis)
-  const difference = modular.displacementVector.map((value, index) => value - globalVector[index])
-  modular.relativeDisplacementDifference = vectorNorm(difference) / Math.max(1e-12, vectorNorm(globalVector))
-  modular.modules = enrichModuleStates(model, analysis, modular, parameters)
-  modular.interfaceFactorizationCount = moduleStack.interfaceFactorizationCount
-  modular.referenceSolver = frameSystem.method
-  analysis.modular = modular
-  analysis.moduleResults = modular.modules
+  const difference = solved.displacementVector.map((value, index) => value - globalVector[index])
+  const modules = enrichModuleStates(model, analysis, solved, parameters)
+  const modular = {
+    ...solved,
+    relativeDisplacementDifference: vectorNorm(difference) / Math.max(1e-12, vectorNorm(globalVector)),
+    modules,
+    interfaceFactorizationCount: moduleStack.interfaceFactorizationCount,
+    referenceSolver: frameSystem.method,
+  }
+  return { ...analysis, modular, moduleResults: modules }
 }
 
 function calculateOperationalCases(parameters, model, frameSystem, moduleStack, directions, onCaseProgress) {
@@ -163,8 +166,8 @@ function calculateOperationalCases(parameters, model, frameSystem, moduleStack, 
     const direction = directions[index]
     const caseParameters = { ...parameters, windDirectionDeg: direction }
     const loads = buildLoadCase(model, caseParameters)
-    const analysis = analyzeCheckedFrame(model, loads, caseParameters, frameSystem)
-    attachModularAnalysis(model, frameSystem, moduleStack, analysis, loads, caseParameters)
+    const rawAnalysis = analyzeCheckedFrame(model, loads, caseParameters, frameSystem)
+    const analysis = withModularAnalysis(model, frameSystem, moduleStack, rawAnalysis, loads, caseParameters)
     cases.push({ windDirectionDeg: direction, loads, analysis })
     onCaseProgress?.({ completed: index + 1, total: directions.length, directionDeg: direction })
   }
@@ -212,7 +215,7 @@ function prepareMastCalculation(parameters, options = {}) {
 }
 
 export function calculateMast(inputParameters, options = {}) {
-  const parameters = resolveCalculationParameters(inputParameters)
+  const parameters = options.resolvedProject ?? resolveCalculationParameters(inputParameters)
   const directions = windDirections(parameters)
   options.onProgress?.({ phase: 'compile', label: 'Сборка глобальной и помодульной систем жёсткости', completed: 0, total: directions.length + 1 })
   const { model, frameSystem, moduleStack } = prepareMastCalculation(parameters, options)
@@ -226,8 +229,8 @@ export function calculateMast(inputParameters, options = {}) {
     })
   })
   const result = buildMastResult(parameters, model, cases)
-  result.connections = calculateConnectionChecks(result)
-  return result
+  const connections = calculateConnectionChecks(result)
+  return { ...result, connections }
 }
 
 function criterionRatios(result, parameters, design) {
@@ -358,7 +361,7 @@ function searchHeightBoundary(evaluate, maxModules, selector) {
 }
 
 export function calculateMaximumHeight(inputParameters, options = {}) {
-  const parameters = resolveCalculationParameters(inputParameters)
+  const parameters = options.resolvedProject ?? resolveCalculationParameters(inputParameters)
   const maxModules = parameters.heightSearchMaxModules
   const cache = new Map()
   let evaluationCount = 0
@@ -369,7 +372,8 @@ export function calculateMaximumHeight(inputParameters, options = {}) {
     if (options.knownResult && options.knownResult.parameters?.moduleCount === moduleCount) {
       result = options.knownResult
     } else {
-      result = calculateMast({ ...parameters, moduleCount })
+      const trialParameters = { ...parameters, moduleCount }
+      result = calculateMast(trialParameters, { resolvedProject: trialParameters })
     }
     const compact = compactHeightCase(moduleCount, result, parameters)
     cache.set(moduleCount, compact)
@@ -433,7 +437,7 @@ function fixedPhysicalJointParameters(parameters, connections) {
 }
 
 export function calculateCompleteMast(inputParameters, options = {}) {
-  const parameters = resolveCalculationParameters(inputParameters)
+  const parameters = options.resolvedProject ?? resolveCalculationParameters(inputParameters)
   const model = generateMastModel(parameters)
   const directions = windDirections(parameters)
   const lateral = lateralDirections(parameters.lateralCapacityStepDeg)
@@ -462,18 +466,27 @@ export function calculateCompleteMast(inputParameters, options = {}) {
       total,
     })
   })
-  const result = buildMastResult(parameters, model, cases)
+  const baseResult = buildMastResult(parameters, model, cases)
 
-  // Physical hardware is selected from the operational demand first. Every
-  // later limit search must then keep this exact product configuration fixed.
-  result.connections = calculateConnectionChecks(result)
-  const { requestedMode, fixed } = fixedPhysicalJointParameters(parameters, result.connections)
-  result.parameters = { ...fixed, jointConfiguratorMode: requestedMode }
-  result.connections.requestedMode = requestedMode
-  result.connections.capacityChecksUseFixedSelectedJoint = true
+  // Select physical hardware once from operational demand, then carry the same
+  // resolved configuration through every capacity calculation without mutating
+  // the base result or changing the requested public mode.
+  const selectedConnections = calculateConnectionChecks(baseResult)
+  const { requestedMode, fixed } = fixedPhysicalJointParameters(parameters, selectedConnections)
+  const finalParameters = { ...fixed, jointConfiguratorMode: requestedMode }
+  const connections = {
+    ...selectedConnections,
+    requestedMode,
+    capacityChecksUseFixedSelectedJoint: true,
+  }
+  const configuredResult = {
+    ...baseResult,
+    parameters: finalParameters,
+    connections,
+  }
 
   const lateralOffset = 1 + directions.length
-  result.lateralCapacity = calculateLateralCapacity(model, fixed, {
+  const lateralCapacity = calculateLateralCapacity(model, fixed, {
     frameSystem,
     onProgress: (event) => options.onProgress?.({
       phase: 'lateral',
@@ -484,7 +497,7 @@ export function calculateCompleteMast(inputParameters, options = {}) {
   })
 
   const staticPayloadOffset = lateralOffset + lateral.length
-  result.staticPayloadCapacity = calculateStaticPayloadCapacity(model, fixed, {
+  const staticPayloadCapacity = calculateStaticPayloadCapacity(model, fixed, {
     frameSystem,
     onProgress: (event) => options.onProgress?.({
       phase: 'static-payload',
@@ -495,8 +508,9 @@ export function calculateCompleteMast(inputParameters, options = {}) {
   })
 
   const heightOffset = staticPayloadOffset + STATIC_PAYLOAD_PROGRESS_STEPS
-  result.heightCapacity = calculateMaximumHeight(fixed, {
-    knownResult: result,
+  const rawHeightCapacity = calculateMaximumHeight(fixed, {
+    resolvedProject: fixed,
+    knownResult: configuredResult,
     onProgress: (event) => options.onProgress?.({
       phase: 'height-capacity',
       label: event.label,
@@ -504,29 +518,38 @@ export function calculateCompleteMast(inputParameters, options = {}) {
       total,
     }),
   })
-  result.heightCapacity.fixedJointConfiguration = {
-    diameterMm: fixed.jointBoltDiameterMm,
-    boltClass: fixed.jointBoltClass,
-    boltLengthMm: fixed.jointBoltLengthMm,
-    clearanceNutThreadMm: fixed.jointClearanceNutThreadMm,
-    threadEngagementFactor: fixed.jointThreadEngagementFactor,
+  const heightCapacity = {
+    ...rawHeightCapacity,
+    fixedJointConfiguration: {
+      diameterMm: fixed.jointBoltDiameterMm,
+      boltClass: fixed.jointBoltClass,
+      boltLengthMm: fixed.jointBoltLengthMm,
+      clearanceNutThreadMm: fixed.jointClearanceNutThreadMm,
+      threadEngagementFactor: fixed.jointThreadEngagementFactor,
+    },
   }
 
-  result.verification = buildVerificationPassport(result)
-  result.performance = {
+  const resultBeforeVerification = {
+    ...configuredResult,
+    lateralCapacity,
+    staticPayloadCapacity,
+    heightCapacity,
+  }
+  const verification = buildVerificationPassport(resultBeforeVerification)
+  const performance = {
     linearSystemSolver: frameSystem.method,
     modularStaticSolver: moduleStack?.method ?? null,
     modularInterfaceFactorizationCount: moduleStack?.interfaceFactorizationCount ?? 0,
-    modularRelativeDisplacementDifference: result.analysis.modular?.relativeDisplacementDifference ?? null,
-    modularInterfaceEquilibriumResidual: result.analysis.modular?.interfaceEquilibriumResidual ?? null,
+    modularRelativeDisplacementDifference: configuredResult.analysis.modular?.relativeDisplacementDifference ?? null,
+    modularInterfaceEquilibriumResidual: configuredResult.analysis.modular?.interfaceEquilibriumResidual ?? null,
     freeDofCount: frameSystem.freeDofs.length,
     stiffnessBandwidth: frameSystem.bandwidth,
     stiffnessFactorizationCount: frameSystem.factorizationCount,
     operationalCaseCount: directions.length,
     lateralCaseCount: lateral.length,
     staticPayloadEvaluationCount: STATIC_PAYLOAD_PROGRESS_STEPS,
-    heightSearchEvaluationCount: result.heightCapacity.evaluationCount,
-    verificationInternalCheckCount: result.verification.counts.internal,
+    heightSearchEvaluationCount: heightCapacity.evaluationCount,
+    verificationInternalCheckCount: verification.counts.internal,
     rotationalSymmetryDeg: ROTATIONAL_SYMMETRY_DEG,
     jointConfiguratorMode: requestedMode,
   }
@@ -536,5 +559,9 @@ export function calculateCompleteMast(inputParameters, options = {}) {
     completed: total,
     total,
   })
-  return result
+  return {
+    ...resultBeforeVerification,
+    verification,
+    performance,
+  }
 }

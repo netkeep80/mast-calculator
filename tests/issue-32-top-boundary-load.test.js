@@ -83,14 +83,16 @@ test('issue #36: масса оборудования остаётся единс
   approximately(fixture.nodalResultant[2], -500)
 })
 
-test('issue #36: UI оставляет одну массу и удаляет произвольные силы из пользовательской формы', () => {
+test('issue #36: UI физически содержит только массу и не требует runtime-удаления legacy сил', () => {
   const viewer = fs.readFileSync(new URL('../apps/web/module-viewer.js', import.meta.url), 'utf8')
   const usage = fs.readFileSync(new URL('../apps/web/usage-scenarios.js', import.meta.url), 'utf8')
+  const html = fs.readFileSync(new URL('../apps/web/index.html', import.meta.url), 'utf8')
 
   assert.match(viewer, /нагрузка на верхнюю грань/i)
   assert.doesNotMatch(viewer, /нагрузка от стека сверху/i)
-  assert.match(usage, /removeLegacyForceControl\('extraHorizontalLoadN'\)/)
-  assert.match(usage, /removeLegacyForceControl\('extraVerticalLoadN'\)/)
+  assert.doesNotMatch(html, /name=["']extraHorizontalLoadN["']/)
+  assert.doesNotMatch(html, /name=["']extraVerticalLoadN["']/)
+  assert.doesNotMatch(usage, /removeLegacyForceControl/)
   assert.match(usage, /Уже установленная масса на вершине, кг/)
   assert.match(usage, /unit-load/i)
   assert.match(usage, /горизонтальн.*стрел/i)

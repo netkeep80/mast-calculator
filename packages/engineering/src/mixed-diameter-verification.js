@@ -5,6 +5,14 @@ const PENDING = 'not-verified'
 
 const relativeError = (actual, expected) => Math.abs(actual - expected) / Math.max(1, Math.abs(expected))
 
+const cloneValue = (value) => {
+  if (Array.isArray(value)) return value.map(cloneValue)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, nested]) => [key, cloneValue(nested)]))
+  }
+  return value
+}
+
 function memberLength(model, member) {
   const a = model.nodes[member.nodeA].position
   const b = model.nodes[member.nodeB].position
@@ -18,29 +26,37 @@ function recalculatePassportStatus(passport) {
   const notVerified = checks.filter((check) => check.status === PENDING).length
   const internalChecks = checks.filter((check) => check.level <= 4)
   const internalPassed = internalChecks.every((check) => check.status === PASS)
-  passport.counts = { total: checks.length, passed, failed, notVerified, internal: internalChecks.length }
-  passport.status = failed > 0 ? 'failed' : internalPassed ? 'internal-passed-external-pending' : 'incomplete'
-  passport.headline = failed > 0
-    ? 'Внутренняя проверка обнаружила несоответствие — результат нельзя считать надёжным.'
-    : 'Внутренние проверки пройдены; независимая внешняя верификация и натурное подтверждение пока не выполнены.'
-
-  for (const level of passport.levels ?? []) {
+  const levels = (passport.levels ?? []).map((level) => {
     const levelChecks = checks.filter((check) => check.level === level.number)
     const hasFail = levelChecks.some((check) => check.status === FAIL)
     const hasPending = levelChecks.some((check) => check.status === PENDING)
-    level.status = hasFail ? FAIL : hasPending ? PENDING : PASS
-    level.checkIds = levelChecks.map((check) => check.id)
+    return {
+      ...level,
+      status: hasFail ? FAIL : hasPending ? PENDING : PASS,
+      checkIds: levelChecks.map((check) => check.id),
+    }
+  })
+  return {
+    ...passport,
+    counts: { total: checks.length, passed, failed, notVerified, internal: internalChecks.length },
+    status: failed > 0 ? 'failed' : internalPassed ? 'internal-passed-external-pending' : 'incomplete',
+    headline: failed > 0
+      ? 'Внутренняя проверка обнаружила несоответствие — результат нельзя считать надёжным.'
+      : 'Внутренние проверки пройдены; независимая внешняя верификация и натурное подтверждение пока не выполнены.',
+    levels,
   }
-  return passport
 }
 
 /**
  * Prototype 1.3 verification originally derived steel mass from one global
  * diameter. For a mixed module profile the independent oracle must instead
  * sum every physical member using the diameter stored in the FEM model.
+ *
+ * This function is copy-on-write: the supplied passport is never modified.
  */
 export function repairMixedDiameterVerificationPassport(passport, result) {
   if (!passport?.checks || !result?.model?.members?.length) return passport
+  const repaired = cloneValue(passport)
   const model = result.model
   const expectedMassKg = model.members.reduce((sum, member) => {
     const areaM2 = Math.PI * member.diameterM ** 2 / 4
@@ -49,7 +65,7 @@ export function repairMixedDiameterVerificationPassport(passport, result) {
   const expectedSelfWeightN = expectedMassKg * GRAVITY_M_S2 * result.parameters.deadLoadFactor
   const diameters = [...new Set(model.members.map((member) => member.diameterM * 1000))].sort((a, b) => b - a)
 
-  const steelMass = passport.checks.find((check) => check.id === 'steel-mass')
+  const steelMass = repaired.checks.find((check) => check.id === 'steel-mass')
   if (steelMass) {
     const actual = result.analysis.totalMassKg
     const error = relativeError(actual, expectedMassKg)
@@ -67,7 +83,7 @@ export function repairMixedDiameterVerificationPassport(passport, result) {
     })
   }
 
-  const selfWeight = passport.checks.find((check) => check.id === 'self-weight')
+  const selfWeight = repaired.checks.find((check) => check.id === 'self-weight')
   if (selfWeight) {
     const actual = result.loads.selfWeightN
     const error = relativeError(actual, expectedSelfWeightN)
@@ -85,5 +101,5 @@ export function repairMixedDiameterVerificationPassport(passport, result) {
     })
   }
 
-  return recalculatePassportStatus(passport)
+  return recalculatePassportStatus(repaired)
 }

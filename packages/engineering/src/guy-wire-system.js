@@ -472,7 +472,7 @@ function cableEnvelopeFor(cableSystem, cases, definition) {
 }
 
 export function calculateGuyedMast(inputParameters, tiers = [], inputOptions = {}) {
-  const parameters = resolveCalculationParameters(inputParameters)
+  const parameters = inputOptions.resolvedProject ?? resolveCalculationParameters(inputParameters)
   const model = generateMastModel(parameters)
   const cableSystem = buildGuyWireSystem(model, parameters, tiers, inputOptions)
   const directions = guyWindDirections(parameters)

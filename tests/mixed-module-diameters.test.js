@@ -116,13 +116,17 @@ test('сварная огибающая хранит фактический ди
   assert.deepEqual([...diameters].sort((a, b) => b - a), [16, 8])
 })
 
-test('паспорт верификации независимо пересчитывает массу смешанного профиля', () => {
+test('паспорт верификации независимо пересчитывает массу смешанного профиля без мутации исходного паспорта', () => {
   const result = calculateMast(parameters({ windPressurePa: 120 }))
-  result.verification = buildVerificationPassport(result)
-  repairMixedDiameterVerificationPassport(result.verification, result)
-  assert.equal(result.verification.checks.find((check) => check.id === 'steel-mass')?.status, 'pass')
-  assert.equal(result.verification.checks.find((check) => check.id === 'self-weight')?.status, 'pass')
-  assert.equal(result.verification.counts.failed, 0)
+  const original = buildVerificationPassport(result)
+  const originalSteelMassStatus = original.checks.find((check) => check.id === 'steel-mass')?.status
+  const repaired = repairMixedDiameterVerificationPassport(original, result)
+
+  assert.notEqual(repaired, original)
+  assert.equal(original.checks.find((check) => check.id === 'steel-mass')?.status, originalSteelMassStatus)
+  assert.equal(repaired.checks.find((check) => check.id === 'steel-mass')?.status, 'pass')
+  assert.equal(repaired.checks.find((check) => check.id === 'self-weight')?.status, 'pass')
+  assert.equal(repaired.counts.failed, 0)
 })
 
 test('оценка сборочной массы суммирует модули по фактическим диаметрам и показывает экономию', () => {

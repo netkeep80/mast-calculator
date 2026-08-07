@@ -94,6 +94,7 @@ function evaluateDirection(model, parameters, directionDeg) {
     criticalForceKgf: criticalForceN / STANDARD_GRAVITY_M_S2,
     memberLimitForceN: memberLimit.forceN,
     memberLimitForceKgf: memberLimit.forceN / STANDARD_GRAVITY_M_S2,
+    memberLimitMode: memberLimit.mode,
     globalBucklingForceN,
     globalBucklingForceKgf: globalBucklingForceN / STANDARD_GRAVITY_M_S2,
     governingMode,
@@ -108,6 +109,10 @@ function evaluateDirection(model, parameters, directionDeg) {
   }
 }
 
+const minimumCaseBy = (cases, selector) => cases.reduce((best, candidate) => (
+  selector(candidate) < selector(best) ? candidate : best
+), cases[0])
+
 export function calculateLateralCapacity(model, parameters, options = {}) {
   if (!model?.members?.length || !model?.topNodeIds?.length) {
     throw new Error('Для расчёта боковой нагрузки нужна frame-модель с вершиной')
@@ -116,9 +121,13 @@ export function calculateLateralCapacity(model, parameters, options = {}) {
     ?? DEFAULT_LATERAL_CAPACITY_STEP_DEG
   const directions = lateralDirections(stepDeg)
   const cases = directions.map((direction) => evaluateDirection(model, parameters, direction))
-  const governing = cases.reduce((best, candidate) => (
-    candidate.criticalForceN < best.criticalForceN ? candidate : best
-  ), cases[0])
+
+  // Это три разные огибающие. Худшее направление по первому отказу может не
+  // совпасть с направлением минимального eigen-buckling, поэтому нельзя брать
+  // Fglobal из общего governing case.
+  const governing = minimumCaseBy(cases, (item) => item.criticalForceN)
+  const memberGoverning = minimumCaseBy(cases, (item) => item.memberLimitForceN)
+  const globalBucklingGoverning = minimumCaseBy(cases, (item) => item.globalBucklingForceN)
 
   return {
     method: 'unit-horizontal-tip-load-linear-v1',
@@ -128,14 +137,26 @@ export function calculateLateralCapacity(model, parameters, options = {}) {
     excludedLoads: 'ветер, лёд, собственный вес, оборудование и дополнительные нагрузки',
     cases,
     governing,
+    memberGoverning,
+    globalBucklingGoverning,
+
+    // Первый из всех рассматриваемых пределов, независимо от механизма.
     criticalForceN: governing.criticalForceN,
     criticalForceKgf: governing.criticalForceKgf,
-    globalBucklingForceN: governing.globalBucklingForceN,
-    globalBucklingForceKgf: governing.globalBucklingForceKgf,
-    memberLimitForceN: governing.memberLimitForceN,
-    memberLimitForceKgf: governing.memberLimitForceKgf,
     governingMode: governing.governingMode,
     directionDeg: governing.directionDeg,
     criticalMemberId: governing.criticalMemberId,
+
+    // Отдельная огибающая по прочности/локальной устойчивости ребра.
+    memberLimitForceN: memberGoverning.memberLimitForceN,
+    memberLimitForceKgf: memberGoverning.memberLimitForceKgf,
+    memberLimitMode: memberGoverning.memberLimitMode,
+    memberLimitDirectionDeg: memberGoverning.directionDeg,
+    memberLimitCriticalMemberId: memberGoverning.criticalMemberId,
+
+    // Отдельная огибающая именно по общей линейной потере устойчивости.
+    globalBucklingForceN: globalBucklingGoverning.globalBucklingForceN,
+    globalBucklingForceKgf: globalBucklingGoverning.globalBucklingForceKgf,
+    globalBucklingDirectionDeg: globalBucklingGoverning.directionDeg,
   }
 }

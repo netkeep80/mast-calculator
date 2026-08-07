@@ -4,6 +4,7 @@ import test from 'node:test'
 
 const html = fs.readFileSync(new URL('../site/index.html', import.meta.url), 'utf8')
 const app = fs.readFileSync(new URL('../site/app.js', import.meta.url), 'utf8')
+const worker = fs.readFileSync(new URL('../site/calculation-worker.js', import.meta.url), 'utf8')
 
 test('UI не позволяет вручную вводить высоту октаэдра', () => {
   assert.match(html, /name="moduleHeightMm"[^>]*readonly/)
@@ -39,9 +40,30 @@ test('интерфейс разделяет первый боковой пред
   assert.match(html, /Боковая сила общей потери устойчивости/)
   assert.match(html, /id="metric-lateral-mode"/)
   assert.match(html, /id="lateral-capacity-description"/)
-  assert.match(app, /calculateLateralCapacity/)
+  assert.match(worker, /calculateCompleteMast/)
   assert.match(app, /globalBucklingForceKgf/)
   assert.match(app, /кгс/)
+})
+
+test('тяжёлый расчёт вынесен из main thread в модульный Web Worker', () => {
+  assert.match(app, /new Worker\('\.\/calculation-worker\.js', \{ type: 'module' \}\)/)
+  assert.match(worker, /calculateCompleteMast/)
+  assert.match(worker, /selectUniformDiameter/)
+  assert.doesNotMatch(app, /\bcalculateMast\(/)
+  assert.doesNotMatch(app, /\bcalculateCompleteMast\(/)
+})
+
+test('UI показывает ход вычисления, прошедшее время, ETA и позволяет отменить worker', () => {
+  for (const id of [
+    'calculation-progress', 'progress-stage', 'progress-percent', 'progress-bar',
+    'progress-detail', 'progress-elapsed', 'progress-eta', 'cancel-calculation-button',
+  ]) {
+    assert.match(html, new RegExp(`id="${id}"`))
+  }
+  assert.match(html, /aria-live="polite"/)
+  assert.match(app, /Осталось: ≈/)
+  assert.match(app, /activeWorker\.terminate\(\)/)
+  assert.match(app, /cancelActiveJob/)
 })
 
 test('бумажный проект доступен, пользовательского JSON-экспорта нет', () => {
@@ -63,6 +85,6 @@ test('результирующая таблица показывает N, V, M �
   assert.match(html, /<th>σэкв, МПа<\/th>/)
 })
 
-test('версия пользовательского прототипа обновлена до 0.6', () => {
-  assert.match(html, /прототип 0\.6/)
+test('версия пользовательского прототипа обновлена до 0.7', () => {
+  assert.match(html, /прототип 0\.7/)
 })

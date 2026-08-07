@@ -21,22 +21,25 @@ const ENVIRONMENT_GLOBALS = [
   ['Canvas', /\b(?:HTMLCanvasElement|OffscreenCanvas|CanvasRenderingContext2D|WebGLRenderingContext)\b/],
 ]
 
-const DEFAULT_ADAPTERS = new Set([
-  'site/app.js',
-  'site/app-bootstrap.js',
-  'site/calculation-worker.js',
-  'site/design-app.js',
-  'site/diameter-profile-ui.js',
-  'site/guy-procurement-sync.js',
-  'site/guys-app.js',
-  'site/joint-viewer.js',
-  'site/module-viewer.js',
-  'site/procurement-ui.js',
-  'site/reference-catalog.js',
-  'site/usage-scenarios.js',
-  'site/usage-style.js',
-  'site/viewer.js',
+const PACKAGE_ORDER = Object.freeze([
+  'domain',
+  'numerics',
+  'structural-analysis',
+  'engineering',
+  'design',
+  'reporting',
+  'application',
 ])
+
+const ALLOWED_PACKAGE_DEPENDENCIES = Object.freeze({
+  domain: new Set(['domain']),
+  numerics: new Set(['numerics']),
+  'structural-analysis': new Set(['structural-analysis', 'domain', 'numerics']),
+  engineering: new Set(['engineering', 'structural-analysis', 'domain', 'numerics']),
+  design: new Set(['design', 'engineering', 'structural-analysis', 'domain', 'numerics']),
+  reporting: new Set(['reporting', 'design', 'engineering', 'structural-analysis', 'domain', 'numerics']),
+  application: new Set(['application', 'reporting', 'design', 'engineering', 'structural-analysis', 'domain', 'numerics']),
+})
 
 const normalizePath = (value) => value.split(path.sep).join('/')
 
@@ -45,6 +48,7 @@ function walk(root, relative = '') {
   if (!fs.existsSync(directory)) return []
   const files = []
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === '_site') continue
     const child = path.join(relative, entry.name)
     if (entry.isDirectory()) files.push(...walk(root, child))
     else files.push(normalizePath(child))
@@ -52,8 +56,6 @@ function walk(root, relative = '') {
   return files
 }
 
-// Environment detection does not need a full parser, but it must not scan prose
-// in comments/strings. Keeping newlines preserves useful source shape for regexes.
 function stripCommentsAndStrings(source) {
   let result = ''
   let state = 'code'
@@ -143,11 +145,16 @@ function resolveRelativeImport(fromFile, specifier, knownFiles) {
   return candidates.find((candidate) => knownFiles.has(candidate)) ?? base
 }
 
+function packageName(file) {
+  const match = file.match(/^packages\/([^/]+)\//)
+  return match?.[1] ?? null
+}
+
 function classifyLayer(file) {
-  if (file.startsWith('site/engine/')) return 'engineering-current'
-  if (file === 'site/calculation-worker.js') return 'transport-adapter'
-  if (DEFAULT_ADAPTERS.has(file)) return 'web-adapter'
-  if (file.startsWith('site/')) return 'web-static-or-unclassified'
+  const packageLayer = packageName(file)
+  if (packageLayer) return packageLayer
+  if (file === 'apps/web/calculation-worker.js') return 'web-transport-adapter'
+  if (file.startsWith('apps/web/')) return 'web-adapter'
   if (file.startsWith('scripts/')) return 'tooling'
   if (file.startsWith('tests/')) return 'test'
   return 'other'
@@ -157,8 +164,6 @@ function environmentUsage(source) {
   const code = stripCommentsAndStrings(source)
   const globals = []
   for (const [name, regex] of ENVIRONMENT_GLOBALS) if (regex.test(code)) globals.push(name)
-  // `process` is also a legitimate domain word/property (for example a weld
-  // process). Only property/index access is treated as use of the Node global.
   if (NODE_PROCESS_ACCESS_RE.test(code)) globals.push('process')
   return {
     globals: [...new Set(globals)].sort(),
@@ -206,21 +211,29 @@ function findCycles(graph) {
 function classifyTest(file) {
   const name = file.toLowerCase()
   if (name.includes('architecture-audit')) return 'architecture'
-  if (/(triple|crosscheck|equivalence|mixed-module-diameters)/.test(name)) return 'numerical equivalence'
+  if (/(canonical|triple|crosscheck|equivalence|mixed-module-diameters)/.test(name)) return 'numerical equivalence'
+  if (/(physics-invariants|loads|buckling|connection|joint|support|capacity|guy|statics|assembly-mass|geometry|solver|solid-rod)/.test(name)) return 'physics invariant'
   if (/(usage-scenarios|design-workspace|integrated-3d-viewer|ui\.test)/.test(name)) return 'UI contract'
   if (/(reference-data|obj-export|report|fabrication-project|eskd-export|procurement-estimate)/.test(name)) return 'public API/contract'
   if (/issue[-_]?\d+|issue\d+|regression/.test(name)) return 'characterization'
-  if (/(loads|buckling|connection|joint|support|capacity|guy|statics|assembly-mass|geometry|solver|solid-rod)/.test(name)) return 'physics invariant'
   if (/(linear-algebra|banded|catalog|performance|module-stack|module-verification|optimization|verification|weather)/.test(name)) return 'implementation-detail'
-  if (name.includes('ci-policy')) return 'obsolete/duplicate candidate'
+  if (name.includes('ci-policy')) return 'CI policy'
   return 'unclassified'
+}
+
+function isProductionFile(file) {
+  return (file.startsWith('packages/') || file.startsWith('apps/web/'))
+    && SOURCE_EXTENSIONS.has(path.posix.extname(file))
+}
+
+function isPublicPackageEntrypoint(file) {
+  if (/^packages\/[^/]+\/index\.js$/.test(file)) return true
+  return file === 'packages/structural-analysis/testing.js'
 }
 
 export function analyzeRepository(root) {
   const allFiles = walk(root)
-  const productionFiles = allFiles
-    .filter((file) => file.startsWith('site/') && SOURCE_EXTENSIONS.has(path.posix.extname(file)))
-    .sort()
+  const productionFiles = allFiles.filter(isProductionFile).sort()
   const knownFiles = new Set(productionFiles)
   const modules = []
   const graph = new Map()
@@ -272,34 +285,70 @@ export function analyzeRepository(root) {
 const exceptionKey = (file, global) => `${file}\0${global}`
 
 export function evaluatePolicy(report, baseline = {}) {
-  const adapters = new Set(baseline.appAdapters ?? [...DEFAULT_ADAPTERS])
   const exceptions = new Map(
     (baseline.environmentExceptions ?? []).map((item) => [exceptionKey(item.path, item.global), item]),
   )
   const modulePaths = new Set(report.modules.map((module) => module.path))
   const violations = []
 
+  if (report.modules.some((module) => module.path.startsWith('site/engine/'))) {
+    violations.push({ type: 'legacy-path', path: 'site/engine', detail: 'moved core must not remain in the web tree' })
+  }
+
   for (const module of report.modules) {
-    const engineering = module.path.startsWith('site/engine/')
-    const adapter = adapters.has(module.path)
-    for (const global of module.environment.globals) {
-      if (engineering && !exceptions.has(exceptionKey(module.path, global))) {
-        violations.push({ type: 'environment', path: module.path, detail: global })
-      } else if (!engineering && !adapter && !exceptions.has(exceptionKey(module.path, global))) {
-        violations.push({ type: 'unclassified-environment', path: module.path, detail: global })
+    const sourcePackage = packageName(module.path)
+    const isWeb = module.path.startsWith('apps/web/')
+
+    if (sourcePackage) {
+      for (const global of module.environment.globals) {
+        if (!exceptions.has(exceptionKey(module.path, global))) {
+          violations.push({ type: 'environment', path: module.path, detail: global })
+        }
+      }
+      for (const nodeImport of module.environment.nodeImports) {
+        if (!exceptions.has(exceptionKey(module.path, nodeImport))) {
+          violations.push({ type: 'node-import', path: module.path, detail: nodeImport })
+        }
+      }
+    } else if (isWeb && module.environment.nodeImports.length) {
+      for (const nodeImport of module.environment.nodeImports) {
+        violations.push({ type: 'web-node-import', path: module.path, detail: nodeImport })
       }
     }
-    for (const nodeImport of module.environment.nodeImports) {
-      if (engineering && !exceptions.has(exceptionKey(module.path, nodeImport))) {
-        violations.push({ type: 'node-import', path: module.path, detail: nodeImport })
-      }
-    }
+
     for (const item of module.imports) {
-      if (engineering && item.resolved && !item.resolved.startsWith('site/engine/')) {
-        violations.push({ type: 'dependency-direction', path: module.path, detail: `${item.specifier} -> ${item.resolved}` })
-      }
       if (item.relative && item.resolved && !modulePaths.has(item.resolved)) {
         violations.push({ type: 'unresolved-relative-import', path: module.path, detail: item.specifier })
+        continue
+      }
+      if (!item.resolved || !modulePaths.has(item.resolved)) continue
+
+      const targetPackage = packageName(item.resolved)
+      const targetIsWeb = item.resolved.startsWith('apps/web/')
+
+      if (sourcePackage && targetIsWeb) {
+        violations.push({ type: 'package-to-web', path: module.path, detail: `${item.specifier} -> ${item.resolved}` })
+      }
+
+      if (sourcePackage && targetPackage && sourcePackage !== targetPackage) {
+        if (!ALLOWED_PACKAGE_DEPENDENCIES[sourcePackage]?.has(targetPackage)) {
+          violations.push({
+            type: 'dependency-direction',
+            path: module.path,
+            detail: `${sourcePackage} -> ${targetPackage}: ${item.specifier}`,
+          })
+        }
+        if (!isPublicPackageEntrypoint(item.resolved)) {
+          violations.push({
+            type: 'deep-import',
+            path: module.path,
+            detail: `${item.specifier} -> ${item.resolved}`,
+          })
+        }
+      }
+
+      if (isWeb && targetPackage && !isPublicPackageEntrypoint(item.resolved)) {
+        violations.push({ type: 'web-deep-import', path: module.path, detail: `${item.specifier} -> ${item.resolved}` })
       }
     }
   }
@@ -310,6 +359,7 @@ export function evaluatePolicy(report, baseline = {}) {
       violations.push({ type: 'cycle', path: cycle[0], detail: cycle.join(' -> ') })
     }
   }
+
   return violations.sort((left, right) => (
     `${left.type}\0${left.path}\0${left.detail}`.localeCompare(`${right.type}\0${right.path}\0${right.detail}`)
   ))
@@ -319,14 +369,18 @@ export function reportToMarkdown(report, violations = []) {
   const rows = report.modules.map((module) => (
     `| \`${module.path}\` | ${module.layer} | ${module.lines} | ${module.importers.length} | ${module.imports.filter((item) => item.relative).length} | ${module.exports.length} | ${[...module.environment.globals, ...module.environment.nodeImports].join(', ') || '—'} |`
   ))
-  const cycles = report.cycles.length
+  const cycleText = report.cycles.length
     ? report.cycles.map((cycle) => `- ${cycle.map((item) => `\`${item}\``).join(' → ')}`).join('\n')
     : '- none'
-  const policy = violations.length
+  const violationText = violations.length
     ? violations.map((item) => `- **${item.type}** \`${item.path}\`: ${item.detail}`).join('\n')
     : '- none'
-  const tests = report.tests.length
+  const testText = report.tests.length
     ? report.tests.map((item) => `- \`${item.path}\` — ${item.category}`).join('\n')
     : '- none'
-  return `# Generated architecture snapshot\n\nGenerated: ${report.generatedAt}\n\n- production modules: **${report.productionModuleCount}**\n- production LOC: **${report.productionLineCount}**\n- tests: **${report.tests.length}**\n- detected cycles: **${report.cycles.length}**\n- policy violations outside baseline: **${violations.length}**\n\n## Modules\n\n| module | current layer | LOC | importers | relative deps | exports | environment |\n|---|---:|---:|---:|---:|---:|---|\n${rows.join('\n')}\n\n## Cycles\n\n${cycles}\n\n## Policy violations\n\n${policy}\n\n## Test inventory\n\n${tests}\n`
+  const packageCounts = PACKAGE_ORDER.map((name) => {
+    const count = report.modules.filter((module) => module.layer === name).length
+    return `- ${name}: **${count}** modules`
+  }).join('\n')
+  return `# Generated architecture snapshot\n\nGenerated: ${report.generatedAt}\n\n- production modules: **${report.productionModuleCount}**\n- production LOC: **${report.productionLineCount}**\n- tests: **${report.tests.length}**\n- detected cycles: **${report.cycles.length}**\n- policy violations outside baseline: **${violations.length}**\n\n## Package counts\n\n${packageCounts}\n\n## Modules\n\n| module | current layer | LOC | importers | relative deps | exports | environment |\n|---|---:|---:|---:|---:|---:|---|\n${rows.join('\n')}\n\n## Cycles\n\n${cycleText}\n\n## Policy violations\n\n${violationText}\n\n## Test inventory\n\n${testText}\n`
 }

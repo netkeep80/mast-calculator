@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": false,
+    "declaration": false,
+    "sourceMap": false,
+    "rootDir": ".",
+    "outDir": ".build"
+  },
+  "include": [
+    "packages/**/*.js",
+    "packages/**/*.ts"
+  ],
+  "exclude": [
+    ".build",
+    "_site",
+    "node_modules",
+    "tests"
+  ]
+}

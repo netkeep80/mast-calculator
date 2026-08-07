@@ -15,13 +15,14 @@ import {
   calculateStaticPayloadCapacity,
   STATIC_PAYLOAD_PROGRESS_STEPS,
 } from './static-payload-capacity.js'
+import { buildVerificationPassport } from './verification.js'
 import { resolveWindParameters, windSpeedFromPressurePa } from './weather.js'
 
 const ROTATIONAL_SYMMETRY_DEG = 120
 
 export const CALCULATION_METHOD = Object.freeze({
-  id: 'linear-frame-v0.8',
-  description: 'Линейная пространственная Euler-Bernoulli frame-модель с ленточной SPD-факторизацией, generalized Lanczos, боковой проверкой и расчётом максимальной статической массы на вершине.',
+  id: 'linear-frame-v0.9',
+  description: 'Линейная пространственная Euler-Bernoulli frame-модель с ленточной SPD-факторизацией, generalized Lanczos, боковой и статической проверками и многоуровневым паспортом верификации.',
 })
 
 export const DEFAULT_PARAMETERS = Object.freeze({
@@ -112,6 +113,7 @@ function createWarnings(parameters, governing, buckling) {
     'Ветровая огибающая использует точную 120° вращательную симметрию треугольной расчётной модели: эквивалентные направления полной окружности не решаются повторно.',
     'Матрица упругой жёсткости собирается и факторизуется один раз для всех направлений нагрузки. Решение использует симметричную ленточную Cholesky-факторизацию, а общая устойчивость — matrix-free generalized Lanczos.',
     'Расчёт статической массы на вершине учитывает собственный вес мачты, но сознательно исключает ветер и лёд. Он показывает гравитационный резерв, а не полную несущую способность водонапорной башни во всех сочетаниях.',
+    'Паспорт верификации подтверждает внутренние формулы, равновесие и эталонные задачи, но не заменяет независимый расчёт сторонним КЭ-комплексом, инженерную рецензию и натурное испытание.',
     'Геометрическая нелинейность, начальные несовершенства, пластичность, усталость, фундамент и нормативный расчёт реальных соединений пока не реализованы.',
   ]
   if (governing.analysis.diagnostics.relativeResidual > 1e-8) {
@@ -245,6 +247,7 @@ export function calculateCompleteMast(inputParameters, options = {}) {
     }),
   })
 
+  result.verification = buildVerificationPassport(result)
   result.performance = {
     linearSystemSolver: frameSystem.method,
     freeDofCount: frameSystem.freeDofs.length,
@@ -253,8 +256,9 @@ export function calculateCompleteMast(inputParameters, options = {}) {
     operationalCaseCount: directions.length,
     lateralCaseCount: lateral.length,
     staticPayloadEvaluationCount: STATIC_PAYLOAD_PROGRESS_STEPS,
+    verificationInternalCheckCount: result.verification.counts.internal,
     rotationalSymmetryDeg: ROTATIONAL_SYMMETRY_DEG,
   }
-  options.onProgress?.({ phase: 'done', label: 'Расчёт завершён', completed: total, total })
+  options.onProgress?.({ phase: 'done', label: 'Расчёт и внутренняя верификация завершены', completed: total, total })
   return result
 }

@@ -37,6 +37,10 @@ const showBucklingMode = document.querySelector('#show-buckling-mode')
 const memberResultsBody = document.querySelector('#member-results-body')
 const materialSummaryBox = document.querySelector('#material-summary')
 const materialInfoBox = document.querySelector('#material-info')
+const verificationSummaryBox = document.querySelector('#verification-summary')
+const verificationSummaryCard = document.querySelector('#verification-summary-card')
+const verificationLevelsBox = document.querySelector('#verification-levels')
+const verificationChecksBox = document.querySelector('#verification-checks')
 const progressPanel = document.querySelector('#calculation-progress')
 const progressBar = document.querySelector('#progress-bar')
 const progressStage = document.querySelector('#progress-stage')
@@ -199,6 +203,12 @@ function limitModeLabel(mode) {
   return 'не определён'
 }
 
+function verificationStatusLabel(status) {
+  if (status === 'pass') return 'пройдено'
+  if (status === 'fail') return 'ошибка'
+  return 'не проверено'
+}
+
 function renderMemberReport(result) {
   const members = buildMemberEnvelope(result).sort((left, right) => right.utilization - left.utilization)
   memberResultsBody.replaceChildren(...members.map((member) => {
@@ -229,6 +239,77 @@ function renderMemberReport(result) {
     `${group.familyName.toLowerCase()} Ø${format(group.diameterMm, 0)} × ${format(group.lengthMm, 0)} мм — ${group.count} шт.`
   )).join('; ')
   materialSummaryBox.textContent = `Всего ${material.totalCount} рёбер, ${format(material.totalLengthM, 2)} м и ${format(material.totalMassKg, 1)} кг стали. ${groupDescription}`
+}
+
+function renderVerification(result) {
+  const verification = result.verification
+  if (!verification) {
+    document.querySelector('#metric-verification').textContent = 'нет данных'
+    verificationSummaryBox.textContent = 'Паспорт верификации отсутствует.'
+    verificationLevelsBox.replaceChildren()
+    verificationChecksBox.replaceChildren()
+    return
+  }
+
+  const metric = document.querySelector('#metric-verification')
+  metric.textContent = verification.counts.failed > 0
+    ? `${verification.counts.failed} ошибок`
+    : `${verification.counts.passed}/${verification.counts.total - verification.counts.notVerified} внутренних ✓`
+  metric.classList.toggle('danger', verification.counts.failed > 0)
+  verificationSummaryBox.textContent = `${verification.headline} Автоматически пройдено ${verification.counts.passed}, ошибок ${verification.counts.failed}; ещё ${verification.counts.notVerified} пункта требуют независимого подтверждения.`
+  verificationSummaryCard.classList.toggle('verification-failed', verification.counts.failed > 0)
+
+  verificationLevelsBox.replaceChildren(...verification.levels.map((level) => {
+    const card = document.createElement('article')
+    card.className = `verification-level verification-${level.status}`
+    const heading = document.createElement('strong')
+    heading.textContent = `Уровень ${level.number}. ${level.title}`
+    const status = document.createElement('span')
+    status.className = 'verification-status'
+    status.textContent = verificationStatusLabel(level.status)
+    const description = document.createElement('p')
+    description.textContent = level.description
+    card.append(heading, status, description)
+    return card
+  }))
+
+  verificationChecksBox.replaceChildren(...verification.checks.map((check) => {
+    const details = document.createElement('details')
+    details.className = `verification-check verification-${check.status}`
+    if (check.status === 'fail') details.open = true
+    const summary = document.createElement('summary')
+    summary.textContent = `${check.status === 'pass' ? '✓' : check.status === 'fail' ? '✗' : '○'} ${check.title} — ${verificationStatusLabel(check.status)}`
+    const explanation = document.createElement('p')
+    explanation.textContent = check.explanation
+    details.append(summary, explanation)
+    if (check.formula) {
+      const formula = document.createElement('code')
+      formula.className = 'verification-formula'
+      formula.textContent = check.formula
+      details.append(formula)
+    }
+    if (check.substitution) {
+      const substitution = document.createElement('p')
+      substitution.className = 'verification-substitution'
+      substitution.textContent = `Подстановка: ${check.substitution}`
+      details.append(substitution)
+    }
+    if (Number.isFinite(check.expected) && Number.isFinite(check.actual)) {
+      const values = document.createElement('p')
+      values.textContent = `Ожидается ${format(check.expected, 8)}${check.unit ? ` ${check.unit}` : ''}; программа ${format(check.actual, 8)}${check.unit ? ` ${check.unit}` : ''}; относительная ошибка ${check.relativeError.toExponential(2)}.`
+      details.append(values)
+    }
+    if (check.evidence) {
+      const evidence = document.createElement('p')
+      evidence.textContent = `Контроль: ${check.evidence}`
+      details.append(evidence)
+    }
+    const manual = document.createElement('p')
+    manual.className = 'verification-howto'
+    manual.textContent = `Как проверить самому: ${check.howToCheck}`
+    details.append(manual)
+    return details
+  }))
 }
 
 function renderResult(result) {
@@ -283,7 +364,7 @@ function renderResult(result) {
 
   const performance = result.performance
   const performanceText = performance
-    ? ` Solver: ${performance.linearSystemSolver}; ${performance.freeDofCount} свободных DOF; полуширина ленты ${performance.stiffnessBandwidth}; факторизация K выполнена ${performance.stiffnessFactorizationCount} раз; ветровых случаев ${performance.operationalCaseCount}, боковых ${performance.lateralCaseCount}, оценок статического груза ${performance.staticPayloadEvaluationCount}.`
+    ? ` Solver: ${performance.linearSystemSolver}; ${performance.freeDofCount} свободных DOF; полуширина ленты ${performance.stiffnessBandwidth}; факторизация K выполнена ${performance.stiffnessFactorizationCount} раз; ветровых случаев ${performance.operationalCaseCount}, боковых ${performance.lateralCaseCount}, оценок статического груза ${performance.staticPayloadEvaluationCount}; внутренних проверок ${performance.verificationInternalCheckCount}.`
     : ''
   document.querySelector('#load-summary').textContent = `Погода: ${parameters.windPresetLabel}; v = ${format(parameters.windSpeedMs, 1)} м/с; q = ${format(parameters.windPressurePa, 1)} Па до γw. Рассмотрено направлений ветра: ${result.envelope.caseCount}. Вес стали с коэффициентом: ${format(result.loads.selfWeightN / 1000)} кН; вес льда: ${format(result.loads.iceWeightN / 1000)} кН; результирующий ветер на рёбра: ${format(result.loads.memberWindN / 1000)} кН.${performanceText}`
 
@@ -292,6 +373,7 @@ function renderResult(result) {
     item.textContent = warning
     return item
   }))
+  renderVerification(result)
   renderMemberReport(result)
 }
 
@@ -413,7 +495,7 @@ function startWorkerJob(action, parameters) {
       if (message.result) renderResult(message.result)
       if (message.optimization) renderOptimization(message.optimization, message.result)
       stopActiveWorker()
-      finishProgress(message.optimization ? 'Подбор и итоговый расчёт завершены.' : 'Расчёт завершён.')
+      finishProgress(message.optimization ? 'Подбор и итоговый расчёт завершены.' : 'Расчёт и внутренняя верификация завершены.')
     }
   }
   worker.onerror = (event) => {

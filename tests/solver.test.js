@@ -240,14 +240,14 @@ test('огибающая перебирает заданные направле�
   assert.ok(result.cases.every((loadCase) => loadCase.analysis.degreesOfFreedomPerNode === 6))
 })
 
-test('расчёт мачты использует v0.8 frame solver, ленточную факторизацию и жёсткий коэффициент расчётной длины', () => {
+test('расчёт мачты использует v0.9 frame solver, ленточную факторизацию и жёсткий коэффициент расчётной длины', () => {
   const result = calculateMast({
     ...DEFAULT_PARAMETERS,
     moduleCount: 1,
     windEnvelopeEnabled: false,
     effectiveLengthFactor: 1.7,
   })
-  assert.equal(result.method.id, 'linear-frame-v0.8')
+  assert.equal(result.method.id, 'linear-frame-v0.9')
   assert.equal(result.analysis.solver, 'linear-3d-frame-euler-bernoulli')
   assert.equal(result.analysis.linearSystemSolver, 'symmetric-band-cholesky')
   assert.equal(result.analysis.diagnostics.stiffnessFactorizationCount, 1)

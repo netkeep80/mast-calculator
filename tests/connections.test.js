@@ -11,6 +11,7 @@ import {
   metricThreadStressAreaMm2,
 } from '../site/engine/connection-catalog.js'
 import { DEFAULT_PARAMETERS, calculateCompleteMast, calculateMast } from '../site/engine/calculate.js'
+import { splitJointDemandForBolt } from '../site/engine/joint-demand.js'
 import {
   calculateMinimumWeldLength,
   recommendWeldConsumable,
@@ -52,6 +53,24 @@ test('совместное растяжение и срез болта пров�
   approximately(result.interactionUtilization, 1)
   approximately(result.utilization, 1)
   assert.equal(result.passes, true)
+})
+
+test('осевое сжатие стыка не превращается в фиктивное растяжение болта', () => {
+  const compression = splitJointDemandForBolt([0, 0, 10_000], [0, 0, 0], {
+    jointEffectiveRadiusMm: 20,
+  })
+  assert.equal(compression.signedAxialForceN, 10_000)
+  assert.equal(compression.contactCompressionN, 10_000)
+  assert.equal(compression.directTensionN, 0)
+  assert.equal(compression.tensionN, 0)
+
+  const separation = splitJointDemandForBolt([0, 0, -10_000], [0, 0, 0], {
+    jointEffectiveRadiusMm: 20,
+  })
+  assert.equal(separation.signedAxialForceN, -10_000)
+  assert.equal(separation.contactCompressionN, 0)
+  assert.equal(separation.directTensionN, 10_000)
+  assert.equal(separation.tensionN, 10_000)
 })
 
 test('для чистого растяжения 100 кН минимальный болт класса 8.8 — M20', () => {
@@ -122,7 +141,7 @@ test('более прочный и крупный болт повышает от
     jointBoltClass: '12.9',
   })
   assert.ok(strong.lateralCapacity.boltLimitForceN > weak.lateralCapacity.boltLimitForceN)
-  assert.ok(strong.staticPayloadCapacity.purePayloadReference.boltLimitKg > weak.staticPayloadCapacity.purePayloadReference.boltLimitKg)
+  assert.ok(strong.staticPayloadCapacity.purePayloadReference.boltLimitKg >= weak.staticPayloadCapacity.purePayloadReference.boltLimitKg)
 })
 
 test('слабый межмодульный болт может стать реальным первым боковым пределом', () => {

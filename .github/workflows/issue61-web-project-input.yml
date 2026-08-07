@@ -1,4 +1,4 @@
-name: Issue 61 Web ProjectInput migration
+name: Issue 61 Web contract cleanup
 
 on:
   pull_request:
@@ -13,7 +13,7 @@ env:
   GIT_CONFIG_VALUE_0: main
 
 jobs:
-  migrate-web:
+  cleanup-web-contract:
     if: github.head_ref == 'agent/issue-61-contracts'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -27,21 +27,19 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24.x'
-      - name: Apply grouped Web ProjectInput migration
-        run: |
-          node scripts/issue61-web-project-input.mjs
-          node scripts/issue61-web-contract-cleanup.mjs
-      - name: Check migrated adapter syntax
-        run: node --check apps/web/app.js && node --check apps/web/app-bootstrap.js && node --check apps/web/calculation-worker.js && node --check apps/web/usage-scenarios.js
-      - name: Prove public contracts, canonical physics and Web-sensitive regressions
+      - name: Remove dead Web controls and runtime migration
+        run: node scripts/issue61-web-contract-cleanup.mjs
+      - name: Check cleaned adapter syntax
+        run: node --check apps/web/usage-scenarios.js
+      - name: Prove canonical physics and Web-sensitive regressions
         run: npm run test:headless && npm run test:canonical && npm run test:issue36 && npm run test:ux
-      - name: Commit Web boundary migration and remove one-shot tooling
+      - name: Commit cleanup and remove one-shot tooling
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/web/app.js apps/web/app-bootstrap.js apps/web/calculation-worker.js apps/web/index.html apps/web/usage-scenarios.js tests/static-load-simplification-issue36.test.js
-          git rm scripts/issue61-web-project-input.mjs scripts/issue61-web-contract-cleanup.mjs .github/workflows/issue61-web-project-input.yml
-          git commit -m "Route Web through canonical ProjectInput"
+          git add apps/web/index.html apps/web/usage-scenarios.js tests/static-load-simplification-issue36.test.js
+          git rm scripts/issue61-web-contract-cleanup.mjs .github/workflows/issue61-web-project-input.yml
+          git commit -m "Remove legacy Web contract fields"
           git push origin HEAD:agent/issue-61-contracts

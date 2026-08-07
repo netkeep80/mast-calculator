@@ -1,58 +1,49 @@
 # Архитектура расчётного ядра
 
-Документ описывает архитектуру прототипа 0.7: практический ввод, геометрию, global 3D frame FEM, погодные и боковые сценарии, оптимизированный численный solver, отчётность и границу будущего расчёта физических узлов.
+Документ фиксирует архитектуру прототипа 0.7: границы между пользовательским вводом, геометрией, global 3D frame FEM, оптимизированным численным solver, Web Worker, отчётностью и будущим расчётом физических соединений.
 
-## 1. Поток данных
+## 1. Общий поток
 
 ```text
 Практический ввод
   stock / cutting / diameter / material / weather / loads
         │
         ▼
-Fabrication + Material + Weather resolution
-        │
-        ├── a = Lstock/nparts
-        ├── h = a*sqrt(2/3)
-        ├── E, nu, Ry, Rm, rho
-        └── weather preset -> v -> q
+Parameter resolution
+  a = Lstock/nparts
+  h = a*sqrt(2/3)
+  material catalogue
+  weather preset -> v -> q
         │
         ▼
 Regular-octahedron geometry
         │
         ▼
 compileFrameSystem()
-        │
-        ├── element geometry/transforms
-        ├── free DOF map
-        ├── symmetric band K
-        └── Cholesky(K) exactly once
+  element geometry + transforms
+  free DOF map
+  symmetric band K
+  Cholesky(K) once
         │
         ├──────────── operational wind cases
-        │                 │
-        │                 ├── build F
-        │                 ├── band solve
-        │                 ├── N/V/T/M
-        │                 └── KG + generalized Lanczos
+        │               build F -> solve -> N/V/T/M -> KG -> buckling
         │
         └──────────── lateral unit-load cases
-                          │
-                          ├── same K/factorization
-                          ├── member limits
-                          └── global buckling limits
-
-Worker result
+                        same K -> solve -> member/global limits
         │
-        ├── UI / 3D viewer
+        ▼
+Worker result
+        ├── UI / viewer
         ├── CSV
-        ├── printable calculation project
-        └── internal CalculationSnapshot
+        ├── printable project
+        └── internal snapshot
 ```
 
-Тяжёлая ветка от `calculateCompleteMast()` вниз выполняется в Web Worker. Main thread не решает FEM.
+Main thread браузера не выполняет FEM.
 
-## 2. Fabrication model
+## 2. Fabrication и material model
 
-Пользователь оперирует закупкой и раскроем:
+Пользователь задаёт:
 
 ```js
 {
@@ -63,48 +54,29 @@ Worker result
 }
 ```
 
-До реализации kerf/trim/overlap:
+Пока:
 
 ```text
 ribCutLengthMm = stockBarLengthMm/stockBarPieces
 ```
 
-Будущая модель должна различать:
+Каталог материала централизованно задаёт:
 
 ```text
-stock length
-physical cut length
-trim allowance
-joint overlap
-useful member length
-frame axis length
-physical module height
+E
+nu
+Ry
+Rm
+rho
+weldability
+standard
 ```
 
-## 3. Material model
+Будущая fabrication model должна отдельно учитывать kerf, trim, overlap и физическую геометрию соединительного узла.
 
-Материал выбирается идентификатором и разрешается централизованным каталогом.
+## 3. Weather model
 
-Пример:
-
-```js
-{
-  id: 'A500C',
-  standard: 'ГОСТ 34028-2016',
-  weldabilityGuaranteed: true,
-  youngModulusGPa: 200,
-  poissonRatio: 0.3,
-  yieldStrengthMPa: 500,
-  tensileStrengthMPa: 600,
-  densityKgM3: 7850
-}
-```
-
-Расчётные модули получают уже разрешённые свойства и не дублируют каталожные числа.
-
-## 4. Weather model
-
-`weather.js` отделяет пользовательский сценарий от механики:
+`weather.js` разрешает UI-сценарий в механические параметры:
 
 ```js
 {
@@ -123,22 +95,18 @@ q = rho_air*v²/2
 rho_air = 1.225 kg/m³
 ```
 
-Остальной solver работает только с `windPressurePa`.
+Остальной solver работает с `windPressurePa` и не зависит от способа его выбора.
 
-Режим `custom` сохраняет ручной ввод давления.
+## 4. Geometry
 
-Шкала Бофорта является сравнительным UI-сценарием и не заменяет нормативный wind design.
-
-## 5. Geometry model
-
-Для правильного октаэдра с ребром `a`:
+Для правильного октаэдра:
 
 ```text
 R = a/sqrt(3)
 h = a*sqrt(2/3)
 ```
 
-Каждый уровень содержит три узла на окружности радиуса `R`. Соседние уровни повернуты на 60°.
+Каждый уровень содержит три узла. Соседние уровни повёрнуты на 60°.
 
 Один модуль:
 
@@ -147,8 +115,6 @@ h = a*sqrt(2/3)
 6 diagonal members
 = 9 members
 ```
-
-Все девять рёбер имеют одну длину `a`; это regression invariant.
 
 Frame node:
 
@@ -162,17 +128,17 @@ Frame node:
 
 Нижние три узла полностью заделаны.
 
-## 6. Frame element
+## 5. Frame element
 
-На каждом узле:
+На узел:
 
 ```text
 [ux, uy, uz, rx, ry, rz]
 ```
 
-На элемент — 12 DOF.
+На member — 12 DOF.
 
-Для круглого сплошного сечения:
+Круглое сечение:
 
 ```text
 A = pi*d²/4
@@ -193,162 +159,114 @@ GJ/L
 2EI/L
 ```
 
-Переход в глобальную систему:
+Переход в global coordinates:
 
 ```text
-Ke = T^T * ke * T
+Ke = T^T*ke*T
 ```
 
-Локальный ортонормированный базис строится по оси стержня и устойчивому reference vector.
-
-## 7. Distributed loads
+## 6. Distributed loads
 
 `buildLoadCase()` разделяет:
 
 ```js
-nodalLoads[nodeId]                // N
-nodalMoments[nodeId]              // Nm
-memberDistributedLoads[memberId] // N/m, global XYZ
+nodalLoads[nodeId]
+nodalMoments[nodeId]
+memberDistributedLoads[memberId]
 ```
 
-Собственный вес, лёд и ветер — distributed loads.
+Собственный вес, лёд и ветер являются distributed member loads.
 
-Для равномерной поперечной нагрузки consistent nodal vector содержит:
+Для равномерной поперечной нагрузки consistent load vector содержит `qL/2` и `qL²/12`.
+
+Ветровая нагрузка цилиндрического member:
 
 ```text
-qL/2
-qL²/12
+qwind = p*cd*dout*gamma_w*(ew - ex*(ex dot ew))
 ```
 
-то есть не только силы, но и эквивалентные конечные моменты.
+Компонента вдоль оси цилиндра исключается.
 
-Для цилиндрического member:
+## 7. Почему K ленточная
 
-```text
-qwind_vec = p*cd*dout*gamma_w*(ew - ex*(ex dot ew))
-```
+Member связывает узлы одного уровня либо двух соседних уровней. При последовательной нумерации уровней ненулевые коэффициенты глобальной `K` находятся около главной диагонали.
 
-Ветер вдоль оси цилиндра не создаёт поперечной распределённой силы.
-
-## 8. Почему глобальная K ленточная
-
-Топология мачты локальна:
-
-- horizontal member связывает узлы одного уровня;
-- diagonal member связывает только два соседних уровня.
-
-При последовательной нумерации уровней ненулевые блоки глобальной `K` расположены около главной диагонали.
-
-После исключения закреплённых DOF текущая 40-модульная модель имеет:
+Для 40 модулей:
 
 ```text
-free DOF = 720
+123 nodes
+738 total DOF
+720 free DOF
 half-bandwidth = 35
 ```
 
-Хранение и операции поэтому выполняются не как arbitrary dense matrix, а как symmetric band matrix.
+Поэтому основной solver использует symmetric band storage вместо `n×n` dense matrix.
 
-## 9. Compile stage
+## 8. compileFrameSystem
 
-`compileFrameSystem(model, parameters)` является границей между неизменной моделью и меняющимися load cases.
+`compileFrameSystem(model, parameters)` отделяет неизменную механику модели от меняющихся load cases.
 
-Он один раз вычисляет:
+Один раз вычисляются:
 
 ```text
-member length
+member lengths
 local axes
 T
 A, I, J, G
-ke
-Ke
-free DOF list
-global -> reduced DOF map
+ke / Ke
+free DOF map
 bandwidth
 Kfree
 Cholesky(Kfree)
-total steel mass
+total mass
 ```
 
-Возвращаемый compiled system переиспользуется всеми направлениями одной геометрии.
-
-Ключевой invariant:
+Ключевой invariant полного расчёта одной геометрии:
 
 ```text
 stiffnessFactorizationCount = 1
 ```
 
-для одного полного расчёта.
+## 9. Symmetric band Cholesky
 
-## 10. Symmetric band Cholesky
-
-Основной linear solver версии 0.7:
+Основной linear-system solver:
 
 ```text
 symmetric-band-cholesky
 ```
 
-Матрица хранит только нижнюю ленту шириной `b+1`.
-
-Сложность хранения:
+Сложности:
 
 ```text
-O(n*b)
+storage       O(n*b)
+factorization O(n*b²)
+solve         O(n*b)
 ```
 
-Сложность факторизации:
+После factorization каждый новый load case требует только assembly RHS и forward/back substitution.
 
-```text
-O(n*b²)
-```
+`tests/banded.test.js` сравнивает banded solve с существующим dense reference.
 
-Сложность одного forward/back solve после факторизации:
+## 10. Static load case
 
-```text
-O(n*b)
-```
-
-Это принципиально отличается от повторного dense `O(n³)` solve для каждого направления.
-
-`banded.js` имеет отдельный cross-check против существующего dense reference solver.
-
-## 11. Load-case static solve
-
-Для каждого load case:
+Для каждого case:
 
 ```text
 assemble F
-solve L*y = F
-solve L^T*u = y
-recover full displacement vector
+solve K*u = F
 recover member local end actions
 recover reactions
+build KG from axial forces
+solve generalized buckling
 ```
 
-То есть elastic `K` повторно не собирается и не факторизуется.
-
-Результат содержит:
-
-```js
-{
-  displacements,
-  rotations,
-  reactions,
-  reactionMoments,
-  memberResults,
-  buckling,
-  diagnostics
-}
-```
-
-## 12. Member end actions and stresses
-
-Локальный вектор конечных усилий:
+Member end vector:
 
 ```text
 fend = ke*ue - feq
 ```
 
-На концах:
+содержит:
 
 ```text
 N, Vy, Vz, T, My, Mz
@@ -368,33 +286,20 @@ tau = sqrt(tau_T² + tau_V²)
 sigma_eq = sqrt(sigma² + 3*tau²)
 ```
 
-Для равномерной поперечной нагрузки консервативно учитывается возможный внутренний максимум:
+Для distributed transverse load дополнительно учитывается внутренний максимум порядка `q_perp*L²/8`.
 
-```text
-DeltaM = q_perp*L²/8
-```
-
-## 13. Local Euler check
-
-Для сжатого member:
+## 11. Local Euler check
 
 ```text
 Leff = mu*L
 N_E = pi²*E*I/Leff²/gamma_M
 mu = 0.5
-```
-
-Итог:
-
-```text
 eta_member = max(eta_stress, eta_Euler)
 ```
 
-Это упругая инженерная проверка, не полный нормативный member buckling design по СП 16.
+Это текущая упругая инженерная проверка, а не полный нормативный member buckling design.
 
-## 14. Global eigen-buckling
-
-После static solve из продольных усилий элементов собирается banded geometric stiffness `KG`.
+## 12. Global buckling
 
 Исходная задача:
 
@@ -402,39 +307,31 @@ eta_member = max(eta_stress, eta_Euler)
 (K + lambda*KG)*phi = 0
 ```
 
-Эквивалентная generalized eigen form:
+Эквивалентный operator:
 
 ```text
-K^-1*(-KG)*phi = mu*phi
+A(v) = solve(K, -KG*v)
+mu = eigenvalue(A)
 lambda = 1/mu
 ```
 
-### 14.1. Почему нет явного K^-1
+Явный `K^-1` не строится.
 
-Версия 0.7 не строит inverse matrix.
-
-Применение оператора к произвольному `v`:
-
-```text
-w = -KG*v
-x = solve(K, w)
-```
-
-и возвращает `x`.
-
-Elastic solve использует ту же заранее вычисленную Cholesky-factorization.
-
-### 14.2. Generalized Lanczos
-
-Operator является self-adjoint в `K`-inner product. Поэтому Krylov basis строится с нормированием:
+Generalized Lanczos работает в `K`-inner product:
 
 ```text
 <x,y>_K = x^T*K*y
 ```
 
-и повторной K-ортогонализацией.
+и использует повторную K-ортогонализацию.
 
-Получается малая symmetric tridiagonal Ritz matrix. Её максимальное положительное eigenvalue даёт минимальный положительный `lambda`.
+Критерий остановки — фактическая невязка исходной задачи:
+
+```text
+r = (K + lambda*KG)*phi
+```
+
+а не только внутренняя Ritz-оценка.
 
 Сохраняются:
 
@@ -447,125 +344,82 @@ eigenResidual
 iterations
 ```
 
-Малая generalized eigen-задача в tests сравнивает Lanczos с прежним dense reference.
+`tests/buckling.test.js` сравнивает fast generalized Lanczos с dense reference на малой задаче.
 
-## 15. Wind envelope и 120° symmetry
+## 13. Wind envelope и 120° symmetry
 
 Треугольная идеальная модель имеет rotational period 120°.
 
-Алгоритм не меняет заданную пользователем discretization:
+Алгоритм:
 
-1. строит прежнюю полную сетку `0..360`;
-2. приводит каждый угол modulo 120°;
+1. строит прежнюю полную пользовательскую сетку `0..360`;
+2. приводит углы modulo 120°;
 3. удаляет только совпадающие canonical angles;
-4. считает оставшиеся уникальные FEM cases.
+4. считает уникальные cases.
 
-Для default 30°:
-
-```text
-12 full-circle samples -> 4 unique solves
-```
-
-Для 45°:
+Default step 30°:
 
 ```text
-8 full-circle samples -> 8 unique canonical angles
-0,15,30,45,60,75,90,105
+12 full-circle samples -> 4 solves
+0, 30, 60, 90 degrees
 ```
 
-Это правило покрыто regression-тестом.
+Step 45°:
 
-## 16. Lateral capacity pipeline
+```text
+0, 15, 30, 45, 60, 75, 90, 105
+```
 
-### 16.1. Normalized load case
+Таким образом optimization не теряет направления исходной discretization.
 
-Чистый проверочный случай:
+## 14. Lateral capacity
+
+Проверочный normalized case:
 
 ```text
 F0 = 1 N horizontal at top
 ```
 
-Отключаются:
+В нём отключаются gravity, wind, ice, equipment и extra loads.
+
+Из линейности:
 
 ```text
-gravity
-ice
-wind
-equipment
-extra loads
-```
-
-### 16.2. Member limit
-
-```text
-Fmember = 1/eta_member(F0=1 N)
-```
-
-Механизм:
-
-```text
-material-strength
-local-member-buckling
-```
-
-### 16.3. Global limit
-
-Если единичная боковая сила создаёт физически значимое сжатие:
-
-```text
-Fglobal = lambda_cr(F0=1 N)*1 N
-```
-
-Для чистой поперечной сплошной консоли microscopic axial numerical noise фильтруется; eigen-buckling там физически неприменим.
-
-### 16.4. Governing limit
-
-```text
+Fmember = 1/eta_member(F0)
+Fglobal = lambda_cr(F0)*1 N
 Flim = min(Fmember, Fglobal)
 ```
 
-Для `Fmember`, `Fglobal` и `Flim` сохраняются независимые direction envelopes.
+`Fmember`, `Fglobal` и `Flim` имеют независимые direction envelopes.
 
-Боковые cases используют тот же compiled elastic system, что и эксплуатационные cases.
+Lateral cases используют тот же compiled elastic system, что и эксплуатационные cases.
 
-## 17. Web Worker boundary
+## 15. Web Worker
 
-Browser architecture:
+Browser boundary:
 
 ```text
-Main thread
-  form
-  progress/ETA
-  3D viewer
-  report export
-       │
-       │ postMessage(parameters)
-       ▼
-calculation-worker.js
-  calculateCompleteMast()
-  selectUniformDiameter()
-  FEM / buckling
-       │
-       │ progress/result/error messages
-       ▼
-Main thread
+Main thread                     Worker
+-----------                     ------
+form                            calculateCompleteMast
+progress UI       <----------   progress messages
+3D viewer         <----------   result/error
+report export                   selectUniformDiameter
 ```
 
-Main thread не импортирует и не вызывает FEM solve functions.
+Main thread не импортирует FEM solve API.
 
-Отмена реализована жёстким прекращением отдельного вычислительного контекста:
+Cancel:
 
 ```js
 worker.terminate()
 ```
 
-Это гарантирует немедленную отзывчивость cancel даже внутри длинной eigen-итерации.
+поэтому остановка не зависит от точки, в которой находится eigen-итерация.
 
-## 18. Progress contract
+## 16. Progress contract
 
-Core API может получать callback `onProgress`.
-
-Событие полного расчёта содержит:
+Core callback:
 
 ```js
 {
@@ -576,7 +430,7 @@ Core API может получать callback `onProgress`.
 }
 ```
 
-Этапы:
+Phases:
 
 ```text
 compile
@@ -585,42 +439,52 @@ lateral
 done
 ```
 
-Worker превращает `completed/total` в `fraction` и отправляет main thread.
+Worker преобразует это в `fraction`. UI показывает percent, stage, detail, elapsed, ETA и cancel.
 
-UI показывает:
-
-```text
-percent
-stage label
-detail
-elapsed time
-ETA
-cancel
-```
-
-ETA:
+ETA оценивается как:
 
 ```text
 elapsed*(1-progress)/progress
 ```
 
-является оценкой по завершённым крупным cases.
+Это estimate по крупным завершённым cases, а не гарантированное время.
 
-## 19. Diameter optimization
+## 17. Diameter optimization
 
-Подбор диаметра выполняется в Worker.
+Диаметры сортируются по возрастанию.
 
-Для каждого standard diameter вызывается эксплуатационный `calculateMast()` с собственным compiled system, потому что изменение `d` меняет `A`, `I`, `J` и `K`.
+Первый candidate, который проходит одновременно:
 
-После выбора минимального проходящего диаметра выполняется `calculateCompleteMast()` для итогового результата с lateral check.
+```text
+strength
+displacement
+global buckling
+```
 
-Progress делится между diameter sweep и final complete solve.
+является минимальным искомым, поэтому более крупные diameters по умолчанию не рассчитываются.
 
-## 20. Physical joint demand — следующий слой
+Reference/debug mode `stopAtFirstPassing: false` позволяет просчитать весь список.
 
-Global FEM по-прежнему моделирует соединения идеальными.
+После выбора выполняется полный final calculation, включая lateral capacity.
 
-Будущий интерфейс global FEM -> joint checks:
+## 18. Reporting boundary
+
+UI, CSV и printable project читают уже рассчитанные results.
+
+Report renderer не должен:
+
+- повторно решать FEM;
+- создавать альтернативную механическую модель;
+- менять solver values;
+- округлять числа до проверок.
+
+Internal `CalculationSnapshot v4` предназначен для regression/debug, не для бумажного отчёта.
+
+## 19. Physical joint boundary
+
+Global FEM по-прежнему считает соединения идеальными и жёсткими.
+
+Будущий joint layer получает связанный demand одного load case:
 
 ```js
 {
@@ -630,70 +494,9 @@ Global FEM по-прежнему моделирует соединения ид�
 }
 ```
 
-Связанный набор `N/V/T/M` должен происходить из одного реального load case. Независимые экстремумы разных cases нельзя склеивать в несуществующий demand vector.
+Нельзя комбинировать независимые максимумы разных cases в физически несуществующий vector.
 
-## 21. Planned joint definition
-
-```js
-{
-  id,
-  type,
-  thread: {
-    nominalDiameterMm,
-    pitchMm,
-    boltPropertyClass,
-    engagementLengthMm
-  },
-  welds: [
-    { type, lengthMm, legMm, position, direction }
-  ],
-  welding: {
-    process,
-    consumableStandard,
-    consumableGrade,
-    consumableDiameterMm
-  }
-}
-```
-
-Будущий `jointCheck()` должен возвращать отдельные limit states и governing result.
-
-## 22. Reporting contract
-
-UI, CSV и printable project читают уже вычисленные solver results.
-
-Report renderer запрещено:
-
-- повторно решать `K*u=F`;
-- собирать альтернативную FEM-модель;
-- подменять solver values;
-- округлять значения до инженерных проверок.
-
-Допускаются:
-
-- formatting;
-- unit conversion;
-- sorting;
-- алгебраические подстановки из тех же parameters/results.
-
-## 23. Internal CalculationSnapshot
-
-Internal snapshot v4 хранит:
-
-```text
-software/method/Git SHA
-parameters + weather
-nodes/members/restraints
-operational load cases
-lateral cases
-member results
-buckling
-diagnostics
-```
-
-Это regression/debug format, не пользовательский бумажный документ.
-
-## 24. Numerical diagnostics
+## 20. Diagnostics
 
 Каждый solve сохраняет:
 
@@ -710,87 +513,83 @@ buckling eigenResidual
 buckling iterations
 ```
 
-Плохая диагностика не должна молча отображаться как надёжный engineering result.
+Плохая диагностика должна приводить к warning, а не молча считаться надёжным результатом.
 
-## 25. Verification layers
+## 21. Verification
 
-### Analytical
+Analytical/reference tests:
 
 - axial `FL/EA`;
 - cantilever `PL³/(3EI)`;
-- cantilever rotation `PL²/(2EI)`;
+- rotation `PL²/(2EI)`;
 - fixed-fixed `qL/2`, `qL²/12`;
 - lateral von Mises limit;
-- analytical/dense eigensystems.
+- banded solve vs dense;
+- generalized Lanczos vs dense.
 
-### Numerical cross-check inside repo
+Structural invariants:
 
-- banded Cholesky vs dense solve;
-- generalized Lanczos vs dense generalized buckling reference.
-
-### Structural invariants
-
-- force equilibrium;
-- moment equilibrium;
-- regular-octahedron equal edges;
+- force/moment equilibrium;
+- equal octahedron edges;
 - alternating geometry;
 - coordinate rotation invariance;
-- complete Beaufort scale;
+- Beaufort 0..12;
 - solid-rod sanity bands;
-- one K factorization per complete calculation;
-- exact symmetry reduction of full wind grid.
+- exact symmetry reduction;
+- one K factorization per complete geometry.
 
-### Performance regression
+## 22. 40-module performance regression
 
-40 modules:
+Обязательный CI case:
 
 ```text
+modules = 40
 free DOF = 720
-bandwidth = 35
+bandwidth <= 35
 factorizations = 1
 wind cases = 4
 lateral cases = 8
+static residual < 1e-8
+node equilibrium residual < 1e-8
+buckling residual < 1e-5
 ```
 
-GitHub-hosted Ubuntu measurement on 2026-08-07:
+Финальное GitHub-hosted Ubuntu измерение 2026-08-07:
 
 ```text
-860.9 ms
+1078.3 ms
 ```
 
-CI guard is intentionally much looser than this measurement to avoid flaky hardware-dependent failures while still detecting a return to minute-scale dense behavior.
+CI performance guard = 20 s, чтобы избежать hardware-dependent flaky tests и при этом ловить возврат к minute-scale dense behavior.
 
-### Independent FEM cross-check
+## 23. Независимая инженерная верификация
 
-External solver reference models are still required before treating the program as a final engineering design tool.
+Внутренние analytical/dense cross-checks не заменяют внешний FEM cross-check.
 
-## 26. CI as part of calculation architecture
-
-Calculation changes are not considered complete until passing:
+До использования как окончательного design tool необходимы reference models независимого КЭ-комплекса с допусками по:
 
 ```text
-syntax checks
-file-size/maintainability guard
+displacements
+reactions
+N/V/T/M
+stresses
+buckling eigenvalues/modes
+```
+
+## 24. CI
+
+Расчётное изменение считается завершённым только после:
+
+```text
+syntax + maintainability
 CI policy tests
-unit + analytical + performance tests on Linux
-same tests on macOS
-same tests on Windows
+Linux tests
+macOS tests
+Windows tests
 secret scan
-static-site smoke test
+static-site smoke
 ```
 
-Static smoke includes:
+Static smoke проверяет выдачу `app.js`, `calculation-worker.js`, `solver.js`, `banded.js`, `buckling.js`, weather/lateral/report modules и CSS.
 
-```text
-app.js
-calculation-worker.js
-solver.js
-banded.js
-buckling.js
-weather.js
-lateral-capacity.js
-report modules
-styles.css
-```
-
-Подробности производительности: [`PERFORMANCE_AND_PROGRESS.md`](PERFORMANCE_AND_PROGRESS.md).
+Подробный performance design: [`PERFORMANCE_AND_PROGRESS.md`](PERFORMANCE_AND_PROGRESS.md).

@@ -25,10 +25,15 @@
     "test:obj": "node --test tests/obj-export.test.js",
     "test:viewer": "node --test tests/integrated-3d-viewer.test.js",
     "test:architecture": "node --test tests/architecture-audit.test.js",
+    "test:contracts": "node --test tests/contracts.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "audit:architecture": "node scripts/architecture-audit.mjs --check",
     "audit:architecture:report": "node scripts/architecture-audit.mjs",
     "audit:architecture:json": "node scripts/architecture-audit.mjs --json",
     "check": "node scripts/check-js.mjs",
     "build:web": "node scripts/build-web.mjs"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
   }
 }

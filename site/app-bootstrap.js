@@ -32,6 +32,54 @@ import {
 
 const $ = (selector) => document.querySelector(selector)
 const form = $('#parameters-form')
+
+function createNumericControl(name, title, attributes = {}) {
+  const label = document.createElement('label')
+  label.append(document.createTextNode(title))
+  const input = document.createElement('input')
+  input.name = name
+  input.type = 'number'
+  for (const [key, value] of Object.entries(attributes)) input.setAttribute(key, String(value))
+  label.append(input)
+  return label
+}
+
+function createSelectControl(name, title) {
+  const label = document.createElement('label')
+  label.append(document.createTextNode(title))
+  const select = document.createElement('select')
+  select.name = name
+  label.append(select)
+  return label
+}
+
+function installJointStrengthUi() {
+  const grid = document.querySelector('#joint-input-details .joint-form-grid')
+  if (grid && !form.elements.namedItem('jointTighteningTorqueNm')) {
+    grid.append(
+      createNumericControl('jointTighteningTorqueNm', 'Момент затяжки болта, Н·м', { min: 0, step: 10 }),
+      createNumericControl('jointNutFactor', 'Коэффициент затяжки K', { min: 0.05, max: 0.5, step: 0.01 }),
+      createNumericControl('jointPreloadVariation', 'Разброс преднатяга ±, доля', { min: 0, max: 0.9, step: 0.05 }),
+      createSelectControl('jointNutSectionAreaRatio', 'Минимум Anut / Arib'),
+      createSelectControl('weldToRibAreaRatio', 'Минимум Aшва / Arib'),
+    )
+    const note = document.createElement('p')
+    note.className = 'hint practical-note'
+    note.textContent = 'Затяжка учитывается как преднатяг F0=T/(K·d): увеличение момента уменьшает оставшийся растягивающий резерв болта. Нетто-сечение каждой гайки должно быть не меньше 2× сечения ребра. Эффективная площадь шва задаётся с дополнительным проектным запасом 2–3×.'
+    grid.after(note)
+  }
+
+  const visualSummary = $('#joint-visual-summary')
+  if (visualSummary && !$('#joint-strength-summary')) {
+    const strength = document.createElement('p')
+    strength.id = 'joint-strength-summary'
+    strength.className = 'material-summary joint-strength-summary'
+    visualSummary.after(strength)
+  }
+}
+
+installJointStrengthUi()
+
 const modeSelect = form.elements.namedItem('jointConfiguratorMode')
 const boltDiameter = form.elements.namedItem('jointBoltDiameterMm')
 const boltClass = form.elements.namedItem('jointBoltClass')

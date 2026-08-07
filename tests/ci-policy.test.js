@@ -90,6 +90,15 @@ test('PR CI имеет отдельный gate физического конфи
   assert.match(ci, /two-nut physical joint/i)
 })
 
+test('PR CI имеет отдельный gate аналитической статики трёх опор', () => {
+  const ci = workflows.get('ci.yml')
+  assert.ok(ci)
+  assert.match(ci, /support-statics:/)
+  assert.match(ci, /name:\s*Support reaction statics/)
+  assert.match(ci, /npm run test:statics/)
+  assert.match(ci, /analytical three-support reaction oracles/i)
+})
+
 test('static-site smoke загружает интерфейс, логотип и все новые модули узла', () => {
   const ci = workflows.get('ci.yml')
   assert.ok(ci)

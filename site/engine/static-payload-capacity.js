@@ -1,3 +1,4 @@
+import { selectedBoltUtilizationForAnalysis } from './connection-check.js'
 import { buildLoadCase } from './loads.js'
 import { STANDARD_GRAVITY_M_S2 } from './lateral-capacity.js'
 import { analyzeFrame, compileFrameSystem } from './solver.js'
@@ -27,7 +28,7 @@ function evaluatePayload(model, parameters, frameSystem, payloadMassKg, includeS
   const caseParameters = payloadParameters(parameters, payloadMassKg, includeSelfWeight)
   const loads = buildLoadCase(model, caseParameters)
   const analysis = analyzeFrame(model, loads, caseParameters, frameSystem)
-  return { payloadMassKg, loads, analysis }
+  return { payloadMassKg, loads, analysis, parameters: caseParameters }
 }
 
 function memberLimitMode(analysis) {
@@ -38,34 +39,42 @@ function memberLimitMode(analysis) {
     : 'material-strength'
 }
 
-function stateRatios(analysis) {
+function stateRatios(model, parameters, analysis) {
   const memberRatio = analysis.maxUtilization
   const globalRatio = Number.isFinite(analysis.buckling.criticalLoadFactor)
     ? 1 / Math.max(analysis.buckling.criticalLoadFactor, Number.EPSILON)
     : 0
-  const governingMode = globalRatio >= memberRatio
-    ? 'global-buckling'
-    : memberLimitMode(analysis)
+  const boltRatio = selectedBoltUtilizationForAnalysis(model, analysis, parameters)
+  const governingRatio = Math.max(memberRatio, globalRatio, boltRatio)
+  let governingMode = memberLimitMode(analysis)
+  if (globalRatio >= memberRatio && globalRatio >= boltRatio) governingMode = 'global-buckling'
+  if (boltRatio >= memberRatio && boltRatio >= globalRatio) governingMode = 'bolt-connection'
   return {
     memberRatio,
     globalRatio,
-    governingRatio: Math.max(memberRatio, globalRatio),
+    boltRatio,
+    governingRatio,
     governingMode,
-    passes: memberRatio <= 1 && globalRatio <= 1,
+    passes: memberRatio <= 1 && globalRatio <= 1 && boltRatio <= 1,
   }
 }
 
-function purePayloadUpperBoundKg(unitAnalysis) {
-  const memberLimitKg = unitAnalysis.maxUtilization > Number.EPSILON
-    ? 1 / unitAnalysis.maxUtilization
+function purePayloadUpperBoundKg(model, unit) {
+  const unitRatios = stateRatios(model, unit.parameters, unit.analysis)
+  const memberLimitKg = unitRatios.memberRatio > Number.EPSILON
+    ? 1 / unitRatios.memberRatio
     : Number.POSITIVE_INFINITY
-  const globalLimitKg = Number.isFinite(unitAnalysis.buckling.criticalLoadFactor)
-    ? unitAnalysis.buckling.criticalLoadFactor
+  const globalLimitKg = unitRatios.globalRatio > Number.EPSILON
+    ? 1 / unitRatios.globalRatio
+    : Number.POSITIVE_INFINITY
+  const boltLimitKg = unitRatios.boltRatio > Number.EPSILON
+    ? 1 / unitRatios.boltRatio
     : Number.POSITIVE_INFINITY
   return {
     memberLimitKg,
     globalLimitKg,
-    criticalLimitKg: Math.min(memberLimitKg, globalLimitKg),
+    boltLimitKg,
+    criticalLimitKg: Math.min(memberLimitKg, globalLimitKg, boltLimitKg),
   }
 }
 
@@ -92,11 +101,12 @@ function resultFromLimit(model, parameters, base, limit, ratios, reference, boun
     + Math.max(0, parameters.extraVerticalLoadN ?? 0) / (STANDARD_GRAVITY_M_S2 * gammaPayload)
   const remainingAdditionalMassKg = Math.max(0, limit.payloadMassKg - configuredEquivalentTopMassKg)
   const waterVolumeM3 = remainingAdditionalMassKg / WATER_DENSITY_KG_M3
+  const baseRatios = stateRatios(model, base.parameters, base.analysis)
 
   return {
-    method: 'gravity-only-top-payload-with-self-weight-v1',
+    method: 'gravity-only-top-payload-with-self-weight-v2-with-bolt',
     forceApplication: 'вертикальная сила вниз, поровну между тремя узлами верхней треугольной грани',
-    includedLoads: 'собственный вес мачты с коэффициентом постоянной нагрузки и искомая масса на вершине с коэффициентом веса оборудования',
+    includedLoads: 'собственный вес мачты с коэффициентом постоянной нагрузки, искомая масса на вершине с коэффициентом веса оборудования и выбранный межмодульный болт',
     excludedLoads: 'ветер, лёд, горизонтальные силы и прочие дополнительные нагрузки',
     waterDensityKgM3: WATER_DENSITY_KG_M3,
     maximumTotalTopMassKg: limit.payloadMassKg,
@@ -110,10 +120,12 @@ function resultFromLimit(model, parameters, base, limit, ratios, reference, boun
     governingMode: ratios.governingMode,
     criticalMemberId: limit.analysis.criticalMemberId,
     utilizationAtLimit: limit.analysis.maxUtilization,
+    boltUtilizationAtLimit: ratios.boltRatio,
     bucklingFactorAtLimit: limit.analysis.buckling.criticalLoadFactor,
     topSettlementAtLimitM: topSettlementM(model, limit.analysis),
     baseSelfWeightN: base.loads.selfWeightN,
     baseUtilization: base.analysis.maxUtilization,
+    baseBoltUtilization: baseRatios.boltRatio,
     baseBucklingFactor: base.analysis.buckling.criticalLoadFactor,
     purePayloadReference: reference,
     bounded,
@@ -134,12 +146,12 @@ export function calculateStaticPayloadCapacity(model, parameters, options = {}) 
   const frameSystem = options.frameSystem ?? compileFrameSystem(model, parameters)
 
   const unit = evaluatePayload(model, parameters, frameSystem, 1, false)
-  const reference = purePayloadUpperBoundKg(unit.analysis)
+  const reference = purePayloadUpperBoundKg(model, unit)
   reportProgress(options, 1, 'Оценка верхней границы по чистой нагрузке 1 кг', 1)
 
   const base = evaluatePayload(model, parameters, frameSystem, 0, true)
-  const baseRatios = stateRatios(base.analysis)
-  reportProgress(options, 2, 'Проверка мачты под собственным весом', 0)
+  const baseRatios = stateRatios(model, base.parameters, base.analysis)
+  reportProgress(options, 2, 'Проверка мачты под собственным весом и межмодульного болта', 0)
 
   if (!baseRatios.passes) {
     for (let index = 0; index <= STATIC_PAYLOAD_BISECTION_ITERATIONS; index += 1) {
@@ -161,7 +173,7 @@ export function calculateStaticPayloadCapacity(model, parameters, options = {}) 
   if (!Number.isFinite(upperMassKg) || upperMassKg <= 0) upperMassKg = MAX_REFERENCE_PAYLOAD_KG
   upperMassKg = Math.min(upperMassKg, MAX_REFERENCE_PAYLOAD_KG)
   const upper = evaluatePayload(model, parameters, frameSystem, upperMassKg, true)
-  const upperRatios = stateRatios(upper.analysis)
+  const upperRatios = stateRatios(model, upper.parameters, upper.analysis)
   reportProgress(options, 3, 'Проверка расчётной верхней границы', upperMassKg)
 
   let lowMassKg = 0
@@ -174,7 +186,7 @@ export function calculateStaticPayloadCapacity(model, parameters, options = {}) 
     for (let iteration = 0; iteration < STATIC_PAYLOAD_BISECTION_ITERATIONS; iteration += 1) {
       const middleMassKg = (lowMassKg + highMassKg) / 2
       const middle = evaluatePayload(model, parameters, frameSystem, middleMassKg, true)
-      const middleRatios = stateRatios(middle.analysis)
+      const middleRatios = stateRatios(model, middle.parameters, middle.analysis)
       if (middleRatios.passes) {
         lowMassKg = middleMassKg
         low = middle

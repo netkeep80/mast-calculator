@@ -24,7 +24,7 @@ test('120° симметрия удаляет только эквивалент�
   assert.deepEqual(directions45, [0, 15, 30, 45, 60, 75, 90, 105])
 })
 
-test('40 модулей считаются одной факторизацией с монотонным прогрессом и зелёной внутренней верификацией', { timeout: 30_000 }, () => {
+test('40 модулей считаются одной факторизацией с соединениями и зелёной внутренней верификацией', { timeout: 30_000 }, () => {
   const events = []
   const started = performance.now()
   const result = calculateCompleteMast({
@@ -47,11 +47,19 @@ test('40 модулей считаются одной факторизацией
   assert.ok(Number.isFinite(result.envelope.maxUtilization))
   assert.ok(Number.isFinite(result.envelope.maxTopDisplacementM))
   assert.ok(Number.isFinite(result.lateralCapacity.criticalForceN))
+  assert.ok(Number.isFinite(result.lateralCapacity.boltLimitForceN))
   assert.ok(Number.isFinite(result.staticPayloadCapacity.maximumTotalTopMassKg))
+  assert.ok(Number.isFinite(result.staticPayloadCapacity.boltUtilizationAtLimit))
   assert.ok(result.staticPayloadCapacity.maximumTotalTopMassKg > 0)
   assert.ok(result.staticPayloadCapacity.diagnostics.relativeResidual < 1e-8)
   assert.ok(result.staticPayloadCapacity.diagnostics.maximumNodeEquilibriumResidual < 1e-8)
   assert.ok(result.staticPayloadCapacity.diagnostics.bucklingResidual < 1e-5)
+
+  assert.equal(result.connections.jointCount, 3 * (40 - 1))
+  assert.equal(result.connections.bolt.selected.applicable, true)
+  assert.ok(Number.isFinite(result.connections.bolt.selected.utilization))
+  assert.equal(result.connections.weld.envelope.length, result.model.members.length * 2)
+  assert.ok(result.connections.weld.critical.check.requiredPhysicalLengthMm >= 40)
 
   assert.equal(result.verification.status, 'internal-passed-external-pending')
   assert.equal(result.verification.counts.failed, 0)
@@ -67,6 +75,7 @@ test('40 модулей считаются одной факторизацией
   }
   for (const lateralCase of result.lateralCapacity.cases) {
     assert.ok(lateralCase.eigenResidual < 1e-5)
+    assert.ok(Number.isFinite(lateralCase.boltUnitUtilization))
   }
 
   assert.ok(events.length >= 2)
@@ -79,6 +88,6 @@ test('40 модулей считаются одной факторизацией
   assert.equal(final.phase, 'done')
   assert.equal(final.completed, final.total)
 
-  console.info(`40-module benchmark: ${elapsedMs.toFixed(1)} ms; DOF=${result.performance.freeDofCount}; bandwidth=${result.performance.stiffnessBandwidth}; cases=${result.performance.operationalCaseCount}+${result.performance.lateralCaseCount}+${result.performance.staticPayloadEvaluationCount}; verification=${result.verification.counts.internal}`)
+  console.info(`40-module benchmark: ${elapsedMs.toFixed(1)} ms; DOF=${result.performance.freeDofCount}; bandwidth=${result.performance.stiffnessBandwidth}; cases=${result.performance.operationalCaseCount}+${result.performance.lateralCaseCount}+${result.performance.staticPayloadEvaluationCount}; joints=${result.connections.jointCount}; weldEnds=${result.connections.weld.envelope.length}; verification=${result.verification.counts.internal}`)
   assert.ok(elapsedMs < 20_000, `40-модульный расчёт занял ${elapsedMs.toFixed(0)} мс`)
 })

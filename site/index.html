@@ -10,9 +10,9 @@
 <body>
   <header class="page-header">
     <div>
-      <p class="eyebrow">Mast Calculator · прототип 0.9</p>
+      <p class="eyebrow">Mast Calculator · прототип 1.0</p>
       <h1>Расчёт модульной мачты</h1>
-      <p class="subtitle">Правильные октаэдры, жёсткий 3D frame, погодные и предельные нагрузки и многоуровневая проверка, которую можно проследить от обычного калькулятора до независимого FEM.</p>
+      <p class="subtitle">Правильные октаэдры, жёсткий 3D frame, нагрузки и устойчивость, расчёт межмодульного болта и сварных концов рёбер, многоуровневая верификация.</p>
     </div>
   </header>
 
@@ -32,7 +32,19 @@
           <label class="checkbox"><input name="closeTopRing" type="checkbox"> Замкнуть верхний треугольник</label>
         </div>
         <p id="material-info" class="hint practical-note"></p>
-        <p class="hint practical-note">Модуль считается правильным октаэдром: все девять его рёбер имеют одну длину <em>a</em>, а высота между треугольными гранями вычисляется как <em>h = a·√(2/3)</em>. Высота соединительного узла, ширина реза и нахлёст арматуры на гайку/болт пока не учитываются.</p>
+        <p class="hint practical-note">Модуль считается правильным октаэдром: все девять его рёбер имеют одну длину <em>a</em>, а высота между треугольными гранями вычисляется как <em>h = a·√(2/3)</em>. Ширина реза, торцевая подрезка и нахлёст реальной арматуры на соединительный элемент пока не меняют осевую FEM-геометрию.</p>
+
+        <h3 class="form-section-title">Межмодульный болт и сварка</h3>
+        <div class="form-grid">
+          <label>Болт между модулями<select name="jointBoltDiameterMm"></select></label>
+          <label>Класс прочности болта<select name="jointBoltClass"></select></label>
+          <label>Эффективный радиус узла, мм<input name="jointEffectiveRadiusMm" type="number" min="1" step="1"></label>
+          <label>Сварочный материал<select name="weldConsumableId"></select></label>
+          <label>Катет углового шва, мм<input name="weldLegMm" type="number" min="1" step="0.5"></label>
+          <label>Непрерывных участков на конец<input name="weldSegmentsPerEnd" type="number" min="1" max="12" step="1"></label>
+          <label>Rm металла детали узла, МПа<input name="jointBaseMetalTensileStrengthMPa" type="number" min="100" step="10"></label>
+        </div>
+        <p class="hint practical-note">Внутренний узел трактуется буквально по геометрии мачты: четыре ребра нижнего модуля остаются на нижней стороне стыка, а два ребра следующей «ножки» передают совпадающие <em>F/M</em> через один вертикальный болт. Изгибающий момент переводится в дополнительное растяжение через заданный эффективный радиус, кручение — в дополнительный срез. Для реального M24×3 радиус должен быть уточнён по фактической шайбе/гайке/контактной площадке.</p>
 
         <h3 class="form-section-title">Нагрузки и погода</h3>
         <div class="form-grid">
@@ -51,7 +63,7 @@
           <label>Доп. горизонтальная сила, Н<input name="extraHorizontalLoadN" type="number" min="0" step="10"></label>
           <label>Доп. вертикальная сила вниз, Н<input name="extraVerticalLoadN" type="number" min="0" step="10"></label>
         </div>
-        <p class="hint practical-note">Сценарии Бофорта используют характерные скорости ветра и переводят их в динамическое давление <em>q = ρv²/2</em> при ρ = 1,225 кг/м³. Это удобная сравнительная шкала, а не замена нормативному ветровому району, порывам и коэффициентам высоты.</p>
+        <p class="hint practical-note">Сценарии Бофорта используют характерные скорости ветра и переводят их в динамическое давление <em>q = ρv²/2</em> при ρ = 1,225 кг/м³. Это сравнительная шкала, а не замена нормативному ветровому району, порывам и коэффициентам высоты.</p>
 
         <details class="advanced-inputs">
           <summary>Расчётные коэффициенты и ограничения</summary>
@@ -63,8 +75,12 @@
             <label>Допустимое отклонение, мм<input name="displacementLimitMm" type="number" min="1" step="1"></label>
             <label>Мин. множитель общей устойчивости<input name="minimumBucklingFactor" type="number" min="1" step="0.1"></label>
             <label>Шаг боковой проверки, °<input name="lateralCapacityStepDeg" type="number" min="5" max="60" step="5"></label>
+            <label>Плоскостей среза болта<input name="jointBoltShearPlanes" type="number" min="1" max="4" step="1"></label>
+            <label>γc соединения<input name="connectionConditionFactor" type="number" min="0.1" max="1" step="0.05"></label>
+            <label>βf шва<input name="weldBetaF" type="number" min="0.1" max="2" step="0.05"></label>
+            <label>βz шва<input name="weldBetaZ" type="number" min="0.1" max="2" step="0.05"></label>
           </div>
-          <p class="hint practical-note">Для локальной проверки ребра по Эйлеру коэффициент расчётной длины фиксирован: μ = 0,5. Боковая проверка использует 120° сектор симметрии. Статическая масса на вершине считается отдельно при действии собственного веса мачты, без ветра и льда.</p>
+          <p class="hint practical-note">Для локальной проверки ребра по Эйлеру μ = 0,5. Для одного межмодульного болта по умолчанию используется одна плоскость среза и γb = 1,0; поле γc оставлено явным. βf/βz должны соответствовать реальному способу сварки и таблице 39 СП 16.</p>
         </details>
 
         <div class="button-row">
@@ -114,13 +130,18 @@
         <article><span>Макс. невязка свободной DOF</span><strong id="metric-residual"></strong></article>
         <article><span>Первый предел боковой нагрузки</span><strong id="metric-lateral-capacity"></strong></article>
         <article><span>Боковая сила общей потери устойчивости</span><strong id="metric-lateral-buckling"></strong></article>
+        <article><span>Боковой предел выбранного болта</span><strong id="metric-lateral-bolt"></strong></article>
         <article><span>Механизм первого бокового предела</span><strong id="metric-lateral-mode"></strong></article>
         <article><span>Макс. суммарная масса на вершине</span><strong id="metric-static-payload"></strong></article>
         <article><span>Доп. масса после заданного оборудования</span><strong id="metric-static-reserve"></strong></article>
         <article><span>Эквивалентный объём воды</span><strong id="metric-water-volume"></strong></article>
         <article><span>Механизм статического предела</span><strong id="metric-static-mode"></strong></article>
+        <article><span>Использование межмодульного болта</span><strong id="metric-bolt-utilization"></strong></article>
+        <article><span>Критический межмодульный узел</span><strong id="metric-bolt-joint"></strong></article>
+        <article><span>Макс. длина сварки на конец</span><strong id="metric-weld-length"></strong></article>
         <article><span>Внутренняя верификация</span><strong id="metric-verification"></strong></article>
       </div>
+
       <div class="critical-card">
         <h3>Определяющие проверки</h3>
         <p id="critical-description"></p>
@@ -133,6 +154,10 @@
         <h3>Максимальная статическая нагрузка на вершине</h3>
         <p id="static-payload-description"></p>
       </div>
+      <div id="connection-summary-card" class="critical-card connection-card">
+        <h3>Межмодульные болты и сварные концы</h3>
+        <p id="connection-summary"></p>
+      </div>
       <div id="verification-summary-card" class="critical-card verification-card">
         <h3>Насколько можно доверять этому расчёту?</h3>
         <p id="verification-summary"></p>
@@ -143,6 +168,26 @@
         <button id="export-note-button" class="secondary" type="button" disabled>Скачать расчётный проект</button>
         <button id="export-csv-button" class="secondary" type="button" disabled>CSV рёбер</button>
       </div>
+
+      <details id="connection-details" open>
+        <summary>Расчёт соединительных узлов</summary>
+        <p class="hint practical-note">Таблица болтов показывает минимальный стандартный диаметр отдельно для каждого класса прочности. Для сварки приведена огибающая по совпадающим N/V/T/M каждого конца ребра; нельзя складывать максимумы из разных ветровых случаев.</p>
+        <h3>Подбор межмодульного болта</h3>
+        <div class="table-scroll">
+          <table class="member-table connection-table">
+            <thead><tr><th>Класс</th><th>Мин. диаметр</th><th>Шаг</th><th>Использование</th><th>Определяющий узел</th><th>Ветер</th></tr></thead>
+            <tbody id="bolt-recommendations-body"></tbody>
+          </table>
+        </div>
+        <h3>Критические сварные концы</h3>
+        <p id="weld-recommendation" class="material-summary"></p>
+        <div class="table-scroll">
+          <table class="member-table connection-table">
+            <thead><tr><th>Ребро</th><th>Конец</th><th>Узел</th><th>Ветер</th><th>N, кН</th><th>V, кН</th><th>T, Н·м</th><th>M, Н·м</th><th>Расч. длина, мм</th><th>Физ. длина, мм</th></tr></thead>
+            <tbody id="weld-results-body"></tbody>
+          </table>
+        </div>
+      </details>
 
       <details id="verification-details" open>
         <summary>Паспорт верификации — проверка по шагам</summary>
@@ -158,16 +203,7 @@
           <table class="member-table">
             <thead>
               <tr>
-                <th>№</th>
-                <th>Тип</th>
-                <th>Узлы</th>
-                <th>Длина, мм</th>
-                <th>N, кН</th>
-                <th>V, кН</th>
-                <th>M, Н·м</th>
-                <th>σэкв, МПа</th>
-                <th>Ветер</th>
-                <th>Использование</th>
+                <th>№</th><th>Тип</th><th>Узлы</th><th>Длина, мм</th><th>N, кН</th><th>V, кН</th><th>M, Н·м</th><th>σэкв, МПа</th><th>Ветер</th><th>Использование</th>
               </tr>
             </thead>
             <tbody id="member-results-body"></tbody>

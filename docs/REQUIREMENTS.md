@@ -1,11 +1,12 @@
 # Требования к Mast Calculator
 
-Статус: рабочая спецификация прототипа 0.9.
+Статус: рабочая спецификация прототипа 1.0.
 
-Подробные специализированные документы:
+Специализированные документы:
 
 - [`CALCULATION_ARCHITECTURE.md`](CALCULATION_ARCHITECTURE.md) — FEM и численный solver;
-- [`VERIFICATION_FOR_NON_SPECIALISTS.md`](VERIFICATION_FOR_NON_SPECIALISTS.md) — пошаговая верификация issue #12;
+- [`CONNECTIONS.md`](CONNECTIONS.md) — межмодульный болт, подбор диаметра и сварные концы;
+- [`VERIFICATION_FOR_NON_SPECIALISTS.md`](VERIFICATION_FOR_NON_SPECIALISTS.md) — пошаговая верификация;
 - [`LATERAL_CAPACITY_WEATHER_VALIDATION.md`](LATERAL_CAPACITY_WEATHER_VALIDATION.md) — боковая нагрузка, погода и solid-rod sanity-check;
 - [`STATIC_PAYLOAD_CAPACITY.md`](STATIC_PAYLOAD_CAPACITY.md) — вертикальная масса вершины;
 - [`PERFORMANCE_AND_PROGRESS.md`](PERFORMANCE_AND_PROGRESS.md) — performance/Worker;
@@ -13,24 +14,25 @@
 
 ## 1. Цель и границы продукта
 
-Mast Calculator — статическое браузерное приложение для расчёта и последующей оптимизации модульной мачты из одинаковых арматурных октаэдров.
+Mast Calculator — статическое браузерное приложение для расчёта, проверки и последующей оптимизации модульной мачты из одинаковых арматурных октаэдров.
 
 Обязательные принципы:
 
-1. backend не требуется; приложение должно публиковаться на GitHub Pages;
-2. пользовательский ввод ориентирован на изготовителя, а не на внутренние FEM-параметры;
-3. глобальный расчёт каркаса отделён от будущего расчёта физических болтовых/резьбовых/сварных узлов;
-4. расчётное ядро должно иметь аналитические, инвариантные, reference и regression checks;
-5. результат должен быть воспроизводимым и связан с Git SHA расчётного кода;
-6. пользователь получает человекочитаемый расчётный проект с формулами и численными подстановками;
-7. программа должна показывать не только результат, но и **границу доказанности результата**;
-8. расчётные изменения проходят CI на Linux/macOS/Windows.
+1. backend не требуется; публикация — GitHub Pages;
+2. пользовательский ввод ориентирован на реальные параметры изготовления и эксплуатации;
+3. глобальный frame solver отделён от физического post-processing соединений;
+4. соединения используют совпадающие `N/V/T/M` одного load case, а не искусственные независимые максимумы;
+5. расчётное ядро имеет analytical/reference/regression checks;
+6. результат воспроизводим и связан с Git SHA;
+7. пользователь получает человекочитаемый расчётный проект;
+8. UI показывает границу доказанности результата;
+9. расчётные изменения проходят CI на Linux/macOS/Windows.
 
-Прототип не является сертификатом конструкции и не должен скрывать отсутствующие нормативные/внешние проверки.
+Прототип не является сертификатом конструкции и не должен скрывать отсутствующие проверки конкретного реального узла.
 
 ## 2. Практический ввод
 
-Пользователь задаёт:
+Основной ввод:
 
 ```text
 moduleCount
@@ -42,7 +44,22 @@ weather/wind parameters
 ice parameters
 equipment mass and wind area
 extra horizontal/vertical loads
-advanced safety/load factors and limits
+```
+
+Ввод соединения прототипа 1.0:
+
+```text
+jointBoltDiameterMm
+jointBoltClass
+jointBoltShearPlanes
+jointEffectiveRadiusMm
+connectionConditionFactor
+jointBaseMetalTensileStrengthMPa
+weldConsumableId
+weldLegMm
+weldSegmentsPerEnd
+weldBetaF
+weldBetaZ
 ```
 
 Пользователь не вводит вручную:
@@ -54,7 +71,7 @@ E, nu, Ry, Rm, steel density
 effectiveLengthFactor текущей fixed-fixed идеализации
 ```
 
-Эти величины вычисляются или берутся из централизованного каталога.
+Эти величины вычисляются или берутся из каталогов.
 
 ## 3. Геометрия правильного октаэдра
 
@@ -67,9 +84,9 @@ h = a*sqrt(2/3)
 H = Nmodules*h
 ```
 
-Нижняя и верхняя треугольные грани имеют сторону `a` и повёрнуты на 60°.
+Нижняя и верхняя равносторонние треугольные грани имеют сторону `a` и повёрнуты на 60°.
 
-Один модуль должен содержать:
+Один модуль:
 
 ```text
 3 horizontal members
@@ -77,23 +94,23 @@ H = Nmodules*h
 = 9 members
 ```
 
-Если замкнут верхний треугольник, модель имеет дополнительно 3 верхних member.
+Если верхняя грань замкнута, добавляются 3 верхних member.
 
-Regression invariant: фактическая геометрическая длина каждого member должна совпадать с `a` в установленном численном допуске.
+Regression invariant: геометрическая длина каждого member совпадает с `a` в установленном численном допуске.
 
-Пока отдельно не моделируются:
+Пока осевая FEM-геометрия не учитывает:
 
-- ширина реза;
-- торцевая подрезка;
+- ширину реза;
+- торцевую подрезку;
 - заход/нахлёст арматуры на узел;
-- дополнительная высота гайки/болта;
-- эксцентриситет расчётных осей внутри физического узла.
+- дополнительную высоту гайки/болта;
+- эксцентриситет оси member внутри физического узла.
 
 ## 4. Глобальная 3D frame-модель
 
-Основной вопрос global solver:
+Global solver отвечает на вопрос:
 
-> выдерживает ли арматурный каркас нагрузки, если все пересечения считать идеальными, абсолютно жёсткими и неразрушаемыми?
+> выдерживает ли арматурный каркас нагрузки, если геометрические узлы считать идеально жёсткими?
 
 Node DOF:
 
@@ -122,7 +139,7 @@ EIz
 GJ
 ```
 
-Member должен передавать и возвращать:
+Каждый member возвращает:
 
 ```text
 N
@@ -131,7 +148,7 @@ T
 My, Mz
 ```
 
-Три нижних узла текущей модели полностью заделаны по 6 DOF. Реальный фундамент должен быть отдельным будущим модулем.
+Три нижних узла полностью заделаны по 6 DOF. Фундамент — отдельный будущий модуль.
 
 ## 5. Нагрузки
 
@@ -144,20 +161,17 @@ My, Mz
 - ветер на оборудование;
 - дополнительную горизонтальную силу;
 - дополнительную вертикальную силу;
-- огибающую по направлениям ветра.
+- огибающую направлений ветра.
 
 Собственный вес, лёд и ветер на member задаются distributed element loads.
 
-Для равномерной transverse load consistent nodal load vector должен учитывать силы `qL/2` и конечные моменты `qL²/12`.
+Для равномерной transverse load consistent nodal vector содержит силы `qL/2` и конечные моменты `qL²/12`.
 
 Для цилиндрического member используется только нормальная к его оси компонента ветра.
 
 ## 6. Погодные сценарии
 
-UI должен поддерживать:
-
-- полный Beaufort 0–12;
-- пользовательский ввод `windPressurePa`.
+UI поддерживает полный Beaufort 0–12 и пользовательский `windPressurePa`.
 
 Для preset:
 
@@ -170,7 +184,7 @@ Beaufort presets — сравнительный UX-инструмент, не з
 
 ## 7. Проверка member
 
-Упругая проверка:
+Упругая stress-проверка:
 
 ```text
 sigma_N = |N|/A
@@ -185,7 +199,7 @@ sigma_eq = sqrt(sigma² + 3*tau²)
 eta_sigma = sigma_eq/(Ry/gamma_M)
 ```
 
-Для distributed transverse load нельзя терять возможный максимум момента внутри элемента.
+Для distributed transverse load нельзя терять максимум момента внутри элемента.
 
 Локальная Euler-проверка:
 
@@ -202,11 +216,11 @@ eta_Euler = Ncompression/N_E
 eta_member = max(eta_sigma, eta_Euler)
 ```
 
-Это текущая инженерная упругая проверка, а не полный нормативный member design по СП 16.
+Это инженерная упругая проверка, не полный нормативный member design по СП 16.
 
 ## 8. Общая линейная устойчивость
 
-После static solve формируется `KG` и решается:
+После static solve формируется `KG`:
 
 ```text
 (K + lambda*KG)*phi = 0
@@ -222,18 +236,13 @@ residual/eigenResidual
 iterations
 ```
 
-Рабочий matrix-free generalized Lanczos обязан подтверждать найденный результат невязкой исходного generalized equation.
+Matrix-free generalized Lanczos обязан подтверждать результат невязкой исходной generalized eigen-задачи.
 
-Не реализованы пока:
-
-- P-Delta;
-- geometric nonlinearity;
-- initial imperfections;
-- пластичность.
+Пока не реализованы P-Delta, geometric nonlinearity, initial imperfections и пластичность.
 
 ## 9. Производительность
 
-Для одной геометрии должно выполняться `compile once, solve many`:
+Для одной геометрии действует `compile once, solve many`:
 
 ```text
 geometry/transforms
@@ -242,9 +251,9 @@ banded K
 Cholesky(K) once
 ```
 
-Все operational/lateral/static-payload cases используют одну факторизацию `K`.
+Operational/lateral/static-payload cases используют одну факторизацию `K`.
 
-40-модульный regression invariant текущей топологии:
+40-модульный regression invariant:
 
 ```text
 720 free DOF
@@ -252,92 +261,234 @@ half-bandwidth <= 35
 stiffnessFactorizationCount = 1
 ```
 
-Тяжёлый browser calculation выполняется в Web Worker. UI должен иметь progress, elapsed time, ETA и немедленную отмену через termination Worker.
+Тяжёлый browser calculation работает в Web Worker. UI имеет progress, elapsed time, ETA и отмену через termination Worker.
 
-## 10. Боковая нагрузка вершины
+## 10. Физическая модель межмодульного соединения
 
-Отдельный проверочный case:
+Это обязательная реализация issue #15.
+
+На каждом внутреннем геометрическом node сходятся шесть members. Физически они разделены так:
+
+```text
+нижний модуль:
+  2 диагонали снизу
+  2 горизонтальных ребра
+  = 4 members
+
+верхний модуль:
+  2 диагонали следующей ножки
+  = 2 members
+```
+
+Один вертикальный болт соединяет двухреберную часть верхнего модуля с четырёхреберной частью нижнего.
+
+Для `N>1`:
+
+```text
+Njoints = 3*(N - 1)
+```
+
+Три фундаментных node не входят в этот тип соединения.
+
+## 11. Demand межмодульного болта
+
+Для каждого внутреннего node выбираются ровно два members, идущие на следующий уровень. Их совпадающие end forces одного load case преобразуются в global coordinates и суммируются:
+
+```text
+Fjoint = F1 + F2
+Mjoint = M1 + M2
+```
+
+Ось болта:
+
+```text
+eb = [0,0,1]
+```
+
+Прямые составляющие:
+
+```text
+Faxis = Fjoint dot eb
+Fperp = Fjoint - eb*Faxis
+```
+
+Из-за передачи момента идеальной frame-моделью вводится явный физический параметр `reff=jointEffectiveRadiusMm`:
+
+```text
+Nt = |Faxis| + |Mb|/reff
+Ns = |Fperp| + |T|/reff
+```
+
+`reff` должен соответствовать фактической контактной геометрии шайбы/гайки/упора. Это не скрытая константа.
+
+Запрещено смешивать `N/V/T/M` из разных load cases.
+
+## 12. Расчёт и подбор болта
+
+Каталог хранит данные СП 16.13330.2017 для классов:
+
+```text
+5.6
+5.8
+8.8
+10.9
+12.9
+```
+
+и общего ряда:
+
+```text
+M16 M20 M24 M30 M36 M42 M48
+```
+
+Размеры M18/M22/M27 из таблицы Г.9, отмеченные для опор ВЛ/ОРУ, не входят в общий автоматический подбор.
+
+Расчётная несущая способность одного болта:
+
+```text
+Nbs = Rbs*Ab*ns*gamma_b*gamma_c
+Nbt = Rbt*Abn*gamma_c
+```
+
+Для текущего одноболтового узла:
+
+```text
+gamma_b = 1
+```
+
+Совместное действие:
+
+```text
+Ubolt = sqrt((Ns/Nbs)^2 + (Nt/Nbt)^2)
+PASS: Ubolt <= 1
+```
+
+Класс 5.8 не объявляется пригодным для demand с растяжением, если нормативный каталог не задаёт `Rbt`.
+
+Дополнительно показывается характеристическая разрывная оценка резьбового сечения:
+
+```text
+Nu,characteristic = Rbun*Abn
+```
+
+Она не является допустимой рабочей нагрузкой.
+
+Для каждого класса прочности программа должна находить первый проходящий стандартный диаметр и сохранять governing load case/node.
+
+Подробности: [`CONNECTIONS.md`](CONNECTIONS.md).
+
+## 13. Сварка концов рёбер
+
+Для каждого physical member end используется один совпадающий набор:
+
+```text
+N
+Vy, Vz
+T
+My, Mz
+```
+
+Для каждого operational load case выполняется отдельная проверка, после чего physical end получает случай с максимальной требуемой длиной.
+
+До ввода точных координат сварных валиков используется явно обозначенная conservative circular-group surrogate:
+
+```text
+V = hypot(Vy,Vz)
+M = hypot(My,Mz)
+Qaxial = |N| + 2*|M|/rw
+Qshear = |V| + |T|/rw
+Qw = sqrt(Qaxial² + Qshear²)
+```
+
+Два расчётных сечения углового шва:
+
+```text
+Rwz = 0.45*Run
+lw,f = Qw/(beta_f*kf*Rwf*gamma_c)
+lw,z = Qw/(beta_z*kf*Rwz*gamma_c)
+lw = max(lw,f, lw,z, 4*kf, 40 mm)
+```
+
+Расчётная длина — effective. Физическая суммарная длина:
+
+```text
+Lphysical,total = lw + 10 mm*nsegments
+```
+
+Каталог сварочных материалов хранит `Rwun/Rwf` и источник. Для рекомендации требуется как минимум:
+
+```text
+Rwun >= Run weaker parent metal
+```
+
+UI/report должны показывать критический member end, load case, `N/V/T/M`, effective/physical length и рекомендацию сварочного материала.
+
+## 14. Боковая нагрузка вершины
+
+Отдельный case:
 
 ```text
 F0 = 1 N horizontal at top
 ```
 
-Сила делится между тремя top nodes. Для чистоты экспериментальной характеристики отключаются эксплуатационный ветер, лёд, собственный вес, оборудование и прочие нагрузки.
+Отключаются эксплуатационный ветер, лёд, собственный вес, оборудование и прочие нагрузки.
 
 При линейности:
 
 ```text
 Fmember = 1/eta_member(F0)
 Fglobal = lambda_cr(F0)*1 N
-Flim = min(Fmember, Fglobal)
+Fbolt = 1/Ubolt(F0)
+Flim = min(Fmember, Fglobal, Fbolt)
 ```
 
-Проверяется 120° symmetry sector с настраиваемым шагом, default 15°.
+Проверяется 120° symmetry sector, default step 15°.
 
-UI отдельно показывает `Flim`, `Fmember`, `Fglobal`, механизм, направление и критический member. Сила отображается как N/kN/kgf; нельзя называть kgf просто «кг».
+UI отдельно показывает `Flim`, `Fmember`, `Fglobal`, `Fbolt`, механизм и направление. Сила отображается как N/kN/kgf.
 
-## 11. Максимальная статическая масса на вершине
+Solid-rod sanity-check сравнивает **member limit**, а не общий `Flim`, чтобы конкретный болт не подменял проверку масштаба frame solver.
 
-Отдельный gravity-only сценарий нужен для задач типа резервуара воды.
+## 15. Максимальная статическая масса на вершине
 
-Включаются:
+Gravity-only сценарий включает:
 
 ```text
 self weight * deadLoadFactor
 trial top mass * equipmentLoadFactor
+selected intermodule bolt check
 ```
 
-Исключаются ветер, лёд и горизонтальные нагрузки.
+Исключаются ветер, лёд и horizontal loads.
 
-Для trial mass:
-
-```text
-Pnom = m*g
-Pdesign = m*g*equipmentLoadFactor
-```
-
-На каждой итерации должны выполняться:
+На каждой итерации:
 
 ```text
 U_member(m) <= 1
+U_bolt(m) <= 1
 lambda_cr(m) >= 1
 ```
 
-Собственный вес нельзя обнулять в финальном поиске. Pure 1 kg case допускается только как верхняя оценка, затем предел уточняется двоичным поиском с self weight.
+Собственный вес нельзя обнулять в финальном поиске. Pure 1 kg case используется только как upper-bound reference; затем предел уточняется двоичным поиском с self weight.
 
-UI показывает:
+UI показывает maximum total mass, remaining mass, governing mode, `Ubolt` на пределе и эквивалентный объём воды для `rho_water=1000 kg/m³`.
 
-- maximum total top mass, kg;
-- remaining mass after configured vertical loads;
-- governing mode;
-- equivalent water volume for `rho_water=1000 kg/m³`.
+## 16. Verification passport
 
-## 12. Verification passport для неспециалиста
+`calculateCompleteMast()` формирует structured `verification` object.
 
-Это обязательное требование issue #12.
-
-Программа не должна выдавать простой самопровозглашённый статус «расчёт верен». Вместо этого `calculateCompleteMast()` формирует структурированный `verification` object с независимыми уровнями.
-
-### 12.1. Уровень 1 — ручной калькулятор
-
-Для текущей модели автоматически проверяются и показываются с подстановками:
+Уровень 1 — ручные формулы:
 
 ```text
 a = L0/n
 h = a*sqrt(2/3)
 H = N*h
-member count
-actual geometric length of every member
+member count/length
 m = Lsum*pi*d²/4*rho
 G = m*g*gamma_g
 q = rho_air*v²/2
 ```
 
-Каждый check должен иметь текст `howToCheck` для неспециалиста.
-
-### 12.2. Уровень 2 — equilibrium/residuals
-
-Минимальный набор:
+Уровень 2 — equilibrium/residuals:
 
 ```text
 sum(R)+sum(F) closure
@@ -347,9 +498,7 @@ free DOF equilibrium < 1e-8
 buckling residual < 1e-5
 ```
 
-### 12.3. Уровень 3 — analytical known-answer problems
-
-Тем же production `analyzeFrame()` должны решаться минимум:
+Уровень 3 — analytical known-answer problems:
 
 ```text
 delta = F*L/(E*A)
@@ -357,64 +506,21 @@ delta = P*L³/(3*E*I)
 theta = P*L²/(2*E*I)
 ```
 
-В verification object сохраняются expected, actual, tolerance и relative error.
+Уровень 4 — cross-algorithm reference: banded vs dense linear solver и известная generalized eigen-задача `lambda_cr=2`.
 
-### 12.4. Уровень 4 — cross-algorithm reference
+Уровни 5–6 остаются `not-verified` без independent FEM, engineering review и physical validation.
 
-Оптимизированный linear solver проверяется отдельным dense Gaussian solver на одной малой SPD-задаче.
-
-Eigen solver проверяется на задаче с известным ответом и отдельным dense reference. Минимальный benchmark:
-
-```text
-K = diag(2,8)
-KG = diag(-1,-2)
-lambda_cr = 2
-```
-
-### 12.5. Уровни 5–6 не могут становиться зелёными автоматически
-
-Статус должен оставаться `not-verified`, пока нет внешнего артефакта:
-
-- independent FEM model/result;
-- engineering review;
-- physical validation.
-
-Программа не имеет права приравнивать собственные unit tests к независимой validation реальной конструкции.
-
-### 12.6. Сводный статус
-
-Минимальные состояния:
-
-```text
-pass
-fail
-not-verified
-```
-
-Если любой internal check уровня 1–4 падает, verification status должен стать `failed`.
-
-Если уровни 1–4 проходят, а внешние уровни ещё не закрыты:
+Любой internal fail уровня 1–4 переводит verification status в `failed`. Если внутренние уровни зелёные, а внешние не закрыты:
 
 ```text
 internal-passed-external-pending
 ```
 
-Этот статус **не является утверждением о безопасности реальной конструкции**.
+Этот статус не является утверждением о безопасности реальной конструкции.
 
-### 12.7. Anti-false-green regression
+CI содержит anti-false-green regression с намеренным искажением контролируемой величины.
 
-CI обязан содержать отрицательный тест: намеренно изменить контролируемое рассчитанное значение и проверить, что соответствующий verification check переходит в `FAIL`.
-
-40-модульный regression должен требовать:
-
-```text
-verification.failed = 0
-levels 1..4 = PASS
-```
-
-Подробный подход: [`VERIFICATION_FOR_NON_SPECIALISTS.md`](VERIFICATION_FOR_NON_SPECIALISTS.md).
-
-## 13. Solid-rod sanity-check
+## 17. Solid-rod sanity-check
 
 Для специальной геометрии:
 
@@ -424,75 +530,63 @@ D_solid = 2a/sqrt(3)
 A6/Asolid = 9/8 = 1.125
 ```
 
-решётчатая мачта сравнивается со сплошной консолью по порядку боковой предельной силы и linear stiffness.
+Решётчатая frame-модель сравнивается со сплошной консолью по `memberLimitForceN` и linear stiffness.
 
-Цель — обнаруживать gross errors масштаба/единиц/жёсткости/топологии, а не утверждать эквивалентность двух разных конструкций.
+Цель — обнаруживать gross errors масштаба/единиц/жёсткости/topology. Болтовый предел намеренно исключён из этого sanity-check.
 
-## 14. Реальные соединительные узлы
+## 18. Что ещё требуется для полной модели реального узла
 
-Будущий joint module должен получать связанный demand одного физического load case:
+Прототип 1.0 реализует сам болт на tension/shear/combined action и требуемую суммарную длину угловых швов. Но без дополнительных физических размеров нельзя достоверно рассчитать:
 
-```text
-N
-Vy
-Vz
-T
-My
-Mz
-loadCaseId
-```
+- bearing/smearing детали под болтом;
+- stripping внутренней/наружной резьбы;
+- фактическую длину thread engagement;
+- prying/изгиб шайбы или контактной детали;
+- предварительную затяжку и slip;
+- точный `W/Ix/Iy` реальной сварной группы;
+- finite stiffness соединения;
+- fatigue;
+- фундаментный тип узла.
 
-Запрещено создавать несуществующий demand vector из независимых максимумов разных cases.
+Эти проверки должны добавляться после формализации реальной гайки/муфты/шайбы/сварных валиков. Программа не должна генерировать фиктивные значения из отсутствующей геометрии.
 
-Будущий расчёт должен учитывать болт/шпильку, резьбу, length of engagement, nut, bearing, weld group, parent metal, eccentricity и сварочный материал.
+## 19. Бумажный расчётный проект
 
-Результат joint check:
-
-```text
-PASS/FAIL
-demand
-resistance
-utilization
-governing failure mode
-fastener/weld specification
-source/revision
-```
-
-## 15. Бумажный расчётный проект
-
-Пользовательский autonomous HTML предназначен для чтения инженером и печати/PDF.
-
-Он должен содержать:
+Autonomous HTML должен содержать:
 
 1. method id и Git SHA;
 2. resolved inputs;
-3. раскрой и geometry;
+3. раскрой/geometry;
 4. `A/I/J/W/G`;
 5. load formulas;
 6. weather preset и `q`;
-7. frame equation `K*u=F`;
+7. `K*u=F`;
 8. governing `N/V/T/M`;
-9. stress/Euler checks;
-10. global eigen-buckling;
-11. lateral capacity;
-12. static top payload capacity;
-13. **verification passport с formula/substitution/expected/actual/howToCheck**;
-14. explicit external `NOT VERIFIED` levels;
-15. diagnostics и ограничения.
+9. stress/Euler/global buckling;
+10. lateral capacity с `Fbolt`;
+11. static payload capacity с `Ubolt`;
+12. physical joint split и `reff`;
+13. выбранный bolt: `Nt/Ns/Nbt/Nbs/Ubolt/Rbun*Abn`;
+14. minimum bolt by property class;
+15. critical weld-end demand и required length;
+16. welding consumable recommendation;
+17. verification passport;
+18. explicit external `NOT VERIFIED` levels;
+19. diagnostics и ограничения.
 
-Report renderer не имеет права повторно решать FEM. Он только форматирует уже рассчитанный result object.
+Report renderer не решает FEM повторно; он форматирует готовый result object.
 
 Бумажный проект не содержит JSON dump.
 
-## 16. Internal CalculationSnapshot
+## 20. Internal CalculationSnapshot
 
 Текущая схема:
 
 ```text
-mast-calculator/calculation-snapshot/v6
+mast-calculator/calculation-snapshot/v7
 ```
 
-Snapshot нужен для regression/cross-check/debug и должен включать:
+Snapshot включает:
 
 - method/schema/Git SHA;
 - resolved parameters;
@@ -500,16 +594,17 @@ Snapshot нужен для regression/cross-check/debug и должен вклю
 - operational load cases;
 - displacements/rotations/reactions/member results;
 - global buckling;
-- lateral capacity;
-- static payload capacity;
+- lateral/static payload capacity;
+- full connection demands/checks/recommendations;
+- weld-end envelope;
 - verification levels/checks/evidence;
 - diagnostics.
 
 Snapshot не показывается пользовательской JSON-кнопкой и не встраивается в paper report.
 
-## 17. Independent engineering verification protocol
+## 21. External engineering verification
 
-До окончательного design use требуется external reference ladder:
+До окончательного design use требуется reference ladder:
 
 1. beam;
 2. simple spatial frame;
@@ -517,7 +612,8 @@ Snapshot не показывается пользовательской JSON-к�
 4. two alternating modules;
 5. full mast without wind;
 6. full mast with asymmetric wind;
-7. global eigen-buckling.
+7. global eigen-buckling;
+8. отдельный joint model с реальной bolt/weld geometry.
 
 Для каждого external model фиксируются software/version, units, geometry, sections, restraints, loads и tolerances.
 
@@ -529,59 +625,69 @@ reactions/reaction moments
 N/V/T/M
 stresses
 lambda_cr/mode
+joint forces and moments
 ```
 
-Инженерная рецензия постановки является отдельным пунктом и не заменяется совпадением двух программ.
+Инженерная рецензия постановки является отдельным пунктом.
 
-## 18. Physical validation
+## 22. Physical validation
 
 Предпочтительный первый этап — недеструктивные контрольные нагрузки с измерением load-deflection curve и остаточной деформации.
 
-Испытание до разрушения/потери устойчивости не должно следовать непосредственно из UI-числа. Оно требует отдельной безопасной программы испытаний, дистанционного нагружения и исключения людей из зоны возможного падения/разрушения.
+Испытание до разрушения/потери устойчивости не должно следовать непосредственно из UI-числа. Для него нужна отдельная безопасная программа испытаний.
 
-## 19. CI/CD
+## 23. CI/CD
 
-Обязательные инварианты PR:
+Обязательные PR-инварианты:
 
 - `npm test`;
 - Linux/macOS/Windows matrix;
-- explicit job timeouts;
+- explicit timeouts;
 - least-privilege permissions;
-- fresh-merge simulation с актуальным `main`;
+- fresh-merge simulation;
 - secret scan;
 - syntax checks;
 - file line-limit guard;
 - static-site smoke;
 - workflow policy tests;
-- `verification.js` входит в browser smoke;
-- Pages deploy выполняет повторную проверку перед публикацией;
-- writer deployment не отменяется новым push посередине;
+- `verification.js` и connection browser modules входят в smoke;
+- Pages deploy выполняет повторную проверку;
 - Git SHA опубликованной сборки доступен report layer.
 
-## 20. Нормативная база и источники
+40-модульный regression дополнительно проверяет:
 
-Зафиксированы как текущие/будущие источники:
+```text
+3*(40-1) = 117 internal bolt joints
+one weld-envelope item per physical member end
+finite lateral bolt limit
+finite static-payload bolt utilization
+verification levels 1..4 PASS
+```
+
+## 24. Нормативная база
+
+Зафиксированы:
 
 - ГОСТ 34028-2016 — арматурный прокат;
 - ГОСТ ISO 898-1-2014 — болты, винты и шпильки;
 - ГОСТ 24705-2004 — метрическая резьба;
-- СП 16.13330.2017 — стальные конструкции и соединения;
+- СП 16.13330.2017, актуальная применяемая редакция — стальные конструкции и соединения;
 - ГОСТ 5264-80 — ручная дуговая сварка;
 - ГОСТ 9467-75 — покрытые электроды;
 - СП 20.13330.2016 — нагрузки и воздействия;
 - ГОСТ 27751-2014 — надёжность конструкций.
 
-Упоминание документа не означает, что прототип уже реализует все его нормативные проверки.
+Упоминание документа не означает реализацию всех его возможных проверок; реализованная область указана явно в `CONNECTIONS.md`.
 
-## 21. Следующие инженерные этапы
+## 25. Следующие инженерные этапы
 
-После 0.9 приоритетны:
+После 1.0 приоритетны:
 
-1. реально выполнить external FEM cross-check и превратить часть level 5 из `not-verified` в подтверждённый артефакт;
-2. получить инженерную рецензию paper calculation project;
-3. формализовать физическую geometry соединительного узла;
-4. реализовать bolt/thread/nut/weld checks;
+1. выполнить external FEM cross-check;
+2. получить engineering review paper calculation project;
+3. измерить/зафиксировать реальную geometry гайки, шайбы, thread engagement и сварных валиков;
+4. добавить thread stripping, bearing, prying и exact weld-group `W/Ix/Iy`;
 5. добавить нормативные load combinations;
 6. добавить P-Delta/geometric nonlinearity/imperfections;
-7. развить параметрический foundation model;
-8. подготовить контролируемый physical validation protocol.
+7. развить foundation model;
+8. подготовить physical validation protocol.

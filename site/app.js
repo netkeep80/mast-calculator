@@ -8,6 +8,12 @@ import {
   STOCK_BAR_LENGTHS_MM,
   theoreticalCutLengthMm,
 } from './engine/catalog.js'
+import {
+  BOLT_DIAMETERS_MM,
+  BOLT_PROPERTY_CLASS_IDS,
+  getBoltSize,
+  WELD_CONSUMABLES,
+} from './engine/connection-catalog.js'
 import { createCalculationProjectHtml } from './engine/calculation-project.js'
 import {
   buildMaterialSummary,
@@ -37,6 +43,11 @@ const showBucklingMode = document.querySelector('#show-buckling-mode')
 const memberResultsBody = document.querySelector('#member-results-body')
 const materialSummaryBox = document.querySelector('#material-summary')
 const materialInfoBox = document.querySelector('#material-info')
+const boltRecommendationsBody = document.querySelector('#bolt-recommendations-body')
+const weldResultsBody = document.querySelector('#weld-results-body')
+const weldRecommendationBox = document.querySelector('#weld-recommendation')
+const connectionSummaryBox = document.querySelector('#connection-summary')
+const connectionSummaryCard = document.querySelector('#connection-summary-card')
 const verificationSummaryBox = document.querySelector('#verification-summary')
 const verificationSummaryCard = document.querySelector('#verification-summary-card')
 const verificationLevelsBox = document.querySelector('#verification-levels')
@@ -76,7 +87,10 @@ const numericFieldNames = [
   'windEnvelopeStepDeg', 'lateralCapacityStepDeg', 'equipmentMassKg',
   'equipmentWindAreaM2', 'equipmentDragCoefficient', 'extraHorizontalLoadN',
   'extraVerticalLoadN', 'iceThicknessMm', 'iceDensityKgM3', 'displacementLimitMm',
-  'minimumBucklingFactor',
+  'minimumBucklingFactor', 'jointBoltDiameterMm', 'jointBoltShearPlanes',
+  'jointEffectiveRadiusMm', 'connectionConditionFactor',
+  'jointBaseMetalTensileStrengthMPa', 'weldLegMm', 'weldSegmentsPerEnd',
+  'weldBetaF', 'weldBetaZ',
 ]
 
 function populateSelect(name, values, label = String) {
@@ -93,6 +107,14 @@ populateSelect('stockBarLengthMm', STOCK_BAR_LENGTHS_MM, (value) => `${value / 1
 populateSelect('stockBarPieces', STOCK_BAR_DIVISIONS, (value) => `${value}`)
 populateSelect('barDiameterMm', STANDARD_DIAMETERS_MM, (value) => `Ø${value}`)
 populateSelect('reinforcementClass', REINFORCEMENT_CLASS_IDS, (value) => getReinforcementClass(value).label)
+populateSelect('jointBoltDiameterMm', BOLT_DIAMETERS_MM, (value) => {
+  const size = getBoltSize(value)
+  return `M${size.diameterMm}×${size.pitchMm}`
+})
+populateSelect('jointBoltClass', BOLT_PROPERTY_CLASS_IDS, (value) => `${value}`)
+populateSelect('weldConsumableId', WELD_CONSUMABLES.map((item) => item.id), (id) => (
+  WELD_CONSUMABLES.find((item) => item.id === id)?.label ?? id
+))
 populateSelect(
   'windPresetId',
   [CUSTOM_WIND_PRESET_ID, ...WEATHER_PRESETS.map((preset) => preset.id)],
@@ -108,6 +130,8 @@ for (const name of numericFieldNames) {
   if (input) input.value = DEFAULT_PARAMETERS[name]
 }
 form.elements.namedItem('reinforcementClass').value = DEFAULT_PARAMETERS.reinforcementClass
+form.elements.namedItem('jointBoltClass').value = DEFAULT_PARAMETERS.jointBoltClass
+form.elements.namedItem('weldConsumableId').value = DEFAULT_PARAMETERS.weldConsumableId
 form.elements.namedItem('windPresetId').value = DEFAULT_PARAMETERS.windPresetId
 form.elements.namedItem('closeTopRing').checked = DEFAULT_PARAMETERS.closeTopRing
 form.elements.namedItem('windEnvelopeEnabled').checked = DEFAULT_PARAMETERS.windEnvelopeEnabled
@@ -170,7 +194,11 @@ function readParameters() {
   }
   parameters.moduleCount = Math.floor(parameters.moduleCount)
   parameters.stockBarPieces = Math.floor(parameters.stockBarPieces)
+  parameters.jointBoltShearPlanes = Math.floor(parameters.jointBoltShearPlanes)
+  parameters.weldSegmentsPerEnd = Math.floor(parameters.weldSegmentsPerEnd)
   parameters.reinforcementClass = form.elements.namedItem('reinforcementClass').value
+  parameters.jointBoltClass = form.elements.namedItem('jointBoltClass').value
+  parameters.weldConsumableId = form.elements.namedItem('weldConsumableId').value
   parameters.windPresetId = form.elements.namedItem('windPresetId').value
   parameters.closeTopRing = form.elements.namedItem('closeTopRing').checked
   parameters.windEnvelopeEnabled = form.elements.namedItem('windEnvelopeEnabled').checked
@@ -199,6 +227,7 @@ function limitModeLabel(mode) {
   if (mode === 'global-buckling') return 'общая потеря устойчивости'
   if (mode === 'local-member-buckling') return 'локальная устойчивость ребра'
   if (mode === 'material-strength') return 'прочность материала'
+  if (mode === 'bolt-connection') return 'межмодульный болт'
   if (mode === 'self-weight-overlimit') return 'собственный вес уже превышает предел'
   return 'не определён'
 }
@@ -239,6 +268,92 @@ function renderMemberReport(result) {
     `${group.familyName.toLowerCase()} Ø${format(group.diameterMm, 0)} × ${format(group.lengthMm, 0)} мм — ${group.count} шт.`
   )).join('; ')
   materialSummaryBox.textContent = `Всего ${material.totalCount} рёбер, ${format(material.totalLengthM, 2)} м и ${format(material.totalMassKg, 1)} кг стали. ${groupDescription}`
+}
+
+function renderConnections(result) {
+  const connections = result.connections
+  const selected = connections?.bolt?.selected
+  const weld = connections?.weld
+  const boltMetric = document.querySelector('#metric-bolt-utilization')
+  const jointMetric = document.querySelector('#metric-bolt-joint')
+  const weldMetric = document.querySelector('#metric-weld-length')
+
+  if (!connections || !selected?.applicable) {
+    boltMetric.textContent = 'нет межмодульных стыков'
+    jointMetric.textContent = '—'
+    weldMetric.textContent = weld?.critical
+      ? `${format(weld.critical.check.requiredPhysicalLengthMm, 1)} мм`
+      : '—'
+    connectionSummaryBox.textContent = 'При одном модуле внутренних межмодульных болтов нет. Сварные концы рёбер проверяются отдельно.'
+    boltRecommendationsBody.replaceChildren()
+  } else {
+    const demand = selected.governingDemand
+    const check = selected.governingCheck
+    const size = getBoltSize(result.parameters.jointBoltDiameterMm)
+    boltMetric.textContent = format(selected.utilization, 3)
+    jointMetric.textContent = `ур. ${demand.level}, узел ${demand.nodeId}`
+    boltMetric.classList.toggle('danger', selected.utilization > 1)
+    connectionSummaryCard.classList.toggle('connection-failed', !connections.passesConfiguredBolt)
+    connectionSummaryBox.textContent = `Выбран M${size.diameterMm}×${size.pitchMm}, класс ${result.parameters.jointBoltClass}: определяющий узел ${demand.nodeId} на уровне ${demand.level}, ветер ${angle(demand.windDirectionDeg)}. На болт приведено Nt = ${format(check.tensionN / 1000, 3)} кН и Ns = ${format(check.shearN / 1000, 3)} кН; Nbt = ${formatForce(check.tensionCapacityN / 1000, 3)} кН, Nbs = ${format(check.shearCapacityN / 1000, 3)} кН, нормативная разрывная оценка Rbun·Abn = ${format(check.characteristicRuptureN / 1000, 3)} кН. Взаимодействие = ${format(check.interactionUtilization, 4)}.`
+
+    boltRecommendationsBody.replaceChildren(...connections.bolt.recommendationsByClass.map((recommendation) => {
+      const row = document.createElement('tr')
+      const candidate = recommendation.recommended
+      const governing = candidate?.evaluation?.governingDemand
+      const utilization = candidate?.evaluation?.utilization
+      const values = [
+        recommendation.boltClass,
+        candidate ? `M${candidate.diameterMm}` : 'не найден',
+        candidate ? `${candidate.pitchMm} мм` : '—',
+        Number.isFinite(utilization) ? format(utilization, 4) : '—',
+        governing ? `ур. ${governing.level}, узел ${governing.nodeId}` : '—',
+        governing && Number.isFinite(governing.windDirectionDeg) ? angle(governing.windDirectionDeg) : '—',
+      ]
+      if (!candidate) row.classList.add('danger-row')
+      row.replaceChildren(...values.map((value) => {
+        const cell = document.createElement('td')
+        cell.textContent = value
+        return cell
+      }))
+      return row
+    }))
+  }
+
+  if (!weld?.critical) {
+    weldMetric.textContent = '—'
+    weldRecommendationBox.textContent = 'Нет данных сварной проверки.'
+    weldResultsBody.replaceChildren()
+    return
+  }
+
+  const critical = weld.critical
+  weldMetric.textContent = `${format(critical.check.requiredPhysicalLengthMm, 1)} мм`
+  const electrode = weld.electrodeRecommendation.recommended
+  const wire = weld.wireRecommendation.recommended
+  weldRecommendationBox.textContent = `Выбран ${critical.check.consumableLabel}, катет ${format(weld.configuredLegMm, 1)} мм, ${weld.segmentsPerEnd} непрерывных участка на конец. Критический конец: ребро ${critical.memberId}${critical.end}, узел ${critical.nodeId}, ветер ${angle(critical.windDirectionDeg)}; требуется суммарно ${format(critical.check.requiredEffectiveLengthMm, 1)} мм расчётной и ${format(critical.check.requiredPhysicalLengthMm, 1)} мм физической длины, по ${format(critical.check.requiredPhysicalLengthPerSegmentMm, 1)} мм на участок при равном делении. Минимальный совместимый электродный уровень: ${electrode?.label ?? 'не найден'}; проволока: ${wire?.label ?? 'не найдена'}.`
+  weldMetric.classList.toggle('danger', !weld.selectedConsumableCompatible)
+
+  weldResultsBody.replaceChildren(...weld.envelope.map((item) => {
+    const row = document.createElement('tr')
+    const values = [
+      item.memberId,
+      item.end,
+      item.nodeId,
+      angle(item.windDirectionDeg),
+      format(item.axialForceN / 1000, 3),
+      format(item.shearForceN / 1000, 3),
+      format(item.torsionNm, 2),
+      format(item.bendingNm, 2),
+      format(item.check.requiredEffectiveLengthMm, 1),
+      format(item.check.requiredPhysicalLengthMm, 1),
+    ]
+    row.replaceChildren(...values.map((value) => {
+      const cell = document.createElement('td')
+      cell.textContent = value
+      return cell
+    }))
+    return row
+  }))
 }
 
 function renderVerification(result) {
@@ -340,6 +455,7 @@ function renderResult(result) {
   document.querySelector('#metric-residual').textContent = result.analysis.diagnostics.maximumNodeEquilibriumResidual.toExponential(2)
   document.querySelector('#metric-lateral-capacity').textContent = `${formatForce(lateral.criticalForceKgf, 1)} кгс`
   document.querySelector('#metric-lateral-buckling').textContent = `${formatForce(lateral.globalBucklingForceKgf, 1)} кгс`
+  document.querySelector('#metric-lateral-bolt').textContent = `${formatForce(lateral.boltLimitForceKgf, 1)} кгс`
   document.querySelector('#metric-lateral-mode').textContent = limitModeLabel(lateral.governingMode)
   document.querySelector('#metric-static-payload').textContent = `${formatForce(staticPayload.maximumTotalTopMassKg, 1)} кг`
   document.querySelector('#metric-static-reserve').textContent = `${formatForce(staticPayload.remainingAdditionalMassKg, 1)} кг`
@@ -355,24 +471,25 @@ function renderResult(result) {
     ? `Ребро № ${critical.memberId}: N = ${format(critical.axialForceN / 1000, 3)} кН, Vmax = ${format(critical.maxShearN / 1000, 3)} кН, Mmax = ${format(critical.maxBendingNm, 2)} Н·м, σэкв = ${format(critical.equivalentStressPa / 1e6, 2)} МПа, использование = ${format(critical.utilization, 4)} при ветре ${angle(strengthCase.windDirectionDeg)}. Максимальный прогиб возникает при ${angle(displacementCase.windDirectionDeg)}, минимальный множитель общей устойчивости — при ${angle(bucklingCase.windDirectionDeg)}.`
     : 'Критическое ребро не определено.'
 
-  document.querySelector('#lateral-capacity-description').textContent = `Чистая горизонтальная сила прикладывается к вершине и распределяется поровну между тремя верхними узлами. Худшее направление ${angle(lateral.directionDeg)}: первый расчётный предел ${formatForce(lateral.criticalForceN / 1000, 3)} кН = ${formatForce(lateral.criticalForceKgf, 1)} кгс; механизм — ${limitModeLabel(lateral.governingMode)}. Предел по ребру ${formatForce(lateral.memberLimitForceKgf, 1)} кгс, линейная общая потеря устойчивости ${formatForce(lateral.globalBucklingForceKgf, 1)} кгс.`
+  document.querySelector('#lateral-capacity-description').textContent = `Чистая горизонтальная сила прикладывается к вершине и распределяется поровну между тремя верхними узлами. Худшее направление ${angle(lateral.directionDeg)}: первый расчётный предел ${formatForce(lateral.criticalForceN / 1000, 3)} кН = ${formatForce(lateral.criticalForceKgf, 1)} кгс; механизм — ${limitModeLabel(lateral.governingMode)}. Предел по ребру ${formatForce(lateral.memberLimitForceKgf, 1)} кгс, общая потеря устойчивости ${formatForce(lateral.globalBucklingForceKgf, 1)} кгс, выбранный межмодульный болт ${formatForce(lateral.boltLimitForceKgf, 1)} кгс.`
 
   const boundedNote = staticPayload.bounded
     ? ''
     : ' Численный предел не был достигнут до программной верхней границы поиска, поэтому результат является нижней оценкой.'
-  document.querySelector('#static-payload-description').textContent = `Гравитационный расчёт включает собственный вес мачты с γg = ${format(parameters.deadLoadFactor, 2)} и суммарную массу на вершине с γ = ${format(parameters.equipmentLoadFactor, 2)}, но исключает ветер и лёд. Максимальная суммарная масса на вершине ${formatForce(staticPayload.maximumTotalTopMassKg, 1)} кг (${formatForce(staticPayload.maximumNominalTopForceN / 1000, 3)} кН номинально); механизм — ${limitModeLabel(staticPayload.governingMode)}. После уже заданных оборудования и дополнительной вертикальной силы остаётся ${formatForce(staticPayload.remainingAdditionalMassKg, 1)} кг, что соответствует примерно ${formatForce(staticPayload.equivalentWaterVolumeM3, 3)} м³ воды при ρ = ${format(staticPayload.waterDensityKgM3, 0)} кг/м³. На пределе: использование ребра ${format(staticPayload.utilizationAtLimit, 4)}, λcr = ${formatFactor(staticPayload.bucklingFactorAtLimit)}, осадка вершины ${format(staticPayload.topSettlementAtLimitM * 1000, 2)} мм.${boundedNote}`
+  document.querySelector('#static-payload-description').textContent = `Гравитационный расчёт включает собственный вес мачты с γg = ${format(parameters.deadLoadFactor, 2)}, суммарную массу на вершине с γ = ${format(parameters.equipmentLoadFactor, 2)} и выбранный межмодульный болт, но исключает ветер и лёд. Максимальная суммарная масса на вершине ${formatForce(staticPayload.maximumTotalTopMassKg, 1)} кг (${formatForce(staticPayload.maximumNominalTopForceN / 1000, 3)} кН номинально); механизм — ${limitModeLabel(staticPayload.governingMode)}. После заданного оборудования и дополнительной вертикальной силы остаётся ${formatForce(staticPayload.remainingAdditionalMassKg, 1)} кг, то есть примерно ${formatForce(staticPayload.equivalentWaterVolumeM3, 3)} м³ воды. На пределе: ребро ${format(staticPayload.utilizationAtLimit, 4)}, болт ${format(staticPayload.boltUtilizationAtLimit, 4)}, λcr = ${formatFactor(staticPayload.bucklingFactorAtLimit)}, осадка ${format(staticPayload.topSettlementAtLimitM * 1000, 2)} мм.${boundedNote}`
 
   const performance = result.performance
   const performanceText = performance
-    ? ` Solver: ${performance.linearSystemSolver}; ${performance.freeDofCount} свободных DOF; полуширина ленты ${performance.stiffnessBandwidth}; факторизация K выполнена ${performance.stiffnessFactorizationCount} раз; ветровых случаев ${performance.operationalCaseCount}, боковых ${performance.lateralCaseCount}, оценок статического груза ${performance.staticPayloadEvaluationCount}; внутренних проверок ${performance.verificationInternalCheckCount}.`
+    ? ` Solver: ${performance.linearSystemSolver}; ${performance.freeDofCount} свободных DOF; полуширина ${performance.stiffnessBandwidth}; факторизация K ${performance.stiffnessFactorizationCount} раз; ветровых случаев ${performance.operationalCaseCount}, боковых ${performance.lateralCaseCount}, оценок статического груза ${performance.staticPayloadEvaluationCount}; внутренних проверок ${performance.verificationInternalCheckCount}.`
     : ''
-  document.querySelector('#load-summary').textContent = `Погода: ${parameters.windPresetLabel}; v = ${format(parameters.windSpeedMs, 1)} м/с; q = ${format(parameters.windPressurePa, 1)} Па до γw. Рассмотрено направлений ветра: ${result.envelope.caseCount}. Вес стали с коэффициентом: ${format(result.loads.selfWeightN / 1000)} кН; вес льда: ${format(result.loads.iceWeightN / 1000)} кН; результирующий ветер на рёбра: ${format(result.loads.memberWindN / 1000)} кН.${performanceText}`
+  document.querySelector('#load-summary').textContent = `Погода: ${parameters.windPresetLabel}; v = ${format(parameters.windSpeedMs, 1)} м/с; q = ${format(parameters.windPressurePa, 1)} Па до γw. Направлений ветра: ${result.envelope.caseCount}. Вес стали: ${format(result.loads.selfWeightN / 1000)} кН; лёд: ${format(result.loads.iceWeightN / 1000)} кН; ветер на рёбра: ${format(result.loads.memberWindN / 1000)} кН.${performanceText}`
 
   warningsList.replaceChildren(...result.warnings.map((warning) => {
     const item = document.createElement('li')
     item.textContent = warning
     return item
   }))
+  renderConnections(result)
   renderVerification(result)
   renderMemberReport(result)
 }
@@ -467,7 +584,10 @@ function renderOptimization(summary, result) {
   const payloadText = result?.staticPayloadCapacity
     ? `, статическая масса на вершине ${formatForce(result.staticPayloadCapacity.maximumTotalTopMassKg, 1)} кг`
     : ''
-  optimizationBox.textContent = `Минимальный найденный единый диаметр: ${diameter} мм. Использование ${format(result.envelope.maxUtilization, 3)}, прогиб ${format(result.envelope.maxTopDisplacementM * 1000, 2)} мм, множитель общей устойчивости ${formatFactor(result.envelope.minimumBucklingFactor)}, первый боковой предел ${formatForce(result.lateralCapacity.criticalForceKgf, 1)} кгс, боковая общая потеря устойчивости ${formatForce(result.lateralCapacity.globalBucklingForceKgf, 1)} кгс${payloadText}.`
+  const boltText = result?.connections?.bolt?.selected?.applicable
+    ? `, болт ${format(result.connections.bolt.selected.utilization, 3)}`
+    : ''
+  optimizationBox.textContent = `Минимальный найденный единый диаметр арматуры: ${diameter} мм. Использование ${format(result.envelope.maxUtilization, 3)}, прогиб ${format(result.envelope.maxTopDisplacementM * 1000, 2)} мм, λcr ${formatFactor(result.envelope.minimumBucklingFactor)}, первый боковой предел ${formatForce(result.lateralCapacity.criticalForceKgf, 1)} кгс${boltText}${payloadText}. Болт и сварка не меняют задачу подбора диаметра арматуры, но проверяются в итоговом расчёте.`
 }
 
 function startWorkerJob(action, parameters) {
@@ -495,7 +615,7 @@ function startWorkerJob(action, parameters) {
       if (message.result) renderResult(message.result)
       if (message.optimization) renderOptimization(message.optimization, message.result)
       stopActiveWorker()
-      finishProgress(message.optimization ? 'Подбор и итоговый расчёт завершены.' : 'Расчёт и внутренняя верификация завершены.')
+      finishProgress(message.optimization ? 'Подбор и итоговый расчёт завершены.' : 'Расчёт, соединения и верификация завершены.')
     }
   }
   worker.onerror = (event) => {

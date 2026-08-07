@@ -232,6 +232,15 @@ function exportLoadCase(loadCase) {
   }
 }
 
+function exportLateralCapacity(lateralCapacity) {
+  if (!lateralCapacity) return null
+  return {
+    ...lateralCapacity,
+    cases: lateralCapacity.cases.map((item) => ({ ...item })),
+    governing: { ...lateralCapacity.governing },
+  }
+}
+
 // Internal verification snapshot. It is intentionally not exposed as a paper
 // report: the human-readable calculation project is generated separately from
 // the same result object, so its figures cannot diverge from the UI.
@@ -245,9 +254,10 @@ export function createCalculationExport(
   const resolvedParameters = result.parameters ?? parameters
   const material = buildMaterialSummary(result)
   const members = buildMemberEnvelope(result)
+  const lateralCapacity = exportLateralCapacity(result.lateralCapacity)
 
   return {
-    schema: 'mast-calculator/calculation-snapshot/v3',
+    schema: 'mast-calculator/calculation-snapshot/v4',
     generatedAt,
     software: {
       method: result.method ?? null,
@@ -260,6 +270,10 @@ export function createCalculationExport(
     summary: {
       heightM: resolvedParameters.moduleCount * resolvedParameters.moduleHeightMm / 1000,
       totalMassKg: result.analysis.totalMassKg,
+      windPresetId: resolvedParameters.windPresetId,
+      windPresetLabel: resolvedParameters.windPresetLabel,
+      windSpeedMs: resolvedParameters.windSpeedMs,
+      windPressurePa: resolvedParameters.windPressurePa,
       maximumUtilization: result.envelope.maxUtilization,
       maximumTopDisplacementMm: result.envelope.maxTopDisplacementM * 1000,
       minimumBucklingFactor: result.envelope.minimumBucklingFactor,
@@ -268,10 +282,15 @@ export function createCalculationExport(
       displacementWindDirectionDeg: result.envelope.displacement.windDirectionDeg,
       bucklingWindDirectionDeg: result.envelope.buckling.windDirectionDeg,
       loadCaseCount: result.envelope.caseCount,
+      lateralCriticalForceN: lateralCapacity?.criticalForceN ?? null,
+      lateralCriticalForceKgf: lateralCapacity?.criticalForceKgf ?? null,
+      lateralGoverningMode: lateralCapacity?.governingMode ?? null,
+      lateralDirectionDeg: lateralCapacity?.directionDeg ?? null,
     },
     diagnostics: { ...result.analysis.diagnostics },
     model: exportModel(result.model),
     loadCases: result.cases.map(exportLoadCase),
+    lateralCapacity,
     material,
     members,
     warnings: [...result.warnings],

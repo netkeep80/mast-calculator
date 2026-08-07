@@ -1,4 +1,5 @@
 import { createCalculationNoteHtml as createBaseCalculationNoteHtml } from './calculation-note.js'
+import { createFabricationAndReferenceAppendix } from './fabrication-project-appendix.js'
 import { STANDARD_GRAVITY_M_S2 } from './lateral-capacity.js'
 
 const escapeHtml = (value) => String(value ?? '')
@@ -254,6 +255,7 @@ export function createCalculationProjectHtml(
     createConnectionAppendix(result),
     createModularHeightAppendix(result),
     createVerificationAppendix(result),
+    createFabricationAndReferenceAppendix(result),
   ].join('\n')
   return base.replace('</body>', `${appendices}\n</body>`)
 }

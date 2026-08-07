@@ -24,6 +24,7 @@ import {
   MAX_WELD_TO_RIB_AREA_RATIO,
   MIN_WELD_TO_RIB_AREA_RATIO,
 } from './engine/weld-check.js'
+import { createMastObj } from './engine/obj-export.js'
 import { JointViewer } from './joint-viewer.js'
 import {
   enrichAndRenderUsageResult,
@@ -32,6 +33,7 @@ import {
 
 const $ = (selector) => document.querySelector(selector)
 const form = $('#parameters-form')
+let latestObjExportResult = null
 
 function createNumericControl(name, title, attributes = {}) {
   const label = document.createElement('label')
@@ -78,7 +80,61 @@ function installJointStrengthUi() {
   }
 }
 
+function installObjExportUi() {
+  const exportRow = document.querySelector('.export-row')
+  if (!exportRow) return null
+  const existing = $('#export-obj-button')
+  if (existing) return existing
+  const button = document.createElement('button')
+  button.id = 'export-obj-button'
+  button.className = 'secondary'
+  button.type = 'button'
+  button.disabled = true
+  button.textContent = '3D модель OBJ'
+  button.title = 'Подробная mesh-модель мачты: арматура реального диаметра, гайки и болты выбранного узла'
+  exportRow.append(button)
+  return button
+}
+
+function objExportFilename(result) {
+  const modules = Number(result?.parameters?.moduleCount ?? result?.model?.moduleCount ?? 0) || 'mast'
+  const ribLength = Number(result?.parameters?.ribCutLengthMm ?? result?.parameters?.triangleSideMm)
+  const suffix = Number.isFinite(ribLength) && ribLength > 0 ? `-${Math.round(ribLength)}mm` : ''
+  return `mast-model-${modules}x${suffix}.obj`
+}
+
+function downloadObj(result) {
+  const blob = new Blob([createMastObj(result)], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = objExportFilename(result)
+  document.body.append(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+function setObjExportResult(result, button) {
+  latestObjExportResult = result ?? null
+  if (button) button.disabled = !latestObjExportResult
+}
+
 installJointStrengthUi()
+const exportObjButton = installObjExportUi()
+exportObjButton?.addEventListener('click', () => {
+  if (!latestObjExportResult) return
+  try {
+    downloadObj(latestObjExportResult)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const errorBox = $('#error')
+    if (errorBox) {
+      errorBox.textContent = `Не удалось сформировать OBJ: ${message}`
+      errorBox.hidden = false
+    } else console.error(error)
+  }
+})
 
 const modeSelect = form.elements.namedItem('jointConfiguratorMode')
 const boltDiameter = form.elements.namedItem('jointBoltDiameterMm')
@@ -88,8 +144,8 @@ const boltLength = form.elements.namedItem('jointBoltLengthMm')
 const engagement = form.elements.namedItem('jointThreadEngagementFactor')
 const effectiveRadius = form.elements.namedItem('jointEffectiveRadiusMm')
 const weldConsumable = form.elements.namedItem('weldConsumableId')
-const weldLeg = form.elements.namedItem('weldLegMm')
-const weldSegments = form.elements.namedItem('weldSegmentsPerEnd')
+const weldLeg = form.elements.namedItem('jointWeldLegMm')
+const weldSegments = form.elements.namedItem('jointWeldSegmentsPerEnd')
 const tighteningTorque = form.elements.namedItem('jointTighteningTorqueNm')
 const nutFactor = form.elements.namedItem('jointNutFactor')
 const preloadVariation = form.elements.namedItem('jointPreloadVariation')
@@ -284,6 +340,7 @@ function readJointUiParameters() {
 }
 
 function synchronizeFromResult(result) {
+  setObjExportResult(result, exportObjButton)
   const configurator = result?.connections?.configurator
   if (!configurator?.geometry) return
   const geometry = configurator.geometry
@@ -357,8 +414,8 @@ optimizeButton.addEventListener('click', () => {
 }, { capture: true })
 
 // app.js остаётся владельцем основной формы/визуализации. Bootstrap добавляет
-// физический конфигуратор, сценарный UX, справочники и сборочную массу, не
-// создавая второй расчётный путь для FEM.
+// физический конфигуратор, OBJ-экспорт, сценарный UX, справочники и сборочную
+// массу, не создавая второй расчётный путь для FEM.
 await import('./app.js')
 rebuildClearanceNutOptions(30)
 syncMode()

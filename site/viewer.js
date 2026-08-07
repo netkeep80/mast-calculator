@@ -1,14 +1,28 @@
+const segmentDistance = (point, start, end) => {
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  const lengthSquared = dx * dx + dy * dy
+  if (lengthSquared <= Number.EPSILON) return Math.hypot(point.x - start.x, point.y - start.y)
+  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared))
+  return Math.hypot(point.x - (start.x + t * dx), point.y - (start.y + t * dy))
+}
+
 export class MastViewer {
-  constructor(canvas) {
+  constructor(canvas, options = {}) {
     this.canvas = canvas
     this.context = canvas.getContext('2d')
     this.result = null
     this.showBucklingMode = false
+    this.selectedModuleIndex = 0
+    this.onModuleSelect = options.onModuleSelect ?? null
     this.yaw = -0.65
     this.pitch = 0.35
     this.zoom = 1
     this.dragging = false
+    this.pointerMoved = false
+    this.pointerDownAt = null
     this.lastPointer = null
+    this.projectedNodes = null
 
     const resize = () => {
       const ratio = Math.min(window.devicePixelRatio || 1, 2)
@@ -22,18 +36,29 @@ export class MastViewer {
     new ResizeObserver(resize).observe(canvas)
     canvas.addEventListener('pointerdown', (event) => {
       this.dragging = true
+      this.pointerMoved = false
+      this.pointerDownAt = [event.clientX, event.clientY]
       this.lastPointer = [event.clientX, event.clientY]
       canvas.setPointerCapture(event.pointerId)
     })
     canvas.addEventListener('pointermove', (event) => {
       if (!this.dragging || !this.lastPointer) return
-      this.yaw += (event.clientX - this.lastPointer[0]) * 0.01
-      this.pitch = Math.max(-1.2, Math.min(1.2, this.pitch + (event.clientY - this.lastPointer[1]) * 0.01))
+      const dx = event.clientX - this.lastPointer[0]
+      const dy = event.clientY - this.lastPointer[1]
+      if (Math.hypot(
+        event.clientX - (this.pointerDownAt?.[0] ?? event.clientX),
+        event.clientY - (this.pointerDownAt?.[1] ?? event.clientY),
+      ) > 4) this.pointerMoved = true
+      this.yaw += dx * 0.01
+      this.pitch = Math.max(-1.2, Math.min(1.2, this.pitch + dy * 0.01))
       this.lastPointer = [event.clientX, event.clientY]
       this.draw()
     })
-    canvas.addEventListener('pointerup', () => {
+    canvas.addEventListener('pointerup', (event) => {
+      if (!this.pointerMoved) this.pickModule(event)
       this.dragging = false
+      this.pointerMoved = false
+      this.pointerDownAt = null
       this.lastPointer = null
     })
     canvas.addEventListener('wheel', (event) => {
@@ -46,12 +71,26 @@ export class MastViewer {
 
   setResult(result) {
     this.result = result
+    this.selectedModuleIndex = Math.min(
+      this.selectedModuleIndex,
+      Math.max(0, (result?.model?.moduleCount ?? 1) - 1),
+    )
     this.draw()
   }
 
   setBucklingMode(enabled) {
     this.showBucklingMode = enabled
     this.draw()
+  }
+
+  setSelectedModule(moduleIndex) {
+    const count = this.result?.model?.moduleCount ?? 1
+    this.selectedModuleIndex = Math.max(0, Math.min(count - 1, Number(moduleIndex) || 0))
+    this.draw()
+  }
+
+  setModuleSelectHandler(handler) {
+    this.onModuleSelect = handler
   }
 
   project(point, scale, centerX, centerY) {
@@ -67,7 +106,24 @@ export class MastViewer {
     return { x: centerX + rotatedX * scale, y: centerY - screenY3d * scale, depth }
   }
 
-  drawMembers(projectedNodes, strokeStyle, lineWidth, utilizationColors = false) {
+  pickModule(event) {
+    if (!this.result || !this.projectedNodes) return
+    const rectangle = this.canvas.getBoundingClientRect()
+    const point = { x: event.clientX - rectangle.left, y: event.clientY - rectangle.top }
+    let best = null
+    for (const member of this.result.model.members) {
+      if (!Number.isInteger(member.moduleIndex)) continue
+      const start = this.projectedNodes[member.nodeA]
+      const end = this.projectedNodes[member.nodeB]
+      const distance = segmentDistance(point, start, end)
+      if (!best || distance < best.distance) best = { distance, moduleIndex: member.moduleIndex }
+    }
+    if (!best || best.distance > 14) return
+    this.setSelectedModule(best.moduleIndex)
+    this.onModuleSelect?.(best.moduleIndex)
+  }
+
+  drawMembers(projectedNodes, options = {}) {
     const { model, analysis } = this.result
     const items = model.members.map((member) => ({
       member,
@@ -79,19 +135,28 @@ export class MastViewer {
     for (const item of items) {
       const start = projectedNodes[item.member.nodeA]
       const end = projectedNodes[item.member.nodeB]
-      if (utilizationColors) {
-        const utilization = Math.min(1, analysis.memberResults[item.member.id]?.utilization ?? 0)
-        const hue = Math.round((1 - utilization) * 120)
-        ctx.strokeStyle = `hsl(${hue} 72% 38%)`
+      const selected = item.member.moduleIndex === this.selectedModuleIndex
+      const utilization = Math.min(1, analysis.memberResults[item.member.id]?.utilization ?? 0)
+      const hue = Math.round((1 - utilization) * 120)
+      if (options.ghost) {
+        ctx.strokeStyle = '#b8c0c8'
+        ctx.globalAlpha = 0.65
+      } else if (selected) {
+        ctx.strokeStyle = this.showBucklingMode ? '#1d5f9a' : `hsl(${hue} 82% 32%)`
+        ctx.globalAlpha = 1
       } else {
-        ctx.strokeStyle = strokeStyle
+        ctx.strokeStyle = this.showBucklingMode ? '#6f8fa8' : `hsl(${hue} 42% 52%)`
+        ctx.globalAlpha = 0.35
       }
-      ctx.lineWidth = lineWidth
+      ctx.lineWidth = selected
+        ? Math.max(2.3, 4.2 * this.zoom)
+        : Math.max(1, 1.8 * this.zoom)
       ctx.beginPath()
       ctx.moveTo(start.x, start.y)
       ctx.lineTo(end.x, end.y)
       ctx.stroke()
     }
+    ctx.globalAlpha = 1
   }
 
   draw() {
@@ -125,22 +190,36 @@ export class MastViewer {
         return node.position.map((value, axis) => value + amplitude * mode[axis])
       })
       displayed = deformedPositions.map((point) => this.project(point, scale, centerX, centerY))
-      this.drawMembers(original, '#b5bec8', Math.max(1, 1.5 * this.zoom), false)
+      this.drawMembers(original, { ghost: true })
     }
 
-    this.drawMembers(displayed, '#168565', Math.max(1.3, 2.3 * this.zoom), !this.showBucklingMode)
+    this.projectedNodes = displayed
+    this.drawMembers(displayed)
 
-    for (const node of displayed) {
-      ctx.fillStyle = this.showBucklingMode ? '#1d5f9a' : '#233342'
+    const selectedNodeIds = new Set(model.modules?.[this.selectedModuleIndex]
+      ? [
+          ...model.modules[this.selectedModuleIndex].bottomNodeIds,
+          ...model.modules[this.selectedModuleIndex].topNodeIds,
+        ]
+      : [])
+    for (let index = 0; index < displayed.length; index += 1) {
+      const node = displayed[index]
+      const selected = selectedNodeIds.has(index)
+      ctx.fillStyle = selected ? '#0f4d3c' : '#52606d'
+      ctx.globalAlpha = selected ? 1 : 0.35
       ctx.beginPath()
-      ctx.arc(node.x, node.y, Math.max(2, 3.2 * this.zoom), 0, Math.PI * 2)
+      ctx.arc(node.x, node.y, Math.max(2, (selected ? 4.1 : 2.6) * this.zoom), 0, Math.PI * 2)
       ctx.fill()
     }
+    ctx.globalAlpha = 1
 
     ctx.fillStyle = '#657382'
     ctx.font = '12px system-ui'
     ctx.textAlign = 'left'
     const modeText = this.showBucklingMode ? ' · форма потери устойчивости увеличена' : ''
-    ctx.fillText(`Перетаскивание — вращение, колесо — масштаб${modeText}`, 12, 20)
+    ctx.fillText(`Перетаскивание — вращение, колесо — масштаб, клик — выбрать модуль${modeText}`, 12, 20)
+    ctx.fillStyle = '#203243'
+    ctx.font = '600 12px system-ui'
+    ctx.fillText(`Выбран модуль ${this.selectedModuleIndex + 1} из ${model.moduleCount}`, 12, 40)
   }
 }

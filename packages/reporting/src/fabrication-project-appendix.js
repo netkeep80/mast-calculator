@@ -30,6 +30,8 @@ function weldRows(data) {
 function jointStrengthAppendix(result, data) {
   const connections = result.connections
   const sections = connections?.nutSections
+  const clearance = sections?.clearanceNut
+  const coupling = sections?.couplingNut
   const selected = connections?.bolt?.selected
   const demand = selected?.governingDemand
   const check = selected?.governingCheck
@@ -43,8 +45,8 @@ function jointStrengthAppendix(result, data) {
 <table>
 <thead><tr><th>Проверка</th><th>Фактическое значение</th><th>Критерий / источник</th></tr></thead>
 <tbody>
-<tr><td>Нетто-сечение проходной гайки</td><td>${sections ? `${number(sections.bottom.netSectionAreaMm2, 1)} мм²; k=${number(sections.bottom.areaRatioToRib, 3)}` : '—'}</td><td>Anut,net / Arib ≥ ${number(joint.nutNetSection.minimumAreaRatioToSingleRib, 2)}; дополнительный критерий проекта</td></tr>
-<tr><td>Нетто-сечение длинной гайки</td><td>${sections ? `${number(sections.top.netSectionAreaMm2, 1)} мм²; k=${number(sections.top.areaRatioToRib, 3)}` : '—'}</td><td>тот же критерий относительно одного ребра максимального диаметра</td></tr>
+<tr><td>Нетто-сечение проходной гайки</td><td>${clearance ? `${number(clearance.netAreaMm2, 1)} мм²; k=${number(clearance.ratioToSingleRib, 3)}` : '—'}</td><td>Anut,net / Arib ≥ ${number(joint.nutNetSection.minimumAreaRatioToSingleRib, 2)}; дополнительный критерий проекта</td></tr>
+<tr><td>Нетто-сечение длинной гайки</td><td>${coupling ? `${number(coupling.netAreaMm2, 1)} мм²; k=${number(coupling.ratioToSingleRib, 3)}` : '—'}</td><td>тот же критерий относительно одного ребра максимального диаметра</td></tr>
 <tr><td>Эффективная площадь шва</td><td>${weld?.critical ? `${number(weld.critical.check.effectiveThroatAreaMm2, 1)} мм²; k=${number(weld.critical.check.requiredAreaRatio, 3)}` : '—'}</td><td>Aweld,service / Arib ≥ ${number(joint.weldEffectiveArea.minimumAreaRatioToRib, 2)}; выбранный проектный запас ${number(weld?.minimumAreaRatio ?? joint.weldEffectiveArea.defaultAreaRatioToRib, 2)}</td></tr>
 <tr><td>Service retention шва</td><td>${degradation ? `${number(degradation.stiffnessRetentionFactor, 4)} после ${number(degradation.serviceYears, 1)} лет` : '—'}</td><td>${escapeHtml(joint.weldServiceDegradation.model)}; параметрический reserve model</td></tr>
 <tr><td>Преднатяг болта</td><td>${preload ? `${number(preload.nominalPreloadN / 1000, 3)} кН; worst=${number(preload.maximumPreloadN / 1000, 3)} кН` : '—'}</td><td>${escapeHtml(joint.boltPreload.relation)}; K=${number(preload?.nutFactor ?? joint.boltPreload.defaultNutFactor, 3)}</td></tr>

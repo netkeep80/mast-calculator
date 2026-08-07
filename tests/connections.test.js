@@ -125,6 +125,23 @@ test('более прочный и крупный болт повышает от
   assert.ok(strong.staticPayloadCapacity.purePayloadReference.boltLimitKg > weak.staticPayloadCapacity.purePayloadReference.boltLimitKg)
 })
 
+test('слабый межмодульный болт может стать реальным первым боковым пределом', () => {
+  const result = calculateCompleteMast({
+    ...DEFAULT_PARAMETERS,
+    stockBarLengthMm: 1200,
+    stockBarPieces: 4,
+    moduleCount: 4,
+    barDiameterMm: 150,
+    jointBoltDiameterMm: 16,
+    jointBoltClass: '5.6',
+    windEnvelopeEnabled: false,
+    lateralCapacityStepDeg: 60,
+  })
+  assert.equal(result.lateralCapacity.governingMode, 'bolt-connection')
+  assert.equal(result.lateralCapacity.criticalForceN, result.lateralCapacity.boltLimitForceN)
+  assert.ok(result.lateralCapacity.boltLimitForceN < result.lateralCapacity.memberLimitForceN)
+})
+
 test('чистая осевая сила дает проверяемую минимальную длину сварки', () => {
   const check = calculateMinimumWeldLength({
     axialForceN: 100_000,

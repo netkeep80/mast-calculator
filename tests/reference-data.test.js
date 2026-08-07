@@ -13,6 +13,7 @@ import {
   COUPLING_NUTS,
   REGULAR_NUTS,
 } from '../site/engine/joint-hardware-catalog.js'
+import { METRIC_COARSE_THREADS } from '../site/engine/metric-thread-catalog.js'
 import {
   buildReferenceData,
   REFERENCE_DATA_SCHEMA,
@@ -21,11 +22,12 @@ import {
 test('справочник строится из тех же каталогов, которые использует расчёт', () => {
   const data = buildReferenceData()
   assert.equal(data.schema, REFERENCE_DATA_SCHEMA)
-  assert.equal(data.schema, 'mast-calculator/reference-data/v2')
+  assert.equal(data.schema, 'mast-calculator/reference-data/v3')
   assert.equal(data.reinforcement.classes.length, Object.keys(REINFORCEMENT_CLASSES).length)
   assert.equal(data.reinforcement.diameters.length, STANDARD_DIAMETERS_MM.length)
   assert.equal(data.fasteners.classes.length, Object.keys(BOLT_PROPERTY_CLASSES).length)
   assert.equal(data.fasteners.sizes.length, BOLT_SIZES.length)
+  assert.equal(data.fasteners.metricCoarseThreads.length, METRIC_COARSE_THREADS.length)
   assert.equal(data.fasteners.regularNuts.length, REGULAR_NUTS.length)
   assert.equal(data.fasteners.couplingNuts.length, COUPLING_NUTS.length)
   assert.equal(data.welding.consumables.length, WELD_CONSUMABLES.length)
@@ -61,12 +63,13 @@ test('справочник диаметров показывает вычисл�
   assert.ok(Math.abs(d12.areaMm2 - Math.PI * 12 ** 2 / 4) < 1e-12)
 })
 
-test('справочник v2 публикует те же проектные параметры затяжки и area-reserve, что использует узел', () => {
+test('справочник v3 публикует параметры затяжки, area-reserve и service degradation', () => {
   const data = buildReferenceData()
   assert.equal(data.jointDesign.boltPreload.relation, 'T = K*F0*d')
   assert.equal(data.jointDesign.boltPreload.defaultTighteningTorqueNm, 200)
   assert.equal(data.jointDesign.boltPreload.defaultNutFactor, 0.2)
   assert.equal(data.jointDesign.boltPreload.defaultPreloadVariation, 0.25)
+  assert.equal(data.jointDesign.boltPreload.autoMaximumPreloadUtilization, 0.55)
   assert.match(data.jointDesign.boltPreload.source, /NASA-STD-5020A/)
   assert.equal(data.jointDesign.nutNetSection.minimumAreaRatioToSingleRib, 2)
   assert.match(data.jointDesign.nutNetSection.source, /дополнительный геометрический критерий/i)
@@ -74,4 +77,9 @@ test('справочник v2 публикует те же проектные п
   assert.equal(data.jointDesign.weldEffectiveArea.defaultAreaRatioToRib, 2.5)
   assert.equal(data.jointDesign.weldEffectiveArea.maximumSelectableAreaRatioToRib, 3)
   assert.match(data.jointDesign.weldEffectiveArea.source, /дополнительным критерием issue #33/i)
+  assert.equal(data.jointDesign.weldServiceDegradation.defaultServiceYears, 25)
+  assert.equal(data.jointDesign.weldServiceDegradation.defaultInitialStiffnessRetention, 0.97)
+  assert.equal(data.jointDesign.weldServiceDegradation.defaultAnnualStiffnessLossRate, 0.0015)
+  assert.equal(data.jointDesign.weldServiceDegradation.defaultMinimumStiffnessRetention, 0.85)
+  assert.match(data.jointDesign.weldServiceDegradation.source, /универсального.*закона.*нет/i)
 })

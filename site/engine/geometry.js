@@ -1,3 +1,5 @@
+import { calculateEquivalentMemberWeldZoneStiffness } from './weld-zone-stiffness.js'
+
 const levelNodeId = (level, corner) => level * 3 + corner
 
 const levelNodeIds = (level) => [0, 1, 2].map((corner) => levelNodeId(level, corner))
@@ -7,12 +9,12 @@ export function generateMastModel(parameters) {
   const sideM = parameters.triangleSideMm / 1000
   const heightM = parameters.moduleHeightMm / 1000
   const diameterM = parameters.barDiameterMm / 1000
-  const youngModulusPa = parameters.youngModulusGPa * 1e9
+  const nominalYoungModulusPa = parameters.youngModulusGPa * 1e9
   const yieldStrengthPa = parameters.yieldStrengthMPa * 1e6
   const tensileStrengthPa = parameters.tensileStrengthMPa * 1e6
   const poissonRatio = parameters.poissonRatio
 
-  if (![sideM, heightM, diameterM, youngModulusPa, yieldStrengthPa, tensileStrengthPa].every((value) => Number.isFinite(value) && value > 0)) {
+  if (![sideM, heightM, diameterM, nominalYoungModulusPa, yieldStrengthPa, tensileStrengthPa].every((value) => Number.isFinite(value) && value > 0)) {
     throw new Error('Геометрические и механические параметры должны быть положительными числами')
   }
   if (!Number.isFinite(poissonRatio) || poissonRatio <= -1 || poissonRatio >= 0.5) {
@@ -42,6 +44,24 @@ export function generateMastModel(parameters) {
   const members = []
   const modules = []
   const addMember = (nodeA, nodeB, moduleIndex, role) => {
+    const pointA = nodes[nodeA].position
+    const pointB = nodes[nodeB].position
+    const memberLengthM = Math.hypot(
+      pointB[0] - pointA[0],
+      pointB[1] - pointA[1],
+      pointB[2] - pointA[2],
+    )
+    const weldZoneStiffness = calculateEquivalentMemberWeldZoneStiffness({
+      memberLengthM,
+      memberDiameterMm: parameters.barDiameterMm,
+      weldAffectedZoneLengthFactor: parameters.weldAffectedZoneLengthFactor,
+      serviceYears: parameters.weldServiceYears,
+      initialStiffnessRetention: parameters.weldInitialStiffnessRetention,
+      annualStiffnessLossRate: parameters.weldAnnualStiffnessLossRate,
+      minimumStiffnessRetention: parameters.weldMinimumStiffnessRetention,
+    })
+    const youngModulusPa = nominalYoungModulusPa
+      * weldZoneStiffness.equivalentStiffnessRetentionFactor
     const member = {
       id: members.length,
       nodeA,
@@ -49,7 +69,9 @@ export function generateMastModel(parameters) {
       moduleIndex,
       role,
       diameterM,
+      nominalYoungModulusPa,
       youngModulusPa,
+      weldZoneStiffness,
       yieldStrengthPa,
       tensileStrengthPa,
       poissonRatio,
@@ -116,5 +138,12 @@ export function generateMastModel(parameters) {
     moduleCount,
     baseNodeIds: levelNodeIds(0),
     topNodeIds: levelNodeIds(moduleCount),
+    stiffnessModel: {
+      id: 'weld-zone-equivalent-member-stiffness-v1',
+      nominalYoungModulusPa,
+      representativeRetentionFactor: members[0]?.weldZoneStiffness.equivalentStiffnessRetentionFactor ?? 1,
+      representativeZoneRetentionFactor: members[0]?.weldZoneStiffness.zoneStiffnessRetentionFactor ?? 1,
+      note: 'FEM учитывает две короткие околошовные зоны каждого ребра через эквивалентную series-compliance жёсткость; это проектный reserve issue #19, а не утверждение об изменении E всей стали.',
+    },
   }
 }

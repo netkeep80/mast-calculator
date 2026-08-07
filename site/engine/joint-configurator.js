@@ -2,7 +2,10 @@ import {
   BOLT_PROPERTY_CLASS_IDS,
   BOLT_SIZES,
 } from './connection-catalog.js'
-import { evaluateBoltAcrossDemands } from './bolt-check.js'
+import {
+  calculateBoltCapacity,
+  evaluateBoltAcrossDemands,
+} from './bolt-check.js'
 import {
   buildJointHardwareGeometry,
   DEFAULT_THREAD_ENGAGEMENT_FACTOR,
@@ -23,14 +26,41 @@ export const JOINT_CONFIGURATOR_MODES = Object.freeze([
 // доступным ручному режиму и рекомендациям, но не вытесняет 8.8 в автоподборе.
 export const AUTO_BOLT_CLASS_ORDER = Object.freeze(['8.8', '10.9', '12.9', '5.6', '5.8'])
 
-function boltEvaluationOptions(parameters, geometry, boltClass) {
+// Issue #19: фиксированный момент 200 Н·м нельзя бездумно прикладывать к M16,
+// M18 и более крупным болтам одинаково. Auto-режим ограничивает максимальный
+// преднатяг 55% расчётной растягивающей способности конкретного кандидата,
+// оставляя минимум 45% под внешнее разделяющее усилие. Если внешняя нагрузка
+// требует больше — кандидат всё равно не проходит и размер увеличивается.
+export const AUTO_MAX_PRELOAD_UTILIZATION = 0.55
+
+function automaticTighteningTorqueNm(parameters, boltClass, diameterMm) {
+  const strength = resolveJointStrengthParameters(parameters)
+  const requestedTorqueNm = strength.jointTighteningTorqueNm
+  if (!(requestedTorqueNm > 0)) return 0
+  const capacity = calculateBoltCapacity({
+    diameterMm,
+    boltClass,
+    connectionConditionFactor: parameters.connectionConditionFactor,
+    shearPlanes: parameters.jointBoltShearPlanes,
+    tighteningTorqueNm: 0,
+    nutFactor: strength.jointNutFactor,
+    preloadVariation: strength.jointPreloadVariation,
+  })
+  if (!(capacity.designTorqueAtTensionCapacityNm > 0)) return 0
+  return Math.min(
+    requestedTorqueNm,
+    capacity.designTorqueAtTensionCapacityNm * AUTO_MAX_PRELOAD_UTILIZATION,
+  )
+}
+
+function boltEvaluationOptions(parameters, geometry, boltClass, tighteningTorqueNm = null) {
   const strength = resolveJointStrengthParameters(parameters)
   return {
     diameterMm: geometry.bolt.diameterMm,
     boltClass,
     connectionConditionFactor: parameters.connectionConditionFactor,
     shearPlanes: parameters.jointBoltShearPlanes,
-    tighteningTorqueNm: strength.jointTighteningTorqueNm,
+    tighteningTorqueNm: tighteningTorqueNm ?? strength.jointTighteningTorqueNm,
     nutFactor: strength.jointNutFactor,
     preloadVariation: strength.jointPreloadVariation,
   }
@@ -46,7 +76,14 @@ function demandsForGeometry(resultants, geometry) {
   }))
 }
 
-function evaluateCandidate(resultants, parameters, boltClass, diameterMm, geometryOverrides = {}) {
+function evaluateCandidate(
+  resultants,
+  parameters,
+  boltClass,
+  diameterMm,
+  geometryOverrides = {},
+  candidateOptions = {},
+) {
   const geometry = buildJointHardwareGeometry({
     boltDiameterMm: diameterMm,
     boltClass,
@@ -55,14 +92,23 @@ function evaluateCandidate(resultants, parameters, boltClass, diameterMm, geomet
     boltLengthMm: geometryOverrides.boltLengthMm,
   })
   const strength = resolveJointStrengthParameters(parameters)
+  const tighteningTorqueNm = candidateOptions.automaticTorque === false
+    ? strength.jointTighteningTorqueNm
+    : automaticTighteningTorqueNm(parameters, boltClass, geometry.bolt.diameterMm)
+  const evaluationOptions = boltEvaluationOptions(
+    parameters,
+    geometry,
+    boltClass,
+    tighteningTorqueNm,
+  )
   const nutSections = checkJointNutSections(geometry, parameters.barDiameterMm, {
     requiredRatio: strength.jointNutSectionAreaRatio,
   })
   const demands = demandsForGeometry(resultants, geometry)
   const evaluation = demands.length > 0
-    ? evaluateBoltAcrossDemands(demands, boltEvaluationOptions(parameters, geometry, boltClass))
+    ? evaluateBoltAcrossDemands(demands, evaluationOptions)
     : {
-        options: boltEvaluationOptions(parameters, geometry, boltClass),
+        options: evaluationOptions,
         checks: [],
         governingDemand: null,
         governingCheck: null,
@@ -73,6 +119,10 @@ function evaluateCandidate(resultants, parameters, boltClass, diameterMm, geomet
     boltClass,
     diameterMm: geometry.bolt.diameterMm,
     pitchMm: geometry.bolt.pitchMm,
+    tighteningTorqueNm,
+    requestedTighteningTorqueNm: strength.jointTighteningTorqueNm,
+    automaticTorque: candidateOptions.automaticTorque !== false,
+    torqueWasLimited: tighteningTorqueNm + 1e-9 < strength.jointTighteningTorqueNm,
     geometry,
     nutSections,
     demands,
@@ -148,6 +198,7 @@ function manualBoltConfiguration(resultants, parameters) {
       boltLengthMm: parameters.jointBoltLengthMm,
       threadEngagementFactor: parameters.jointThreadEngagementFactor,
     },
+    { automaticTorque: false },
   )
 }
 
@@ -181,20 +232,21 @@ export function configureIntermoduleJoint(resultants, parameters, options = {}) 
   const weld = weldConfiguration(effectiveParameters, mode, baseMetalRunMPa)
   const geometry = selected.geometry
   const resolvedParameters = {
+    ...strength,
     jointBoltDiameterMm: selected.diameterMm,
     jointBoltClass: selected.boltClass,
     jointClearanceNutThreadMm: geometry.bottomClearanceNut.threadDiameterMm,
     jointBoltLengthMm: geometry.bolt.lengthMm,
     jointThreadEngagementFactor: geometry.threadEngagementFactor,
     jointEffectiveRadiusMm: geometry.effectiveRadiusMm,
+    jointTighteningTorqueNm: selected.tighteningTorqueNm,
     weldConsumableId: weld.consumableId,
     weldLegMm: weld.weldLegMm,
     weldSegmentsPerEnd: weld.segmentsPerEnd,
-    ...strength,
   }
 
   return {
-    method: 'self-configuring-two-nut-joint-v2',
+    method: 'self-configuring-two-nut-joint-v3',
     mode,
     modeLabel: mode === 'auto' ? 'Автоподбор узла' : 'Ручная конфигурация',
     selected,
@@ -209,8 +261,8 @@ export function configureIntermoduleJoint(resultants, parameters, options = {}) 
     passesBolt: selected.evaluation.passes,
     passes: geometry.passes && selected.nutSections.passes && selected.evaluation.passes,
     explanation: mode === 'auto'
-      ? 'Программа сама выбрала болт, проходную гайку ножки, длинную соединительную гайку, длину болта и базовые параметры сварки. Кандидат обязан одновременно пройти компоновку, минимум 2× по нетто-сечению гайки, преднатяг от момента затяжки, растяжение и срез.'
-      : 'Проверяется выбранная пользователем сборка. Соединительная гайка верхнего узла всегда имеет ту же резьбу, что и болт; гайка ножки должна иметь большую резьбу, свободный проход болта и достаточное нетто-сечение.',
+      ? `Программа выбрала болт, обе гайки, длину, сварку и безопасный момент затяжки. Запрошено ${strength.jointTighteningTorqueNm.toFixed(0)} Н·м, для выбранного кандидата принято ${selected.tighteningTorqueNm.toFixed(0)} Н·м; максимальный преднатяг ограничен ${Math.round(AUTO_MAX_PRELOAD_UTILIZATION * 100)}% расчётной растягивающей способности до учёта внешнего усилия.`
+      : 'Проверяется выбранная пользователем сборка и заданный момент затяжки без автоматического уменьшения. Соединительная гайка верхнего узла имеет ту же резьбу, что и болт; гайка ножки должна иметь большую резьбу, свободный проход болта и достаточное нетто-сечение.',
   }
 }
 

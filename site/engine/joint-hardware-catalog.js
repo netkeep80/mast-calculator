@@ -1,37 +1,51 @@
 import { getBoltSize } from './connection-catalog.js'
 
-export const REGULAR_NUT_STANDARD = 'ISO 4032, справочная геометрия'
+export const REGULAR_NUT_STANDARD = 'ISO 4032 / DIN 934, справочная геометрия'
 export const COUPLING_NUT_STANDARD = 'DIN 6334, соединительная гайка высотой 3d'
 export const HARDWARE_STEEL_DENSITY_KG_M3 = 7850
 export const MIN_CLEARANCE_DIAMETER_MM = 0.5
 export const DEFAULT_THREAD_ENGAGEMENT_FACTOR = 2
 export const DEFAULT_ASSEMBLY_ALLOWANCE_MM = 2
 
-// Геометрия обычных шестигранных гаек нужна здесь не для расчёта их
-// прочности, а для компоновки реального узла, проверки свободного прохода
-// болта и прозрачной оценки массы физической сборки.
+// Полный стандартный крупный ряд, который нужен физическому узлу M16…M64.
+// Геометрия обычных шестигранных гаек используется для компоновки реального
+// узла, проверки свободного прохода болта и прозрачной оценки массы.
 export const REGULAR_NUTS = Object.freeze([
   { threadDiameterMm: 16, pitchMm: 2, heightMm: 14.8, acrossFlatsMm: 24 },
+  { threadDiameterMm: 18, pitchMm: 2.5, heightMm: 15, acrossFlatsMm: 27 },
   { threadDiameterMm: 20, pitchMm: 2.5, heightMm: 18, acrossFlatsMm: 30 },
+  { threadDiameterMm: 22, pitchMm: 2.5, heightMm: 19.4, acrossFlatsMm: 34 },
   { threadDiameterMm: 24, pitchMm: 3, heightMm: 21.5, acrossFlatsMm: 36 },
+  { threadDiameterMm: 27, pitchMm: 3, heightMm: 23.8, acrossFlatsMm: 41 },
   { threadDiameterMm: 30, pitchMm: 3.5, heightMm: 25.6, acrossFlatsMm: 46 },
+  { threadDiameterMm: 33, pitchMm: 3.5, heightMm: 28.7, acrossFlatsMm: 50 },
   { threadDiameterMm: 36, pitchMm: 4, heightMm: 31, acrossFlatsMm: 55 },
+  { threadDiameterMm: 39, pitchMm: 4, heightMm: 33.4, acrossFlatsMm: 60 },
   { threadDiameterMm: 42, pitchMm: 4.5, heightMm: 34, acrossFlatsMm: 65 },
+  { threadDiameterMm: 45, pitchMm: 4.5, heightMm: 38.9, acrossFlatsMm: 70 },
   { threadDiameterMm: 48, pitchMm: 5, heightMm: 38, acrossFlatsMm: 75 },
+  { threadDiameterMm: 52, pitchMm: 5, heightMm: 44.2, acrossFlatsMm: 80 },
   { threadDiameterMm: 56, pitchMm: 5.5, heightMm: 45, acrossFlatsMm: 85 },
+  { threadDiameterMm: 60, pitchMm: 5.5, heightMm: 50.8, acrossFlatsMm: 90 },
   { threadDiameterMm: 64, pitchMm: 6, heightMm: 51, acrossFlatsMm: 95 },
 ].map((item) => Object.freeze({ ...item, standard: REGULAR_NUT_STANDARD })))
 
-// DIN 6334 задаёт для M16..M36 длину 3d. Для M42/M48 сохраняется та же
-// расчётная 3d-компоновка, но конкретное покупное изделие должно быть
-// подтверждено по каталогу поставщика: эти размеры не выдаются за DIN 6334.
+// DIN 6334 задаёт серийные соединительные гайки в ограниченном диапазоне.
+// Для размеров за пределами подтверждённого ряда сохраняется расчётная 3d-
+// компоновка, но приложение явно требует подтвердить покупное изделие.
 export const COUPLING_NUTS = Object.freeze([
   { threadDiameterMm: 16, pitchMm: 2, lengthMm: 48, acrossFlatsMm: 24, standard: COUPLING_NUT_STANDARD },
+  { threadDiameterMm: 18, pitchMm: 2.5, lengthMm: 54, acrossFlatsMm: 27, standard: COUPLING_NUT_STANDARD },
   { threadDiameterMm: 20, pitchMm: 2.5, lengthMm: 60, acrossFlatsMm: 30, standard: COUPLING_NUT_STANDARD },
+  { threadDiameterMm: 22, pitchMm: 2.5, lengthMm: 66, acrossFlatsMm: 34, standard: COUPLING_NUT_STANDARD },
   { threadDiameterMm: 24, pitchMm: 3, lengthMm: 72, acrossFlatsMm: 36, standard: COUPLING_NUT_STANDARD },
+  { threadDiameterMm: 27, pitchMm: 3, lengthMm: 81, acrossFlatsMm: 41, standard: COUPLING_NUT_STANDARD },
   { threadDiameterMm: 30, pitchMm: 3.5, lengthMm: 90, acrossFlatsMm: 46, standard: COUPLING_NUT_STANDARD },
+  { threadDiameterMm: 33, pitchMm: 3.5, lengthMm: 99, acrossFlatsMm: 50, standard: COUPLING_NUT_STANDARD },
   { threadDiameterMm: 36, pitchMm: 4, lengthMm: 108, acrossFlatsMm: 55, standard: COUPLING_NUT_STANDARD },
+  { threadDiameterMm: 39, pitchMm: 4, lengthMm: 117, acrossFlatsMm: 60, standard: 'Расчётная соединительная гайка 3d; размер подтвердить у поставщика' },
   { threadDiameterMm: 42, pitchMm: 4.5, lengthMm: 126, acrossFlatsMm: 65, standard: 'Расчётная соединительная гайка 3d; размер подтвердить у поставщика' },
+  { threadDiameterMm: 45, pitchMm: 4.5, lengthMm: 135, acrossFlatsMm: 70, standard: 'Расчётная соединительная гайка 3d; размер подтвердить у поставщика' },
   { threadDiameterMm: 48, pitchMm: 5, lengthMm: 144, acrossFlatsMm: 75, standard: 'Расчётная соединительная гайка 3d; размер подтвердить у поставщика' },
 ].map((item) => Object.freeze(item)))
 
@@ -130,7 +144,7 @@ export function buildJointHardwareGeometry(options = {}) {
   const effectiveRadiusMm = couplingNut.acrossFlatsMm / 2
 
   return {
-    method: 'two-nuts-one-bolt-joint-geometry-v1',
+    method: 'two-nuts-one-bolt-joint-geometry-v2',
     bolt: {
       diameterMm: bolt.diameterMm,
       pitchMm: bolt.pitchMm,
@@ -141,6 +155,7 @@ export function buildJointHardwareGeometry(options = {}) {
       headAcrossFlatsMm: bolt.headAcrossFlatsMm,
       headHeightMm: bolt.headHeightMm,
       fullThreadAssumed: true,
+      scopeNote: bolt.scopeNote ?? null,
     },
     topCouplingNut: {
       ...couplingNut,

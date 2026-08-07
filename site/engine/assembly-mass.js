@@ -162,7 +162,12 @@ export function calculateAssemblyMass(result) {
     hardware: {
       bolt: { ...geometry.bolt, ...bolt },
       clearanceNut: { ...geometry.bottomClearanceNut, ...clearanceNut },
-      couplingNut: { ...geometry.topCouplingNut, ...couplingNut },
+      couplingNut: {
+        ...geometry.topCouplingNut,
+        threadEngagementMm: geometry.threadEngagementMm,
+        engagedThreadTurns: geometry.engagedThreadTurns,
+        ...couplingNut,
+      },
     },
     weld: {
       legMm: weldLegMm,

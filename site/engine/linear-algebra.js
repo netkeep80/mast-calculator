@@ -95,6 +95,25 @@ export function choleskyDecomposition(matrix) {
   return lower
 }
 
+export function solveCholeskyFactor(lower, rhs) {
+  const size = validateSquareMatrix(lower)
+  if (rhs.length !== size) throw new Error('Размер правой части не соответствует факторизации Холецкого')
+  const forward = new Array(size).fill(0)
+  for (let row = 0; row < size; row += 1) {
+    let value = rhs[row] ?? 0
+    for (let column = 0; column < row; column += 1) value -= lower[row][column] * forward[column]
+    forward[row] = value / lower[row][row]
+  }
+
+  const solution = new Array(size).fill(0)
+  for (let row = size - 1; row >= 0; row -= 1) {
+    let value = forward[row]
+    for (let column = row + 1; column < size; column += 1) value -= lower[column][row] * solution[column]
+    solution[row] = value / lower[row][row]
+  }
+  return solution
+}
+
 export function invertLowerTriangular(lower) {
   const size = validateSquareMatrix(lower)
   const inverse = Array.from({ length: size }, () => new Array(size).fill(0))

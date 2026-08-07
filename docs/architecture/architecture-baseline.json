@@ -1,30 +1,7 @@
 {
-  "schema": "mast-calculator/architecture-baseline/v1",
-  "ownerIssue": "#50",
-  "policy": "Exact-path exceptions are temporary debt. Every exception requires a reason and an owner issue; site/** wildcards are forbidden.",
-  "appAdapters": [
-    "site/app.js",
-    "site/app-bootstrap.js",
-    "site/calculation-worker.js",
-    "site/design-app.js",
-    "site/diameter-profile-ui.js",
-    "site/guy-procurement-sync.js",
-    "site/guys-app.js",
-    "site/joint-viewer.js",
-    "site/module-viewer.js",
-    "site/procurement-ui.js",
-    "site/reference-catalog.js",
-    "site/usage-scenarios.js",
-    "site/usage-style.js",
-    "site/viewer.js"
-  ],
-  "environmentExceptions": [
-    {
-      "path": "site/engine/design-package.js",
-      "global": "localStorage",
-      "reason": "Portable design-package serialization and browser persistence currently live in one module. Split the storage adapter from the versioned package codec.",
-      "ownerIssue": "#55"
-    }
-  ],
+  "schema": "mast-calculator/architecture-baseline/v2",
+  "ownerIssue": "#52",
+  "policy": "Headless packages have no environment exceptions. Cross-package consumers use public entrypoints; exact-path exceptions require an owner issue and may not use wildcards.",
+  "environmentExceptions": [],
   "allowedCycles": []
 }

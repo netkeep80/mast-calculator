@@ -10,6 +10,7 @@
 - [`docs/CALCULATION_ARCHITECTURE.md`](docs/CALCULATION_ARCHITECTURE.md) — рамная МКЭ-модель и поток данных;
 - [`docs/MODULAR_ANALYSIS_AND_HEIGHT.md`](docs/MODULAR_ANALYSIS_AND_HEIGHT.md) — помодульный расчёт и предельная высота;
 - [`docs/TRIPLE_SOLVER_VERIFICATION.md`](docs/TRIPLE_SOLVER_VERIFICATION.md) — сравнение трёх вычислительных путей;
+- [`docs/SUPPORT_REACTION_STATICS.md`](docs/SUPPORT_REACTION_STATICS.md) — аналитические реакции трёх точечных опор и формулы рычага;
 - [`docs/JOINT_CONFIGURATOR.md`](docs/JOINT_CONFIGURATOR.md) — физическая сборка и автоконфигуратор узла;
 - [`docs/CONNECTIONS.md`](docs/CONNECTIONS.md) — болт и сварные концы;
 - [`docs/VERIFICATION_FOR_NON_SPECIALISTS.md`](docs/VERIFICATION_FOR_NON_SPECIALISTS.md) — пошаговая верификация;
@@ -143,6 +144,16 @@ H = N*h
 
 CI сравнивает все перемещения/повороты, реакции и 12 локальных концевых усилий каждого элемента. Для выбранных случаев также независимо сравнивается `λcr`.
 
+Дополнительно issue #26 вводит аналитический oracle для опорных реакций. На той же многомодульной геометрии и с тем же распределённым собственным весом тестовый fixture отпускает только вращения трёх нижних точечных опор и проверяет три статически определимых состояния:
+
+```text
+без горизонтальной силы -> W/3, W/3, W/3
+F = W*r/H              -> 0, W/2, W/2
+F = W*R/H              -> W, 0, 0
+```
+
+где `R=a/sqrt(3)`, `r=R/2`, а `H` — высота точки приложения горизонтальной силы над плоскостью опор. Эти тесты не меняют production-фундамент с полной заделкой; они являются независимым тестом solver/load-assembly/reaction recovery. Подробности: [`docs/SUPPORT_REACTION_STATICS.md`](docs/SUPPORT_REACTION_STATICS.md).
+
 Production general buckling решает полную задачу:
 
 ```text
@@ -161,7 +172,7 @@ Production general buckling решает полную задачу:
 
 ## Что пока не доказано
 
-Совпадение трёх внутренних решателей и автоматическая конфигурация метизов не превращают прототип в нормативный сертификат. Пока остаются открытыми:
+Совпадение трёх внутренних решателей, аналитические опорные oracle-тесты и автоматическая конфигурация метизов не превращают прототип в нормативный сертификат. Пока остаются открытыми:
 
 - P-Delta / геометрическая нелинейность;
 - начальные несовершенства;
@@ -185,11 +196,14 @@ Syntax, policy and maintainability
 Secrets scan
 Triple FEM equivalence
 Joint configurator
+Support reaction statics
 Tests: Ubuntu / macOS / Windows
 Static site smoke
 ```
 
 `Joint configurator` отдельно проверяет физическую топологию двух гаек, свободный проход, автоматическую длину болта, ручной режим и фиксацию выбранной сборки в предельных расчётах.
+
+`Support reaction statics` отдельно проверяет аналитические соотношения `1/3–1/3–1/3`, `0–1/2–1/2`, `1–0–0`, вычисление рычага `F=W·e/H` и совпадение production banded FEM с независимым dense reference FEM.
 
 ## Локальный запуск
 
@@ -211,6 +225,7 @@ http://localhost:8080/site/
 npm test
 npm run test:triple
 npm run test:joint
+npm run test:statics
 npm run check
 node scripts/check-file-line-limits.mjs
 ```

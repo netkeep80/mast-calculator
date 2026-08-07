@@ -1,5 +1,7 @@
 const levelNodeId = (level, corner) => level * 3 + corner
 
+const levelNodeIds = (level) => [0, 1, 2].map((corner) => levelNodeId(level, corner))
+
 export function generateMastModel(parameters) {
   const moduleCount = Math.max(1, Math.floor(parameters.moduleCount))
   const sideM = parameters.triangleSideMm / 1000
@@ -24,9 +26,11 @@ export function generateMastModel(parameters) {
       const angle = rotation + corner * (2 * Math.PI / 3)
       nodes.push({
         id: levelNodeId(level, corner),
+        level,
+        corner,
         position: [radius * Math.cos(angle), radius * Math.sin(angle), level * heightM],
-        // Целевая frame-модель имеет 6 степеней свободы на узел:
-        // ux, uy, uz, rx, ry, rz. Основание идеализировано как жёстко заделанное.
+        // Нижний модуль всегда стоит тремя ножками на идеальном жёстком
+        // фундаменте. Все шесть DOF трёх нижних опор заделаны.
         restrained: level === 0
           ? [true, true, true, true, true, true]
           : [false, false, false, false, false, false],
@@ -35,50 +39,80 @@ export function generateMastModel(parameters) {
   }
 
   const members = []
-  const addMember = (nodeA, nodeB) => {
-    members.push({
+  const modules = []
+  const addMember = (nodeA, nodeB, moduleIndex, role) => {
+    const member = {
       id: members.length,
       nodeA,
       nodeB,
+      moduleIndex,
+      role,
       diameterM,
       youngModulusPa,
       yieldStrengthPa,
       poissonRatio,
       densityKgM3: parameters.densityKgM3,
       effectiveLengthFactor: parameters.effectiveLengthFactor,
+    }
+    members.push(member)
+    return member.id
+  }
+
+  for (let moduleIndex = 0; moduleIndex < moduleCount; moduleIndex += 1) {
+    const bottomLevel = moduleIndex
+    const topLevel = moduleIndex + 1
+    const memberIds = []
+
+    // Физический модуль устанавливается «ножками вниз»: его собственный
+    // горизонтальный треугольник расположен СВЕРХ, а шесть диагональных
+    // рёбер идут от этого треугольника к трём нижним опорным точкам.
+    // Поэтому верхний треугольник последнего модуля уже существует как
+    // часть самого модуля и никакого специального closeTopRing не нужно.
+    for (let corner = 0; corner < 3; corner += 1) {
+      memberIds.push(addMember(
+        levelNodeId(topLevel, corner),
+        levelNodeId(topLevel, (corner + 1) % 3),
+        moduleIndex,
+        'top-ring',
+      ))
+    }
+
+    // Соседние уровни повёрнуты на 60°. Направление второй диагонали
+    // чередуется, чтобы каждый модуль оставался правильным октаэдром и
+    // физически тем же самым изделием, только повернутым в пространстве.
+    const adjacentCornerOffset = moduleIndex % 2 === 0 ? 2 : 1
+    for (let corner = 0; corner < 3; corner += 1) {
+      memberIds.push(addMember(
+        levelNodeId(bottomLevel, corner),
+        levelNodeId(topLevel, corner),
+        moduleIndex,
+        'leg',
+      ))
+      memberIds.push(addMember(
+        levelNodeId(bottomLevel, corner),
+        levelNodeId(topLevel, (corner + adjacentCornerOffset) % 3),
+        moduleIndex,
+        'leg',
+      ))
+    }
+
+    modules.push({
+      index: moduleIndex,
+      number: moduleIndex + 1,
+      bottomLevel,
+      topLevel,
+      bottomNodeIds: levelNodeIds(bottomLevel),
+      topNodeIds: levelNodeIds(topLevel),
+      memberIds,
     })
-  }
-
-  for (let module = 0; module < moduleCount; module += 1) {
-    // Три ребра горизонтального треугольника модуля.
-    for (let corner = 0; corner < 3; corner += 1) {
-      addMember(levelNodeId(module, corner), levelNodeId(module, (corner + 1) % 3))
-    }
-
-    // Шесть одинаковых наклонных рёбер соединяют каждую вершину нижнего
-    // треугольника с двумя ближайшими вершинами следующего уровня.
-    // Уровни поочерёдно повёрнуты на +60° и -60°, поэтому направление
-    // второй диагонали также должно чередоваться.
-    const adjacentCornerOffset = module % 2 === 0 ? 2 : 1
-    for (let corner = 0; corner < 3; corner += 1) {
-      addMember(levelNodeId(module, corner), levelNodeId(module + 1, corner))
-      addMember(
-        levelNodeId(module, corner),
-        levelNodeId(module + 1, (corner + adjacentCornerOffset) % 3),
-      )
-    }
-  }
-
-  if (parameters.closeTopRing) {
-    for (let corner = 0; corner < 3; corner += 1) {
-      addMember(levelNodeId(moduleCount, corner), levelNodeId(moduleCount, (corner + 1) % 3))
-    }
   }
 
   return {
     nodes,
     members,
+    modules,
     moduleCount,
-    topNodeIds: [0, 1, 2].map((corner) => levelNodeId(moduleCount, corner)),
+    baseNodeIds: levelNodeIds(0),
+    topNodeIds: levelNodeIds(moduleCount),
   }
 }

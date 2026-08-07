@@ -138,16 +138,84 @@ export function createCalculationCsv(result) {
   return `\uFEFF${rows.map((row) => row.map(csvCell).join(';')).join('\r\n')}\r\n`
 }
 
-export function createCalculationExport(result, parameters, generatedAt = new Date().toISOString()) {
+function exportModel(model) {
+  return {
+    moduleCount: model.moduleCount,
+    topNodeIds: [...model.topNodeIds],
+    nodes: model.nodes.map((node) => ({
+      id: node.id,
+      positionM: [...node.position],
+      restrained: [...node.restrained],
+    })),
+    members: model.members.map((member) => ({
+      id: member.id,
+      nodeA: member.nodeA,
+      nodeB: member.nodeB,
+      diameterM: member.diameterM,
+      youngModulusPa: member.youngModulusPa,
+      yieldStrengthPa: member.yieldStrengthPa,
+      densityKgM3: member.densityKgM3,
+      effectiveLengthFactor: member.effectiveLengthFactor,
+    })),
+  }
+}
+
+function exportLoadCase(loadCase) {
+  return {
+    windDirectionDeg: loadCase.windDirectionDeg,
+    loads: {
+      nodalLoadsN: loadCase.loads.nodalLoads.map((load) => [...load]),
+      totalAppliedLoadN: [...loadCase.loads.totalAppliedLoad],
+      selfWeightN: loadCase.loads.selfWeightN,
+      iceWeightN: loadCase.loads.iceWeightN,
+      memberWindN: loadCase.loads.memberWindN,
+      equipmentWindN: loadCase.loads.equipmentWindN,
+    },
+    analysis: {
+      displacementsM: loadCase.analysis.displacements.map((value) => [...value]),
+      reactionsN: loadCase.analysis.reactions.map((value) => [...value]),
+      memberResults: loadCase.analysis.memberResults.map((value) => ({ ...value })),
+      maxDisplacementM: loadCase.analysis.maxDisplacementM,
+      maxTopDisplacementM: loadCase.analysis.maxTopDisplacementM,
+      maxUtilization: loadCase.analysis.maxUtilization,
+      criticalMemberId: loadCase.analysis.criticalMemberId,
+      totalMassKg: loadCase.analysis.totalMassKg,
+      buckling: {
+        criticalLoadFactor: loadCase.analysis.buckling.criticalLoadFactor,
+        mode: loadCase.analysis.buckling.mode.map((value) => [...value]),
+        residual: loadCase.analysis.buckling.residual,
+        eigenResidual: loadCase.analysis.buckling.eigenResidual,
+        iterations: loadCase.analysis.buckling.iterations,
+      },
+      diagnostics: { ...loadCase.analysis.diagnostics },
+    },
+  }
+}
+
+export function createCalculationExport(
+  result,
+  parameters = result?.parameters,
+  generatedAt = new Date().toISOString(),
+  buildInfo = {},
+) {
   ensureResult(result)
+  const resolvedParameters = result.parameters ?? parameters
   const material = buildMaterialSummary(result)
   const members = buildMemberEnvelope(result)
+
   return {
-    schema: 'mast-calculator/calculation-report/v1',
+    schema: 'mast-calculator/calculation-report/v2',
     generatedAt,
-    parameters: { ...parameters },
+    software: {
+      method: result.method ?? null,
+      repository: buildInfo.repository ?? 'netkeep80/mast-calculator',
+      ref: buildInfo.ref ?? null,
+      sha: buildInfo.sha ?? null,
+      runId: buildInfo.runId ?? null,
+    },
+    parameters: { ...resolvedParameters },
     summary: {
-      heightM: parameters.moduleCount * parameters.moduleHeightMm / 1000,
+      heightM: resolvedParameters.moduleCount * resolvedParameters.moduleHeightMm / 1000,
       totalMassKg: result.analysis.totalMassKg,
       maximumUtilization: result.envelope.maxUtilization,
       maximumTopDisplacementMm: result.envelope.maxTopDisplacementM * 1000,
@@ -159,12 +227,14 @@ export function createCalculationExport(result, parameters, generatedAt = new Da
       loadCaseCount: result.envelope.caseCount,
     },
     diagnostics: { ...result.analysis.diagnostics },
+    model: exportModel(result.model),
+    loadCases: result.cases.map(exportLoadCase),
     material,
     members,
     warnings: [...result.warnings],
   }
 }
 
-export function createCalculationJson(result, parameters, generatedAt) {
-  return `${JSON.stringify(createCalculationExport(result, parameters, generatedAt), null, 2)}\n`
+export function createCalculationJson(result, parameters, generatedAt, buildInfo) {
+  return `${JSON.stringify(createCalculationExport(result, parameters, generatedAt, buildInfo), null, 2)}\n`
 }

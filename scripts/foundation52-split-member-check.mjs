@@ -18,24 +18,32 @@ const rawActionHelper = `function memberActionResult(localEndForces) {\n  const 
 solver = `${solver.slice(0, strengthStart)}${rawActionHelper}${solver.slice(strengthEnd)}`
 solver = replaceRequired(
   solver,
-  '      ...memberStrengthResult(member, geometry, localEndForces, parameters, distributedLocal),\n      localEndForces,\n',
-  '      ...memberActionResult(localEndForces),\n      localEndForces,\n      distributedLoadLocal: [...distributedLocal],\n',
-  'member strength result spread',
-)
-solver = solver.replace(
-  /\n  const criticalMember = memberResults\.reduce\([\s\S]*?\n  const displacements =/,
-  '\n  const displacements =',
+  '    const strength = memberStrengthResult(member, geometry, localEndForces, parameters, load.distributedLocal)\n',
+  '',
+  'member strength calculation',
 )
 solver = replaceRequired(
   solver,
-  '    maxUtilization,\n    criticalMemberId: criticalMember.memberId,\n',
+  '      ...strength,\n',
+  '      ...memberActionResult(localEndForces),\n',
+  'member strength result spread',
+)
+solver = replaceRequired(
+  solver,
+  `  const critical = memberResults.reduce((current, candidate) => (\n    candidate.utilization > current.utilization ? candidate : current\n  ), memberResults[0])\n\n`,
+  '',
+  'structural critical member summary',
+)
+solver = replaceRequired(
+  solver,
+  '    maxUtilization: critical.utilization,\n    criticalMemberId: critical.memberId,\n',
   '    maxUtilization: null,\n    criticalMemberId: null,\n',
   'structural utilization summary',
 )
 write(solverFile, solver)
 
 // 2. Engineering owns the exact formula and decorates a raw structural response.
-const memberCheck = `import { analyzeFrame } from '../../structural-analysis/index.js'\n\n${strengthFunction}\n\nexport function applyMemberChecksToAnalysis(model, analysis, parameters, frameSystem) {\n  const memberResults = analysis.memberResults.map((raw) => {\n    const member = model.members[raw.memberId]\n    const geometry = frameSystem.memberGeometry[raw.memberId]\n    if (!member || !geometry) throw new Error(\`Не найдены member/geometry для engineering check \${raw.memberId}\`)\n    return {\n      ...raw,\n      ...memberStrengthResult(\n        member,\n        geometry,\n        raw.localEndForces,\n        parameters,\n        raw.distributedLoadLocal ?? [0, 0, 0],\n      ),\n    }\n  })\n  const criticalMember = memberResults.reduce((best, candidate) => (\n    candidate.utilization > best.utilization ? candidate : best\n  ), memberResults[0])\n  return {\n    ...analysis,\n    memberResults,\n    maxUtilization: criticalMember?.utilization ?? 0,\n    criticalMemberId: criticalMember?.memberId ?? null,\n  }\n}\n\nexport function analyzeCheckedFrame(model, loads, parameters, frameSystem) {\n  const analysis = analyzeFrame(model, loads, parameters, frameSystem)\n  return applyMemberChecksToAnalysis(model, analysis, parameters, frameSystem)\n}\n`
+const memberCheck = `import { analyzeFrame, compileFrameSystem } from '../../structural-analysis/index.js'\n\n${strengthFunction}\n\nexport function applyMemberChecksToAnalysis(model, analysis, parameters, frameSystem) {\n  if (!frameSystem?.memberGeometry) throw new Error('Для engineering member checks требуется compiled frame system')\n  const memberResults = analysis.memberResults.map((raw) => {\n    const member = model.members[raw.memberId]\n    const geometry = frameSystem.memberGeometry[raw.memberId]\n    if (!member || !geometry) throw new Error(\`Не найдены member/geometry для engineering check \${raw.memberId}\`)\n    return {\n      ...raw,\n      ...memberStrengthResult(\n        member,\n        geometry,\n        raw.localEndForces,\n        parameters,\n        raw.distributedLoadLocalNPerM ?? [0, 0, 0],\n      ),\n    }\n  })\n  const criticalMember = memberResults.reduce((best, candidate) => (\n    candidate.utilization > best.utilization ? candidate : best\n  ), memberResults[0])\n  return {\n    ...analysis,\n    memberResults,\n    maxUtilization: criticalMember?.utilization ?? 0,\n    criticalMemberId: criticalMember?.memberId ?? null,\n  }\n}\n\nexport function analyzeCheckedFrame(model, loads, parameters, frameSystem = null) {\n  const system = frameSystem ?? compileFrameSystem(model, parameters)\n  const analysis = analyzeFrame(model, loads, parameters, system)\n  return applyMemberChecksToAnalysis(model, analysis, parameters, system)\n}\n`
 write('packages/engineering/src/member-check.js', memberCheck)
 
 // 3. Production orchestration and capacity checks call the engineering wrapper.

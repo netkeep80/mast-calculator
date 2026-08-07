@@ -68,7 +68,7 @@ test('боковая нагрузка круглой консоли совпад
   approximately(result.criticalForceKgf, expectedForceN / STANDARD_GRAVITY_M_S2, 1e-9)
 })
 
-test('расчёт боковой нагрузки мачты возвращает конечный положительный предел и худшее направление', () => {
+test('расчёт боковой нагрузки мачты возвращает конечные первый предел и global buckling', () => {
   const parameters = resolveCalculationParameters({
     ...DEFAULT_PARAMETERS,
     moduleCount: 1,
@@ -81,6 +81,9 @@ test('расчёт боковой нагрузки мачты возвращае
   assert.ok(Number.isFinite(result.criticalForceN))
   assert.ok(result.criticalForceN > 0)
   assert.ok(result.criticalForceKgf > 0)
+  assert.ok(Number.isFinite(result.globalBucklingForceN))
+  assert.ok(result.globalBucklingForceN > 0)
+  assert.ok(result.globalBucklingForceKgf > 0)
   assert.ok([0, 30, 60, 90].includes(result.directionDeg))
   assert.ok(['material-strength', 'local-member-buckling', 'global-buckling'].includes(result.governingMode))
   assert.equal(result.cases.length, 4)

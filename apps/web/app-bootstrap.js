@@ -273,13 +273,17 @@ function syncMode() {
 
 function readJointUiParameters() {
   const geometry = currentGeometry()
+  const strength = strengthParametersFromUi()
   return {
-    jointConfiguratorMode: modeSelect.value,
-    jointClearanceNutThreadMm: selectedNumber(clearanceNut, geometry.bottomClearanceNut.threadDiameterMm),
-    jointBoltLengthMm: selectedNumber(boltLength, geometry.bolt.lengthMm),
-    jointThreadEngagementFactor: selectedNumber(engagement, geometry.threadEngagementFactor),
-    jointEffectiveRadiusMm: geometry.effectiveRadiusMm,
-    ...strengthParametersFromUi(),
+    configuratorMode: modeSelect.value,
+    clearanceNutThreadMm: selectedNumber(clearanceNut, geometry.bottomClearanceNut.threadDiameterMm),
+    boltLengthMm: selectedNumber(boltLength, geometry.bolt.lengthMm),
+    threadEngagementFactor: selectedNumber(engagement, geometry.threadEngagementFactor),
+    tighteningTorqueNm: strength.jointTighteningTorqueNm,
+    nutFactor: strength.jointNutFactor,
+    preloadVariation: strength.jointPreloadVariation,
+    nutSectionAreaRatio: strength.jointNutSectionAreaRatio,
+    weldToRibAreaRatio: strength.weldToRibAreaRatio,
   }
 }
 
@@ -329,8 +333,11 @@ class JointAwareWorker extends NativeWorker {
         ...message,
         parameters: {
           ...message.parameters,
-          ...readJointUiParameters(),
-          jointConfiguratorMode: message.action === 'optimize' ? 'auto' : modeSelect.value,
+          connection: {
+            ...message.parameters.connection,
+            ...readJointUiParameters(),
+            configuratorMode: message.action === 'optimize' ? 'auto' : modeSelect.value,
+          },
         },
       }
     }

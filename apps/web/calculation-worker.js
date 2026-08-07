@@ -55,8 +55,12 @@ function runCalculation(jobId, parameters) {
 
 function runOptimization(jobId, parameters) {
   const optimizationShare = 0.78
-  const { moduleDiametersMm: _ignoredMixedProfile, ...uniformParameters } = parameters
-  const automaticParameters = { ...uniformParameters, jointConfiguratorMode: 'auto' }
+  const { moduleDiametersMm: _ignoredMixedProfile, ...uniformGeometry } = parameters.geometry
+  const automaticParameters = {
+    ...parameters,
+    geometry: uniformGeometry,
+    connection: { ...parameters.connection, configuratorMode: 'auto' },
+  }
   postProgress(jobId, {
     phase: 'optimize',
     label: `Подбор арматуры и соединительного узла: до ${STANDARD_DIAMETERS_MM.length} стандартных вариантов`,
@@ -88,7 +92,7 @@ function runOptimization(jobId, parameters) {
   })
   const result = calculateProject({
     ...automaticParameters,
-    barDiameterMm: diameter,
+    geometry: { ...automaticParameters.geometry, barDiameterMm: diameter },
   }, {
     onProgress: (progress) => calculationProgress(
       jobId,

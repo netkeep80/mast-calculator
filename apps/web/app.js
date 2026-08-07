@@ -1,5 +1,6 @@
-import { DEFAULT_PARAMETERS, resolveCalculationParameters } from '../../packages/application/index.js'
+import { DEFAULT_PROJECT_INPUT, createProjectInput } from '../../packages/application/index.js'
 import {
+  flattenProjectInput,
   getReinforcementClass,
   regularOctahedronHeightMm,
   REINFORCEMENT_CLASS_IDS,
@@ -88,16 +89,16 @@ fetch('./build-info.json', { cache: 'no-store' })
   .then((value) => { if (value) buildInfo = { ...buildInfo, ...value } })
   .catch(() => {})
 
+const DEFAULT_FORM_PARAMETERS = Object.freeze(flattenProjectInput(DEFAULT_PROJECT_INPUT))
 const numericFieldNames = [
   'moduleCount', 'stockBarLengthMm', 'stockBarPieces', 'barDiameterMm',
   'materialSafetyFactor', 'deadLoadFactor', 'windLoadFactor', 'equipmentLoadFactor',
   'windPressurePa', 'dragCoefficient', 'windDirectionDeg', 'windEnvelopeStepDeg',
   'lateralCapacityStepDeg', 'heightSearchMaxModules', 'equipmentMassKg',
-  'equipmentWindAreaM2', 'equipmentDragCoefficient', 'extraHorizontalLoadN',
-  'extraVerticalLoadN', 'iceThicknessMm', 'iceDensityKgM3', 'displacementLimitMm',
-  'minimumBucklingFactor', 'jointBoltDiameterMm', 'jointBoltShearPlanes',
-  'jointEffectiveRadiusMm', 'connectionConditionFactor', 'jointBaseMetalTensileStrengthMPa',
-  'weldLegMm', 'weldSegmentsPerEnd', 'weldBetaF', 'weldBetaZ',
+  'equipmentWindAreaM2', 'equipmentDragCoefficient', 'iceThicknessMm', 'iceDensityKgM3',
+  'displacementLimitMm', 'minimumBucklingFactor', 'jointBoltDiameterMm',
+  'jointBoltShearPlanes', 'connectionConditionFactor', 'weldLegMm',
+  'weldSegmentsPerEnd', 'weldBetaF', 'weldBetaZ',
 ]
 
 function populateSelect(name, values, label = String) {
@@ -135,13 +136,13 @@ populateSelect(
 
 for (const name of numericFieldNames) {
   const input = form.elements.namedItem(name)
-  if (input && DEFAULT_PARAMETERS[name] != null) input.value = DEFAULT_PARAMETERS[name]
+  if (input && DEFAULT_FORM_PARAMETERS[name] != null) input.value = DEFAULT_FORM_PARAMETERS[name]
 }
-form.elements.namedItem('reinforcementClass').value = DEFAULT_PARAMETERS.reinforcementClass
-form.elements.namedItem('jointBoltClass').value = DEFAULT_PARAMETERS.jointBoltClass
-form.elements.namedItem('weldConsumableId').value = DEFAULT_PARAMETERS.weldConsumableId
-form.elements.namedItem('windPresetId').value = DEFAULT_PARAMETERS.windPresetId
-form.elements.namedItem('windEnvelopeEnabled').checked = DEFAULT_PARAMETERS.windEnvelopeEnabled
+form.elements.namedItem('reinforcementClass').value = DEFAULT_PROJECT_INPUT.material.reinforcementClass
+form.elements.namedItem('jointBoltClass').value = DEFAULT_PROJECT_INPUT.connection.boltClass
+form.elements.namedItem('weldConsumableId').value = DEFAULT_PROJECT_INPUT.connection.weldConsumableId
+form.elements.namedItem('windPresetId').value = DEFAULT_PROJECT_INPUT.environment.windPresetId
+form.elements.namedItem('windEnvelopeEnabled').checked = DEFAULT_PROJECT_INPUT.environment.windEnvelopeEnabled
 
 const format = (value, digits = 2) => Number.isFinite(Number(value))
   ? new Intl.NumberFormat('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)
@@ -188,26 +189,72 @@ function syncFabricationFields() {
   materialInfoBox.textContent = `${material.label}, ${material.standard}: Ry = ${material.yieldStrengthMPa} МПа, Rm = ${material.tensileStrengthMPa} МПа, E = ${material.youngModulusGPa} ГПа, ν = ${material.poissonRatio}.`
 }
 
+function numericFormValue(name, fallback) {
+  const element = form.elements.namedItem(name)
+  if (!element) return fallback
+  const value = Number(element.value)
+  if (!Number.isFinite(value)) throw new Error(`Поле «${element.labels?.[0]?.textContent ?? name}» заполнено неверно`)
+  return value
+}
+
 function readParameters() {
-  const parameters = { ...DEFAULT_PARAMETERS }
-  for (const name of numericFieldNames) {
-    const element = form.elements.namedItem(name)
-    if (!element) continue
-    const value = Number(element.value)
-    if (!Number.isFinite(value)) throw new Error(`Поле «${element.labels?.[0]?.textContent ?? name}» заполнено неверно`)
-    parameters[name] = value
-  }
-  parameters.moduleCount = Math.floor(parameters.moduleCount)
-  parameters.stockBarPieces = Math.floor(parameters.stockBarPieces)
-  parameters.heightSearchMaxModules = Math.floor(parameters.heightSearchMaxModules)
-  parameters.jointBoltShearPlanes = Math.floor(parameters.jointBoltShearPlanes)
-  parameters.weldSegmentsPerEnd = Math.floor(parameters.weldSegmentsPerEnd)
-  parameters.reinforcementClass = form.elements.namedItem('reinforcementClass').value
-  parameters.jointBoltClass = form.elements.namedItem('jointBoltClass').value
-  parameters.weldConsumableId = form.elements.namedItem('weldConsumableId').value
-  parameters.windPresetId = form.elements.namedItem('windPresetId').value
-  parameters.windEnvelopeEnabled = form.elements.namedItem('windEnvelopeEnabled').checked
-  return resolveCalculationParameters(parameters)
+  const defaults = DEFAULT_PROJECT_INPUT
+  return createProjectInput({
+    geometry: {
+      moduleCount: Math.floor(numericFormValue('moduleCount', defaults.geometry.moduleCount)),
+      stockBarLengthMm: numericFormValue('stockBarLengthMm', defaults.geometry.stockBarLengthMm),
+      stockBarPieces: Math.floor(numericFormValue('stockBarPieces', defaults.geometry.stockBarPieces)),
+      barDiameterMm: numericFormValue('barDiameterMm', defaults.geometry.barDiameterMm),
+    },
+    material: {
+      reinforcementClass: form.elements.namedItem('reinforcementClass').value,
+      materialSafetyFactor: numericFormValue('materialSafetyFactor', defaults.material.materialSafetyFactor),
+    },
+    environment: {
+      deadLoadFactor: numericFormValue('deadLoadFactor', defaults.environment.deadLoadFactor),
+      windLoadFactor: numericFormValue('windLoadFactor', defaults.environment.windLoadFactor),
+      windPresetId: form.elements.namedItem('windPresetId').value,
+      windPressurePa: numericFormValue('windPressurePa', defaults.environment.windPressurePa),
+      dragCoefficient: numericFormValue('dragCoefficient', defaults.environment.dragCoefficient),
+      windDirectionDeg: numericFormValue('windDirectionDeg', defaults.environment.windDirectionDeg),
+      windEnvelopeEnabled: form.elements.namedItem('windEnvelopeEnabled').checked,
+      windEnvelopeStepDeg: numericFormValue('windEnvelopeStepDeg', defaults.environment.windEnvelopeStepDeg),
+      lateralCapacityStepDeg: numericFormValue('lateralCapacityStepDeg', defaults.environment.lateralCapacityStepDeg),
+      iceThicknessMm: numericFormValue('iceThicknessMm', defaults.environment.iceThicknessMm),
+      iceDensityKgM3: numericFormValue('iceDensityKgM3', defaults.environment.iceDensityKgM3),
+    },
+    equipment: {
+      massKg: numericFormValue('equipmentMassKg', defaults.equipment.massKg),
+      windAreaM2: numericFormValue('equipmentWindAreaM2', defaults.equipment.windAreaM2),
+      dragCoefficient: numericFormValue('equipmentDragCoefficient', defaults.equipment.dragCoefficient),
+      loadFactor: numericFormValue('equipmentLoadFactor', defaults.equipment.loadFactor),
+    },
+    connection: {
+      configuratorMode: form.elements.namedItem('jointConfiguratorMode')?.value ?? defaults.connection.configuratorMode,
+      boltDiameterMm: numericFormValue('jointBoltDiameterMm', defaults.connection.boltDiameterMm),
+      boltClass: form.elements.namedItem('jointBoltClass').value,
+      clearanceNutThreadMm: numericFormValue('jointClearanceNutThreadMm', defaults.connection.clearanceNutThreadMm),
+      boltLengthMm: numericFormValue('jointBoltLengthMm', defaults.connection.boltLengthMm),
+      threadEngagementFactor: numericFormValue('jointThreadEngagementFactor', defaults.connection.threadEngagementFactor),
+      boltShearPlanes: Math.floor(numericFormValue('jointBoltShearPlanes', defaults.connection.boltShearPlanes)),
+      conditionFactor: numericFormValue('connectionConditionFactor', defaults.connection.conditionFactor),
+      weldConsumableId: form.elements.namedItem('weldConsumableId').value,
+      weldLegMm: numericFormValue('weldLegMm', defaults.connection.weldLegMm),
+      weldSegmentsPerEnd: Math.floor(numericFormValue('weldSegmentsPerEnd', defaults.connection.weldSegmentsPerEnd)),
+      weldBetaF: numericFormValue('weldBetaF', defaults.connection.weldBetaF),
+      weldBetaZ: numericFormValue('weldBetaZ', defaults.connection.weldBetaZ),
+      tighteningTorqueNm: numericFormValue('jointTighteningTorqueNm', undefined),
+      nutFactor: numericFormValue('jointNutFactor', undefined),
+      preloadVariation: numericFormValue('jointPreloadVariation', undefined),
+      nutSectionAreaRatio: numericFormValue('jointNutSectionAreaRatio', undefined),
+      weldToRibAreaRatio: numericFormValue('weldToRibAreaRatio', undefined),
+    },
+    criteria: {
+      displacementLimitMm: numericFormValue('displacementLimitMm', defaults.criteria.displacementLimitMm),
+      minimumBucklingFactor: numericFormValue('minimumBucklingFactor', defaults.criteria.minimumBucklingFactor),
+      heightSearchMaxModules: Math.floor(numericFormValue('heightSearchMaxModules', defaults.criteria.heightSearchMaxModules)),
+    },
+  })
 }
 
 function downloadText(filename, content, type) {

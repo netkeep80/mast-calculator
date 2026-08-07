@@ -1,10 +1,10 @@
 {
   "name": "mast-calculator",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check site/app.js && node --check site/viewer.js && node --check site/engine/catalog.js && node --check site/engine/calculate.js && node --check site/engine/geometry.js && node --check site/engine/loads.js && node --check site/engine/solver.js && node --check site/engine/linear-algebra.js && node --check site/engine/buckling.js && node --check site/engine/optimize.js && node --check site/engine/report.js && node --check site/engine/calculation-note.js && node --check site/engine/calculation-project.js && node --check site/engine/weather.js && node --check site/engine/lateral-capacity.js && node --check scripts/check-file-line-limits.mjs"
+    "check": "node --check site/app.js && node --check site/calculation-worker.js && node --check site/viewer.js && node --check site/engine/catalog.js && node --check site/engine/calculate.js && node --check site/engine/geometry.js && node --check site/engine/loads.js && node --check site/engine/solver.js && node --check site/engine/banded.js && node --check site/engine/linear-algebra.js && node --check site/engine/buckling.js && node --check site/engine/optimize.js && node --check site/engine/report.js && node --check site/engine/calculation-note.js && node --check site/engine/calculation-project.js && node --check site/engine/weather.js && node --check site/engine/lateral-capacity.js && node --check scripts/check-file-line-limits.mjs"
   }
 }

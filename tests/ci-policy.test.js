@@ -77,10 +77,13 @@ test('PR CI содержит fresh-merge simulation и три ОС', () => {
   assert.match(ci, /fail-fast:\s*false/)
 })
 
-test('static-site smoke загружает новые погодные и боковые browser modules', () => {
+test('static-site smoke загружает worker и все новые browser-модули расчёта', () => {
   const ci = workflows.get('ci.yml')
   assert.ok(ci)
   for (const modulePath of [
+    'calculation-worker.js',
+    'engine/banded.js',
+    'engine/buckling.js',
     'engine/weather.js',
     'engine/lateral-capacity.js',
     'engine/calculation-project.js',

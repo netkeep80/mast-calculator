@@ -1,17 +1,17 @@
-import { calculateCriticalBucklingFactor } from './buckling.js'
-import { relativeResidual, solveDenseSystem } from './linear-algebra.js'
+import {
+  addBandValue,
+  createSymmetricBandMatrix,
+  factorSymmetricBand,
+  relativeBandResidual,
+  solveSymmetricBandFactor,
+} from './banded.js'
+import { calculateCriticalBucklingFactorBanded } from './buckling.js'
 import { add3, cross3, norm3, scale3, sub3, unit3 } from './vector.js'
 
 const DOF_PER_NODE = 6
 const degreeOfFreedom = (nodeId, axis) => nodeId * DOF_PER_NODE + axis
 const zeroMatrix = (size) => Array.from({ length: size }, () => new Array(size).fill(0))
-const zeroVector = (size) => new Array(size).fill(0)
-
-const transpose3 = (matrix) => [
-  [matrix[0][0], matrix[1][0], matrix[2][0]],
-  [matrix[0][1], matrix[1][1], matrix[2][1]],
-  [matrix[0][2], matrix[1][2], matrix[2][2]],
-]
+const zeroVector = (size) => new Float64Array(size)
 
 const multiply3Vector = (matrix, vector) => [
   matrix[0][0] * vector[0] + matrix[0][1] * vector[1] + matrix[0][2] * vector[2],
@@ -32,7 +32,6 @@ function localAxes(delta) {
   const reference = Math.abs(ex[2]) < 0.9 ? [0, 0, 1] : [0, 1, 0]
   const ey = unit3(cross3(reference, ex))
   const ez = unit3(cross3(ex, ey))
-  // Rows transform a global vector to local coordinates.
   return [ex, ey, ez]
 }
 
@@ -49,7 +48,13 @@ function transformation12(rotation) {
 }
 
 function multiplyMatrixVector(matrix, vector) {
-  return matrix.map((row) => row.reduce((sum, value, index) => sum + value * vector[index], 0))
+  const result = new Float64Array(matrix.length)
+  for (let row = 0; row < matrix.length; row += 1) {
+    let value = 0
+    for (let column = 0; column < vector.length; column += 1) value += matrix[row][column] * vector[column]
+    result[row] = value
+  }
+  return result
 }
 
 function multiplyMatrices(left, right) {
@@ -58,12 +63,10 @@ function multiplyMatrices(left, right) {
   const inner = right.length
   const result = Array.from({ length: rows }, () => new Array(columns).fill(0))
   for (let row = 0; row < rows; row += 1) {
-    for (let k = 0; k < inner; k += 1) {
-      const factor = left[row][k]
+    for (let index = 0; index < inner; index += 1) {
+      const factor = left[row][index]
       if (factor === 0) continue
-      for (let column = 0; column < columns; column += 1) {
-        result[row][column] += factor * right[k][column]
-      }
+      for (let column = 0; column < columns; column += 1) result[row][column] += factor * right[index][column]
     }
   }
   return result
@@ -91,66 +94,45 @@ function localFrameStiffness(E, G, area, inertia, torsionConstant, length) {
   const c = 4 * bending / length
   const d = 2 * bending / length
 
-  addSubmatrix(matrix, [0, 6], [
-    [axial, -axial],
-    [-axial, axial],
-  ])
-  addSubmatrix(matrix, [3, 9], [
-    [torsion, -torsion],
-    [-torsion, torsion],
-  ])
-
-  // Bending in local x-y plane, rotation about local z.
+  addSubmatrix(matrix, [0, 6], [[axial, -axial], [-axial, axial]])
+  addSubmatrix(matrix, [3, 9], [[torsion, -torsion], [-torsion, torsion]])
   addSubmatrix(matrix, [1, 5, 7, 11], [
     [a, b, -a, b],
     [b, c, -b, d],
     [-a, -b, a, -b],
     [b, d, -b, c],
   ])
-
-  // Bending in local x-z plane. The signs differ because positive ry rotates
-  // the local x axis towards -z according to the right-hand rule.
   addSubmatrix(matrix, [2, 4, 8, 10], [
     [a, -b, -a, -b],
     [-b, c, b, d],
     [-a, b, a, b],
     [-b, d, b, c],
   ])
-
   return matrix
 }
 
 function localUniformLoadVector(distributedLocal, length) {
   const [qx, qy, qz] = distributedLocal
   const vector = zeroVector(12)
-
   vector[0] = qx * length / 2
   vector[6] = qx * length / 2
-
   vector[1] = qy * length / 2
   vector[5] = qy * length ** 2 / 12
   vector[7] = qy * length / 2
   vector[11] = -qy * length ** 2 / 12
-
   vector[2] = qz * length / 2
   vector[4] = -qz * length ** 2 / 12
   vector[8] = qz * length / 2
   vector[10] = qz * length ** 2 / 12
-
   return vector
 }
 
 function localGeometricStiffness(axialForceN, length) {
   const matrix = zeroMatrix(12)
   if (!Number.isFinite(axialForceN) || Math.abs(axialForceN) < 1e-12) return matrix
-
-  // Initial-stress matrix for an Euler-Bernoulli beam-column. Tension is
-  // positive; compression therefore produces a destabilising negative KG in
-  // the eigenproblem (K + λ KG) φ = 0.
   const factor = axialForceN / (30 * length)
   const l = length
   const l2 = l * l
-
   const yz = [
     [36, 3 * l, -36, 3 * l],
     [3 * l, 4 * l2, -3 * l, -l2],
@@ -158,7 +140,6 @@ function localGeometricStiffness(axialForceN, length) {
     [3 * l, -l2, -3 * l, 4 * l2],
   ].map((row) => row.map((value) => value * factor))
   addSubmatrix(matrix, [1, 5, 7, 11], yz)
-
   const xz = [
     [36, -3 * l, -36, -3 * l],
     [-3 * l, 4 * l2, 3 * l, -l2],
@@ -166,7 +147,6 @@ function localGeometricStiffness(axialForceN, length) {
     [-3 * l, -l2, 3 * l, 4 * l2],
   ].map((row) => row.map((value) => value * factor))
   addSubmatrix(matrix, [2, 4, 8, 10], xz)
-
   return matrix
 }
 
@@ -177,34 +157,17 @@ function elementGlobalDofs(member) {
   ]
 }
 
-function assembleElementMatrix(globalMatrix, dofs, elementMatrix) {
-  for (let row = 0; row < 12; row += 1) {
-    for (let column = 0; column < 12; column += 1) {
-      globalMatrix[dofs[row]][dofs[column]] += elementMatrix[row][column]
-    }
-  }
-}
-
-function assembleElementVector(globalVector, dofs, elementVector) {
-  for (let index = 0; index < 12; index += 1) {
-    globalVector[dofs[index]] += elementVector[index]
-  }
-}
-
-function memberStrengthResult(member, geometry, localEndForces, parameters) {
+function memberStrengthResult(member, geometry, localEndForces, parameters, distributedLocal) {
   const diameter = member.diameterM
   const area = geometry.areaM2
   const inertia = geometry.inertiaM4
   const torsionConstant = geometry.torsionConstantM4
   const sectionModulus = inertia / (diameter / 2)
-
-  // Internal axial force is positive in tension at both ends.
   const axialA = -localEndForces[0]
   const axialB = localEndForces[6]
   const axialForceN = Math.abs(axialA) >= Math.abs(axialB) ? axialA : axialB
   const maxCompressionN = Math.max(0, -axialA, -axialB)
   const maxTensionN = Math.max(0, axialA, axialB)
-
   const shearA = Math.hypot(localEndForces[1], localEndForces[2])
   const shearB = Math.hypot(localEndForces[7], localEndForces[8])
   const maxShearN = Math.max(shearA, shearB)
@@ -212,17 +175,9 @@ function memberStrengthResult(member, geometry, localEndForces, parameters) {
   const bendingA = Math.hypot(localEndForces[4], localEndForces[5])
   const bendingB = Math.hypot(localEndForces[10], localEndForces[11])
   const endBendingNm = Math.max(bendingA, bendingB)
-
-  // A one-element beam can have a bending extremum between the end nodes under
-  // uniform transverse load. Add qL²/8 as a conservative allowance instead of
-  // silently considering only end moments.
-  const transverseDistributedNPerM = Math.hypot(
-    geometry.distributedLocal[1],
-    geometry.distributedLocal[2],
-  )
+  const transverseDistributedNPerM = Math.hypot(distributedLocal[1], distributedLocal[2])
   const distributedBendingAllowanceNm = transverseDistributedNPerM * geometry.lengthM ** 2 / 8
   const maxBendingNm = endBendingNm + distributedBendingAllowanceNm
-
   const axialStressPa = Math.abs(axialForceN) / area
   const bendingStressPa = maxBendingNm / sectionModulus
   const normalStressPa = axialStressPa + bendingStressPa
@@ -232,21 +187,16 @@ function memberStrengthResult(member, geometry, localEndForces, parameters) {
   const equivalentStressPa = Math.sqrt(normalStressPa ** 2 + 3 * shearStressPa ** 2)
   const designYieldPa = member.yieldStrengthPa / parameters.materialSafetyFactor
   const stressUtilization = equivalentStressPa / Math.max(designYieldPa, Number.EPSILON)
-
   const effectiveLengthM = member.effectiveLengthFactor * geometry.lengthM
   const eulerCapacityN = Math.PI ** 2 * member.youngModulusPa * inertia
-    / effectiveLengthM ** 2
-    / parameters.materialSafetyFactor
+    / effectiveLengthM ** 2 / parameters.materialSafetyFactor
   const bucklingUtilization = maxCompressionN / Math.max(eulerCapacityN, Number.EPSILON)
   const radiusOfGyrationM = Math.sqrt(inertia / area)
   const slenderness = effectiveLengthM / radiusOfGyrationM
   const utilization = Math.max(stressUtilization, bucklingUtilization)
   const mode = axialForceN >= 0 ? 'tension' : 'compression'
   const axialYieldCapacityN = designYieldPa * area
-  const designCapacityN = mode === 'compression'
-    ? Math.min(axialYieldCapacityN, eulerCapacityN)
-    : axialYieldCapacityN
-
+  const designCapacityN = mode === 'compression' ? Math.min(axialYieldCapacityN, eulerCapacityN) : axialYieldCapacityN
   return {
     axialForceN,
     axialForceAtAN: axialA,
@@ -276,92 +226,138 @@ function memberStrengthResult(member, geometry, localEndForces, parameters) {
   }
 }
 
-export function analyzeFrame(model, loadCase, parameters) {
-  const dofCount = model.nodes.length * DOF_PER_NODE
-  const stiffness = zeroMatrix(dofCount)
-  const loadVector = zeroVector(dofCount)
-
-  // Direct nodal forces have no externally applied nodal moments at present.
-  for (const node of model.nodes) {
-    const load = loadCase.nodalLoads[node.id]
-    if (!load) throw new Error(`Не найдена нагрузка узла ${node.id}`)
-    for (let axis = 0; axis < 3; axis += 1) {
-      loadVector[degreeOfFreedom(node.id, axis)] += load[axis]
-    }
-  }
-
-  let totalMassKg = 0
-  const memberGeometry = model.members.map((member) => {
-    const nodeA = model.nodes[member.nodeA]
-    const nodeB = model.nodes[member.nodeB]
-    if (!nodeA || !nodeB) throw new Error(`Некорректный стержень ${member.id}`)
-
-    const delta = sub3(nodeB.position, nodeA.position)
-    const lengthM = norm3(delta)
-    const rotation = localAxes(delta)
-    const transform = transformation12(rotation)
-    const areaM2 = Math.PI * member.diameterM ** 2 / 4
-    const inertiaM4 = Math.PI * member.diameterM ** 4 / 64
-    const torsionConstantM4 = Math.PI * member.diameterM ** 4 / 32
-    const shearModulusPa = member.youngModulusPa / (2 * (1 + member.poissonRatio))
-    const localStiffness = localFrameStiffness(
-      member.youngModulusPa,
-      shearModulusPa,
-      areaM2,
-      inertiaM4,
-      torsionConstantM4,
-      lengthM,
-    )
-    const globalStiffness = transformMatrixToGlobal(localStiffness, transform)
-    const distributedGlobal = loadCase.memberDistributedLoads?.[member.id] ?? [0, 0, 0]
-    const distributedLocal = multiply3Vector(rotation, distributedGlobal)
-    const localEquivalentLoad = localUniformLoadVector(distributedLocal, lengthM)
-    const globalEquivalentLoad = transformVectorToGlobal(localEquivalentLoad, transform)
-    const dofs = elementGlobalDofs(member)
-
-    assembleElementMatrix(stiffness, dofs, globalStiffness)
-    assembleElementVector(loadVector, dofs, globalEquivalentLoad)
-    totalMassKg += areaM2 * lengthM * member.densityKgM3
-
-    return {
-      lengthM,
-      rotation,
-      transform,
-      dofs,
-      areaM2,
-      inertiaM4,
-      torsionConstantM4,
-      shearModulusPa,
-      localStiffness,
-      distributedGlobal,
-      distributedLocal,
-      localEquivalentLoad,
-    }
-  })
-
+function buildFreeDofs(model, dofCount) {
   const freeDofs = []
+  const reducedIndexByGlobalDof = new Int32Array(dofCount).fill(-1)
   for (const node of model.nodes) {
     for (let axis = 0; axis < DOF_PER_NODE; axis += 1) {
-      if (!node.restrained[axis]) freeDofs.push(degreeOfFreedom(node.id, axis))
+      if (node.restrained[axis]) continue
+      const globalDof = degreeOfFreedom(node.id, axis)
+      reducedIndexByGlobalDof[globalDof] = freeDofs.length
+      freeDofs.push(globalDof)
+    }
+  }
+  return { freeDofs, reducedIndexByGlobalDof }
+}
+
+function elementGeometry(model, member, reducedIndexByGlobalDof) {
+  const nodeA = model.nodes[member.nodeA]
+  const nodeB = model.nodes[member.nodeB]
+  if (!nodeA || !nodeB) throw new Error(`Некорректный стержень ${member.id}`)
+  const delta = sub3(nodeB.position, nodeA.position)
+  const lengthM = norm3(delta)
+  const rotation = localAxes(delta)
+  const transform = transformation12(rotation)
+  const areaM2 = Math.PI * member.diameterM ** 2 / 4
+  const inertiaM4 = Math.PI * member.diameterM ** 4 / 64
+  const torsionConstantM4 = Math.PI * member.diameterM ** 4 / 32
+  const shearModulusPa = member.youngModulusPa / (2 * (1 + member.poissonRatio))
+  const localStiffness = localFrameStiffness(
+    member.youngModulusPa,
+    shearModulusPa,
+    areaM2,
+    inertiaM4,
+    torsionConstantM4,
+    lengthM,
+  )
+  const globalStiffness = transformMatrixToGlobal(localStiffness, transform)
+  const dofs = elementGlobalDofs(member)
+  const reducedDofs = dofs.map((dof) => reducedIndexByGlobalDof[dof])
+  return {
+    lengthM,
+    rotation,
+    transform,
+    dofs,
+    reducedDofs,
+    areaM2,
+    inertiaM4,
+    torsionConstantM4,
+    shearModulusPa,
+    localStiffness,
+    globalStiffness,
+  }
+}
+
+function determineBandwidth(memberGeometry) {
+  let bandwidth = 0
+  for (const geometry of memberGeometry) {
+    const reduced = geometry.reducedDofs.filter((index) => index >= 0)
+    for (const left of reduced) {
+      for (const right of reduced) bandwidth = Math.max(bandwidth, Math.abs(left - right))
+    }
+  }
+  return bandwidth
+}
+
+function assembleElementBand(matrix, reducedDofs, values) {
+  for (let localRow = 0; localRow < 12; localRow += 1) {
+    const row = reducedDofs[localRow]
+    if (row < 0) continue
+    for (let localColumn = 0; localColumn < 12; localColumn += 1) {
+      const column = reducedDofs[localColumn]
+      if (column < 0 || row < column) continue
+      addBandValue(matrix, row, column, values[localRow][localColumn])
+    }
+  }
+}
+
+export function compileFrameSystem(model, parameters = {}) {
+  const dofCount = model.nodes.length * DOF_PER_NODE
+  const { freeDofs, reducedIndexByGlobalDof } = buildFreeDofs(model, dofCount)
+  const geometry = model.members.map((member) => elementGeometry(model, member, reducedIndexByGlobalDof))
+  const bandwidth = determineBandwidth(geometry)
+  const reducedStiffness = createSymmetricBandMatrix(freeDofs.length, bandwidth)
+  for (const member of model.members) {
+    const item = geometry[member.id]
+    assembleElementBand(reducedStiffness, item.reducedDofs, item.globalStiffness)
+  }
+  const factorization = factorSymmetricBand(reducedStiffness)
+  const totalMassKg = model.members.reduce(
+    (sum, member) => sum + geometry[member.id].areaM2 * geometry[member.id].lengthM * member.densityKgM3,
+    0,
+  )
+  return {
+    method: 'symmetric-band-cholesky',
+    dofCount,
+    freeDofs,
+    reducedIndexByGlobalDof,
+    reducedStiffness,
+    factorization,
+    bandwidth,
+    memberGeometry: geometry,
+    totalMassKg,
+    factorizationCount: 1,
+    parameters,
+  }
+}
+
+function assembleLoadVector(model, loadCase, system) {
+  const loadVector = zeroVector(system.dofCount)
+  for (const node of model.nodes) {
+    const force = loadCase.nodalLoads[node.id]
+    const moment = loadCase.nodalMoments?.[node.id] ?? [0, 0, 0]
+    if (!force) throw new Error(`Не найдена нагрузка узла ${node.id}`)
+    for (let axis = 0; axis < 3; axis += 1) {
+      loadVector[degreeOfFreedom(node.id, axis)] += force[axis]
+      loadVector[degreeOfFreedom(node.id, axis + 3)] += moment[axis]
     }
   }
 
-  const reducedStiffness = freeDofs.map((row) => freeDofs.map((column) => stiffness[row][column]))
-  const reducedLoad = freeDofs.map((index) => loadVector[index])
-  const solved = solveDenseSystem(reducedStiffness, reducedLoad)
-  const residual = relativeResidual(reducedStiffness, solved.solution, reducedLoad)
-
-  const displacementVector = zeroVector(dofCount)
-  freeDofs.forEach((globalDof, index) => { displacementVector[globalDof] = solved.solution[index] })
-
-  const reactionVector = stiffness.map((row, rowIndex) => {
-    let value = -loadVector[rowIndex]
-    for (let column = 0; column < dofCount; column += 1) {
-      value += row[column] * displacementVector[column]
-    }
-    return value
+  const memberLoads = model.members.map((member) => {
+    const geometry = system.memberGeometry[member.id]
+    const distributedGlobal = loadCase.memberDistributedLoads?.[member.id] ?? [0, 0, 0]
+    const distributedLocal = multiply3Vector(geometry.rotation, distributedGlobal)
+    const localEquivalentLoad = localUniformLoadVector(distributedLocal, geometry.lengthM)
+    const globalEquivalentLoad = transformVectorToGlobal(localEquivalentLoad, geometry.transform)
+    for (let index = 0; index < 12; index += 1) loadVector[geometry.dofs[index]] += globalEquivalentLoad[index]
+    return { distributedGlobal, distributedLocal, localEquivalentLoad }
   })
+  return { loadVector, memberLoads }
+}
 
+function buildDisplacements(model, system, solution) {
+  const displacementVector = zeroVector(system.dofCount)
+  system.freeDofs.forEach((globalDof, index) => { displacementVector[globalDof] = solution[index] })
   const displacements = model.nodes.map((node) => [
     displacementVector[degreeOfFreedom(node.id, 0)],
     displacementVector[degreeOfFreedom(node.id, 1)],
@@ -372,51 +368,136 @@ export function analyzeFrame(model, loadCase, parameters) {
     displacementVector[degreeOfFreedom(node.id, 4)],
     displacementVector[degreeOfFreedom(node.id, 5)],
   ])
-  const reactions = model.nodes.map((node) => [
-    reactionVector[degreeOfFreedom(node.id, 0)],
-    reactionVector[degreeOfFreedom(node.id, 1)],
-    reactionVector[degreeOfFreedom(node.id, 2)],
-  ])
-  const reactionMoments = model.nodes.map((node) => [
-    reactionVector[degreeOfFreedom(node.id, 3)],
-    reactionVector[degreeOfFreedom(node.id, 4)],
-    reactionVector[degreeOfFreedom(node.id, 5)],
-  ])
+  return { displacementVector, displacements, rotations }
+}
 
-  const memberResults = model.members.map((member, index) => {
-    const geometry = memberGeometry[index]
-    const elementDisplacementGlobal = geometry.dofs.map((dof) => displacementVector[dof])
+function calculateMemberResults(model, parameters, system, memberLoads, displacementVector) {
+  const equilibriumVector = zeroVector(system.dofCount)
+  const memberResults = model.members.map((member) => {
+    const geometry = system.memberGeometry[member.id]
+    const load = memberLoads[member.id]
+    const elementDisplacementGlobal = Float64Array.from(geometry.dofs, (dof) => displacementVector[dof])
     const elementDisplacementLocal = multiplyMatrixVector(geometry.transform, elementDisplacementGlobal)
     const elasticEndForces = multiplyMatrixVector(geometry.localStiffness, elementDisplacementLocal)
-    const localEndForces = elasticEndForces.map(
-      (value, dof) => value - geometry.localEquivalentLoad[dof],
+    const localEndForces = Float64Array.from(
+      elasticEndForces,
+      (value, dof) => value - load.localEquivalentLoad[dof],
     )
-    const strength = memberStrengthResult(member, geometry, localEndForces, parameters)
-
+    const globalEndForces = transformVectorToGlobal(localEndForces, geometry.transform)
+    for (let index = 0; index < 12; index += 1) equilibriumVector[geometry.dofs[index]] += globalEndForces[index]
+    const strength = memberStrengthResult(member, geometry, localEndForces, parameters, load.distributedLocal)
     return {
       memberId: member.id,
       lengthM: geometry.lengthM,
       localAxes: geometry.rotation.map((axis) => [...axis]),
-      distributedLoadLocalNPerM: [...geometry.distributedLocal],
+      distributedLoadLocalNPerM: [...load.distributedLocal],
       localEndForces: [...localEndForces],
       ...strength,
     }
   })
+  return { memberResults, equilibriumVector }
+}
 
-  const geometricStiffness = zeroMatrix(dofCount)
+function subtractDirectLoads(model, loadCase, equilibriumVector) {
+  for (const node of model.nodes) {
+    const force = loadCase.nodalLoads[node.id] ?? [0, 0, 0]
+    const moment = loadCase.nodalMoments?.[node.id] ?? [0, 0, 0]
+    for (let axis = 0; axis < 3; axis += 1) {
+      equilibriumVector[degreeOfFreedom(node.id, axis)] -= force[axis]
+      equilibriumVector[degreeOfFreedom(node.id, axis + 3)] -= moment[axis]
+    }
+  }
+}
+
+function buildBuckling(model, system, memberResults) {
+  const geometric = createSymmetricBandMatrix(system.freeDofs.length, system.bandwidth)
   for (const member of model.members) {
-    const geometry = memberGeometry[member.id]
+    const geometry = system.memberGeometry[member.id]
     const result = memberResults[member.id]
     const averageAxialN = (result.axialForceAtAN + result.axialForceAtBN) / 2
-    const localGeometric = localGeometricStiffness(averageAxialN, geometry.lengthM)
-    const globalGeometric = transformMatrixToGlobal(localGeometric, geometry.transform)
-    assembleElementMatrix(geometricStiffness, geometry.dofs, globalGeometric)
+    const local = localGeometricStiffness(averageAxialN, geometry.lengthM)
+    const global = transformMatrixToGlobal(local, geometry.transform)
+    assembleElementBand(geometric, geometry.reducedDofs, global)
   }
+  return calculateCriticalBucklingFactorBanded(
+    system.reducedStiffness,
+    system.factorization,
+    geometric,
+  )
+}
 
-  const reducedGeometric = freeDofs.map((row) => freeDofs.map((column) => geometricStiffness[row][column]))
-  const buckling = calculateCriticalBucklingFactor(reducedStiffness, reducedGeometric)
-  const bucklingModeVector = zeroVector(dofCount)
-  freeDofs.forEach((globalDof, index) => { bucklingModeVector[globalDof] = buckling.mode[index] ?? 0 })
+function physicalMomentResidual(model, loadCase, memberLoads, system, reactions, reactionMoments) {
+  let externalMoment = [0, 0, 0]
+  let reactionMoment = [0, 0, 0]
+  let momentScale = 1
+  for (const node of model.nodes) {
+    const nodalLoad = loadCase.nodalLoads[node.id]
+    const nodalMoment = loadCase.nodalMoments?.[node.id] ?? [0, 0, 0]
+    const loadMoment = add3(cross3(node.position, nodalLoad), nodalMoment)
+    externalMoment = add3(externalMoment, loadMoment)
+    momentScale = Math.max(momentScale, norm3(loadMoment))
+    if (node.restrained.some(Boolean)) {
+      const supportMoment = add3(cross3(node.position, reactions[node.id]), reactionMoments[node.id])
+      reactionMoment = add3(reactionMoment, supportMoment)
+      momentScale = Math.max(momentScale, norm3(supportMoment))
+    }
+  }
+  for (const member of model.members) {
+    const geometry = system.memberGeometry[member.id]
+    const nodeA = model.nodes[member.nodeA]
+    const nodeB = model.nodes[member.nodeB]
+    const midpoint = scale3(add3(nodeA.position, nodeB.position), 0.5)
+    const distributedResultant = scale3(memberLoads[member.id].distributedGlobal, geometry.lengthM)
+    const loadMoment = cross3(midpoint, distributedResultant)
+    externalMoment = add3(externalMoment, loadMoment)
+    momentScale = Math.max(momentScale, norm3(loadMoment))
+  }
+  return norm3(add3(externalMoment, reactionMoment)) / momentScale
+}
+
+export function analyzeFrame(model, loadCase, parameters, compiledSystem = null) {
+  const system = compiledSystem ?? compileFrameSystem(model, parameters)
+  const { loadVector, memberLoads } = assembleLoadVector(model, loadCase, system)
+  const reducedLoad = Float64Array.from(system.freeDofs, (globalDof) => loadVector[globalDof])
+  const solution = solveSymmetricBandFactor(system.factorization, reducedLoad)
+  const residual = relativeBandResidual(system.reducedStiffness, solution, reducedLoad)
+  const { displacementVector, displacements, rotations } = buildDisplacements(model, system, solution)
+  const { memberResults, equilibriumVector } = calculateMemberResults(
+    model,
+    parameters,
+    system,
+    memberLoads,
+    displacementVector,
+  )
+  subtractDirectLoads(model, loadCase, equilibriumVector)
+
+  const reactions = model.nodes.map((node) => [
+    equilibriumVector[degreeOfFreedom(node.id, 0)],
+    equilibriumVector[degreeOfFreedom(node.id, 1)],
+    equilibriumVector[degreeOfFreedom(node.id, 2)],
+  ])
+  const reactionMoments = model.nodes.map((node) => [
+    equilibriumVector[degreeOfFreedom(node.id, 3)],
+    equilibriumVector[degreeOfFreedom(node.id, 4)],
+    equilibriumVector[degreeOfFreedom(node.id, 5)],
+  ])
+
+  let maximumFreeResidual = 0
+  for (const globalDof of system.freeDofs) maximumFreeResidual = Math.max(maximumFreeResidual, Math.abs(equilibriumVector[globalDof]))
+  const loadScale = Math.max(1, ...loadVector.map(Math.abs))
+  const maximumNodeEquilibriumResidual = maximumFreeResidual / loadScale
+  const globalMomentResidual = physicalMomentResidual(
+    model,
+    loadCase,
+    memberLoads,
+    system,
+    reactions,
+    reactionMoments,
+  )
+
+  const buckling = buildBuckling(model, system, memberResults)
+  const bucklingModeVector = zeroVector(system.dofCount)
+  system.freeDofs.forEach((globalDof, index) => { bucklingModeVector[globalDof] = buckling.mode[index] ?? 0 })
   const bucklingMode = model.nodes.map((node) => [
     bucklingModeVector[degreeOfFreedom(node.id, 0)],
     bucklingModeVector[degreeOfFreedom(node.id, 1)],
@@ -428,51 +509,6 @@ export function analyzeFrame(model, loadCase, parameters) {
     bucklingModeVector[degreeOfFreedom(node.id, 5)],
   ])
 
-  // At free DOFs Kd-F is a pure numerical residual. At restrained DOFs it is
-  // the support reaction and must not be counted as an equilibrium error.
-  let maximumFreeResidual = 0
-  for (const node of model.nodes) {
-    for (let axis = 0; axis < DOF_PER_NODE; axis += 1) {
-      if (!node.restrained[axis]) {
-        maximumFreeResidual = Math.max(
-          maximumFreeResidual,
-          Math.abs(reactionVector[degreeOfFreedom(node.id, axis)]),
-        )
-      }
-    }
-  }
-  const loadScale = Math.max(1, ...loadVector.map(Math.abs))
-  const maximumNodeEquilibriumResidual = maximumFreeResidual / loadScale
-
-  // Global force and moment balance uses the physical distributed loads rather
-  // than their finite-element equivalent nodal representation.
-  let externalMoment = [0, 0, 0]
-  let reactionMoment = [0, 0, 0]
-  let momentScale = 1
-  for (const node of model.nodes) {
-    const nodalLoad = loadCase.nodalLoads[node.id]
-    const loadMoment = cross3(node.position, nodalLoad)
-    externalMoment = add3(externalMoment, loadMoment)
-    momentScale = Math.max(momentScale, norm3(loadMoment))
-
-    if (node.restrained.some(Boolean)) {
-      const supportMoment = add3(cross3(node.position, reactions[node.id]), reactionMoments[node.id])
-      reactionMoment = add3(reactionMoment, supportMoment)
-      momentScale = Math.max(momentScale, norm3(supportMoment))
-    }
-  }
-  for (const member of model.members) {
-    const geometry = memberGeometry[member.id]
-    const nodeA = model.nodes[member.nodeA]
-    const nodeB = model.nodes[member.nodeB]
-    const midpoint = scale3(add3(nodeA.position, nodeB.position), 0.5)
-    const distributedResultant = scale3(geometry.distributedGlobal, geometry.lengthM)
-    const loadMoment = cross3(midpoint, distributedResultant)
-    externalMoment = add3(externalMoment, loadMoment)
-    momentScale = Math.max(momentScale, norm3(loadMoment))
-  }
-  const globalMomentResidualVector = add3(externalMoment, reactionMoment)
-
   const maxDisplacementM = Math.max(...displacements.map(norm3))
   const maxTopDisplacementM = Math.max(...model.topNodeIds.map((nodeId) => norm3(displacements[nodeId])))
   const critical = memberResults.reduce((current, candidate) => (
@@ -481,6 +517,7 @@ export function analyzeFrame(model, loadCase, parameters) {
 
   return {
     solver: 'linear-3d-frame-euler-bernoulli',
+    linearSystemSolver: system.method,
     degreesOfFreedomPerNode: DOF_PER_NODE,
     displacements,
     rotations,
@@ -491,7 +528,7 @@ export function analyzeFrame(model, loadCase, parameters) {
     maxTopDisplacementM,
     maxUtilization: critical.utilization,
     criticalMemberId: critical.memberId,
-    totalMassKg,
+    totalMassKg: system.totalMassKg,
     buckling: {
       criticalLoadFactor: buckling.factor,
       mode: bucklingMode,
@@ -502,14 +539,14 @@ export function analyzeFrame(model, loadCase, parameters) {
     },
     diagnostics: {
       relativeResidual: residual,
-      minPivotRatio: solved.minPivotRatio,
-      freeDofCount: freeDofs.length,
+      minPivotRatio: system.factorization.minPivotRatio,
+      freeDofCount: system.freeDofs.length,
+      stiffnessBandwidth: system.bandwidth,
+      stiffnessFactorizationCount: system.factorizationCount,
       maximumNodeEquilibriumResidual,
-      globalMomentResidual: norm3(globalMomentResidualVector) / momentScale,
+      globalMomentResidual,
     },
   }
 }
 
-// Kept as a compatibility alias for older external callers. The implementation
-// is no longer a pin-jointed truss: it is the rigid-joint 3D frame solver above.
 export const analyzeTruss = analyzeFrame

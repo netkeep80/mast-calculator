@@ -42,6 +42,14 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .primary:hover { background: #0f6f54; }
 .secondary { background: #e5ebf1; color: #203243; }
 .secondary:hover:not(:disabled) { background: #d6dfe8; }
+.calculation-progress { margin-top: 1rem; padding: .9rem; border: 1px solid #cfd9e2; border-radius: 10px; background: #f7fafc; }
+.progress-title-row, .progress-meta { display: flex; align-items: center; justify-content: space-between; gap: .8rem; }
+.progress-title-row { font-size: .82rem; color: #2b3d4d; }
+#progress-percent { font-variant-numeric: tabular-nums; color: #526474; }
+#progress-bar { width: 100%; height: 14px; margin: .65rem 0 .45rem; accent-color: #168565; }
+.progress-detail { min-height: 2.5em; margin: 0 0 .5rem; color: #526474; font-size: .78rem; line-height: 1.35; }
+.progress-meta { color: #687786; font-size: .75rem; font-variant-numeric: tabular-nums; }
+.cancel-button { width: 100%; margin-top: .7rem; padding: .55rem .7rem; font-size: .78rem; }
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .8rem; }
 .metric-grid article { border: 1px solid #dde4eb; border-radius: 10px; padding: .85rem; background: #f8fafc; }
 .metric-grid span { display: block; margin-bottom: .35rem; color: #667583; font-size: .78rem; }
@@ -72,6 +80,7 @@ li { margin: .45rem 0; color: #43515e; }
 }
 @media (max-width: 620px) {
   .form-grid, .metric-grid, .button-row, .export-row { grid-template-columns: 1fr; }
+  .progress-title-row, .progress-meta { align-items: flex-start; flex-direction: column; gap: .25rem; }
   .checkbox { grid-column: 1; }
   .visual-title-row { display: block; }
   .viewer-control { margin-bottom: .7rem; }

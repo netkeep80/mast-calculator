@@ -1,4 +1,4 @@
-import { calculateMast, DEFAULT_PARAMETERS, resolveCalculationParameters } from './engine/calculate.js'
+import { DEFAULT_PARAMETERS, resolveCalculationParameters } from './engine/calculate.js'
 import {
   getReinforcementClass,
   regularOctahedronHeightMm,
@@ -9,8 +9,6 @@ import {
   theoreticalCutLengthMm,
 } from './engine/catalog.js'
 import { createCalculationProjectHtml } from './engine/calculation-project.js'
-import { calculateLateralCapacity } from './engine/lateral-capacity.js'
-import { selectUniformDiameter } from './engine/optimize.js'
 import {
   buildMaterialSummary,
   buildMemberEnvelope,
@@ -30,6 +28,7 @@ const calculateButton = document.querySelector('#calculate-button')
 const optimizeButton = document.querySelector('#optimize-button')
 const exportNoteButton = document.querySelector('#export-note-button')
 const exportCsvButton = document.querySelector('#export-csv-button')
+const cancelCalculationButton = document.querySelector('#cancel-calculation-button')
 const errorBox = document.querySelector('#error')
 const resultsSection = document.querySelector('#results')
 const warningsList = document.querySelector('#warnings')
@@ -38,10 +37,22 @@ const showBucklingMode = document.querySelector('#show-buckling-mode')
 const memberResultsBody = document.querySelector('#member-results-body')
 const materialSummaryBox = document.querySelector('#material-summary')
 const materialInfoBox = document.querySelector('#material-info')
+const progressPanel = document.querySelector('#calculation-progress')
+const progressBar = document.querySelector('#progress-bar')
+const progressStage = document.querySelector('#progress-stage')
+const progressPercent = document.querySelector('#progress-percent')
+const progressDetail = document.querySelector('#progress-detail')
+const progressElapsed = document.querySelector('#progress-elapsed')
+const progressEta = document.querySelector('#progress-eta')
 const viewer = new MastViewer(document.querySelector('#mast-canvas'))
 
 let lastResult = null
 let lastParameters = null
+let activeWorker = null
+let activeJobId = 0
+let activeJobStartedAt = 0
+let progressTimer = null
+let latestProgressFraction = 0
 let buildInfo = {
   repository: 'netkeep80/mast-calculator',
   ref: 'local',
@@ -105,6 +116,14 @@ const formatFactor = (value) => Number.isFinite(value) ? format(value, 3) : '∞
 const formatForce = (value, digits = 1) => Number.isFinite(value) ? format(value, digits) : '∞'
 const angle = (value) => `${format(value, 0)}°`
 
+function formatDuration(milliseconds) {
+  const seconds = Math.max(0, Math.round(milliseconds / 1000))
+  if (seconds < 60) return `${seconds} с`
+  const minutes = Math.floor(seconds / 60)
+  const remainder = seconds % 60
+  return `${minutes} мин ${remainder} с`
+}
+
 function syncWindFields() {
   const envelope = form.elements.namedItem('windEnvelopeEnabled').checked
   form.elements.namedItem('windDirectionDeg').disabled = envelope
@@ -117,7 +136,6 @@ function syncWindPresetFields() {
   const pressureInput = form.elements.namedItem('windPressurePa')
   const speedInput = form.elements.namedItem('windSpeedMs')
   const isCustom = preset.id === CUSTOM_WIND_PRESET_ID
-
   pressureInput.readOnly = !isCustom
   if (isCustom) {
     speedInput.value = windSpeedFromPressurePa(Number(pressureInput.value)).toFixed(2)
@@ -134,7 +152,6 @@ function syncFabricationFields() {
   const moduleHeight = regularOctahedronHeightMm(cutLength)
   form.elements.namedItem('ribCutLengthMm').value = cutLength.toFixed(2)
   form.elements.namedItem('moduleHeightMm').value = moduleHeight.toFixed(2)
-
   const material = getReinforcementClass(form.elements.namedItem('reinforcementClass').value)
   materialInfoBox.textContent = `${material.label}, ${material.standard}: Rp/Ry = ${material.yieldStrengthMPa} МПа, Rm = ${material.tensileStrengthMPa} МПа, E = ${material.youngModulusGPa} ГПа, ν = ${material.poissonRatio}. Для выбранных классов предусмотрена гарантия свариваемости.`
 }
@@ -154,12 +171,6 @@ function readParameters() {
   parameters.closeTopRing = form.elements.namedItem('closeTopRing').checked
   parameters.windEnvelopeEnabled = form.elements.namedItem('windEnvelopeEnabled').checked
   return resolveCalculationParameters(parameters)
-}
-
-function calculateCompleteResult(parameters) {
-  const result = calculateMast(parameters)
-  result.lateralCapacity = calculateLateralCapacity(result.model, result.parameters)
-  return result
 }
 
 function downloadText(filename, content, type) {
@@ -188,8 +199,7 @@ function lateralModeLabel(mode) {
 }
 
 function renderMemberReport(result) {
-  const members = buildMemberEnvelope(result)
-    .sort((left, right) => right.utilization - left.utilization)
+  const members = buildMemberEnvelope(result).sort((left, right) => right.utilization - left.utilization)
   memberResultsBody.replaceChildren(...members.map((member) => {
     const row = document.createElement('tr')
     if (member.utilization > 1) row.classList.add('danger-row')
@@ -257,9 +267,13 @@ function renderResult(result) {
     ? `Ребро № ${critical.memberId}: N = ${format(critical.axialForceN / 1000, 3)} кН, Vmax = ${format(critical.maxShearN / 1000, 3)} кН, Mmax = ${format(critical.maxBendingNm, 2)} Н·м, σэкв = ${format(critical.equivalentStressPa / 1e6, 2)} МПа, использование = ${format(critical.utilization, 4)} при ветре ${angle(strengthCase.windDirectionDeg)}. Максимальный прогиб возникает при ${angle(displacementCase.windDirectionDeg)}, минимальный множитель общей устойчивости — при ${angle(bucklingCase.windDirectionDeg)}.`
     : 'Критическое ребро не определено.'
 
-  document.querySelector('#lateral-capacity-description').textContent = `Чистая горизонтальная сила прикладывается к вершине и распределяется поровну между тремя верхними узлами. Худшее направление ${angle(lateral.directionDeg)}: первый расчётный предел ${formatForce(lateral.criticalForceN / 1000, 3)} кН = ${formatForce(lateral.criticalForceKgf, 1)} кгс; механизм — ${lateralModeLabel(lateral.governingMode)}. Предел по ребру ${formatForce(lateral.memberLimitForceKgf, 1)} кгс, линейная общая потеря устойчивости ${formatForce(lateral.globalBucklingForceKgf, 1)} кгс. Это отдельный нормированный испытательный случай без ветра, льда, собственного веса и оборудования; реальный натурный тест должен учитывать собственный вес и геометрическую нелинейность.`
+  document.querySelector('#lateral-capacity-description').textContent = `Чистая горизонтальная сила прикладывается к вершине и распределяется поровну между тремя верхними узлами. Худшее направление ${angle(lateral.directionDeg)}: первый расчётный предел ${formatForce(lateral.criticalForceN / 1000, 3)} кН = ${formatForce(lateral.criticalForceKgf, 1)} кгс; механизм — ${lateralModeLabel(lateral.governingMode)}. Предел по ребру ${formatForce(lateral.memberLimitForceKgf, 1)} кгс, линейная общая потеря устойчивости ${formatForce(lateral.globalBucklingForceKgf, 1)} кгс.`
 
-  document.querySelector('#load-summary').textContent = `Погода: ${parameters.windPresetLabel}; v = ${format(parameters.windSpeedMs, 1)} м/с; q = ${format(parameters.windPressurePa, 1)} Па до γw. Рассмотрено направлений ветра: ${result.envelope.caseCount}. Вес стали с коэффициентом: ${format(result.loads.selfWeightN / 1000)} кН; вес льда: ${format(result.loads.iceWeightN / 1000)} кН; результирующий ветер на рёбра: ${format(result.loads.memberWindN / 1000)} кН.`
+  const performance = result.performance
+  const performanceText = performance
+    ? ` Solver: ${performance.linearSystemSolver}; ${performance.freeDofCount} свободных DOF; полуширина ленты ${performance.stiffnessBandwidth}; факторизация K выполнена ${performance.stiffnessFactorizationCount} раз; ветровых случаев ${performance.operationalCaseCount}, боковых ${performance.lateralCaseCount}.`
+    : ''
+  document.querySelector('#load-summary').textContent = `Погода: ${parameters.windPresetLabel}; v = ${format(parameters.windSpeedMs, 1)} м/с; q = ${format(parameters.windPressurePa, 1)} Па до γw. Рассмотрено направлений ветра: ${result.envelope.caseCount}. Вес стали с коэффициентом: ${format(result.loads.selfWeightN / 1000)} кН; вес льда: ${format(result.loads.iceWeightN / 1000)} кН; результирующий ветер на рёбра: ${format(result.loads.memberWindN / 1000)} кН.${performanceText}`
 
   warningsList.replaceChildren(...result.warnings.map((warning) => {
     const item = document.createElement('li')
@@ -269,50 +283,150 @@ function renderResult(result) {
   renderMemberReport(result)
 }
 
-function runCalculation() {
+function updateProgressClock() {
+  if (!activeWorker) return
+  const elapsed = performance.now() - activeJobStartedAt
+  progressElapsed.textContent = `Прошло: ${formatDuration(elapsed)}`
+  if (latestProgressFraction >= 0.03 && elapsed >= 300) {
+    const eta = elapsed * (1 - latestProgressFraction) / Math.max(latestProgressFraction, 1e-6)
+    progressEta.textContent = `Осталось: ≈ ${formatDuration(eta)}`
+  } else {
+    progressEta.textContent = 'Осталось: оценивается…'
+  }
+}
+
+function showProgress(label) {
+  progressPanel.hidden = false
+  progressBar.value = 0
+  progressStage.textContent = 'Вычисление'
+  progressPercent.textContent = '0%'
+  progressDetail.textContent = label
+  progressElapsed.textContent = 'Прошло: 0 с'
+  progressEta.textContent = 'Осталось: оценивается…'
+  latestProgressFraction = 0
+  activeJobStartedAt = performance.now()
+  clearInterval(progressTimer)
+  progressTimer = setInterval(updateProgressClock, 500)
+}
+
+function renderProgress(progress) {
+  latestProgressFraction = Math.min(1, Math.max(0, progress.fraction ?? 0))
+  const percent = Math.round(latestProgressFraction * 100)
+  progressBar.value = percent
+  progressPercent.textContent = `${percent}%`
+  progressStage.textContent = progress.phase === 'optimize' ? 'Подбор диаметра' : 'Расчёт мачты'
+  progressDetail.textContent = progress.label ?? 'Вычисление…'
+  updateProgressClock()
+}
+
+function setBusy(busy) {
+  calculateButton.disabled = busy
+  optimizeButton.disabled = busy
+  cancelCalculationButton.disabled = !busy
+}
+
+function finishProgress(label, success = true) {
+  clearInterval(progressTimer)
+  progressTimer = null
+  const elapsed = performance.now() - activeJobStartedAt
+  if (success) {
+    latestProgressFraction = 1
+    progressBar.value = 100
+    progressPercent.textContent = '100%'
+  }
+  progressStage.textContent = success ? 'Готово' : 'Остановлено'
+  progressDetail.textContent = label
+  progressElapsed.textContent = `Прошло: ${formatDuration(elapsed)}`
+  progressEta.textContent = success ? 'Осталось: 0 с' : 'Осталось: —'
+}
+
+function stopActiveWorker() {
+  if (activeWorker) activeWorker.terminate()
+  activeWorker = null
+  setBusy(false)
+}
+
+function cancelActiveJob() {
+  if (!activeWorker) return
+  activeJobId += 1
+  stopActiveWorker()
+  finishProgress('Расчёт отменён пользователем.', false)
+}
+
+function failWorker(message) {
+  stopActiveWorker()
+  finishProgress('Расчёт завершён с ошибкой.', false)
+  errorBox.textContent = message
+  errorBox.hidden = false
+}
+
+function renderOptimization(summary, result) {
+  optimizationBox.hidden = false
+  if (!summary?.recommendedDiameter) {
+    optimizationBox.textContent = 'В диапазоне стандартных диаметров не найден вариант, проходящий по прочности, прогибу и общей устойчивости.'
+    return
+  }
+  const diameter = summary.recommendedDiameter
+  form.elements.namedItem('barDiameterMm').value = diameter
+  optimizationBox.textContent = `Минимальный найденный единый диаметр: ${diameter} мм. Использование ${format(result.envelope.maxUtilization, 3)}, прогиб ${format(result.envelope.maxTopDisplacementM * 1000, 2)} мм, множитель общей устойчивости ${formatFactor(result.envelope.minimumBucklingFactor)}, первый боковой предел ${formatForce(result.lateralCapacity.criticalForceKgf, 1)} кгс, боковая общая потеря устойчивости ${formatForce(result.lateralCapacity.globalBucklingForceKgf, 1)} кгс.`
+}
+
+function startWorkerJob(action, parameters) {
+  if (activeWorker) cancelActiveJob()
   errorBox.hidden = true
   optimizationBox.hidden = true
-  calculateButton.disabled = true
+  const jobId = ++activeJobId
+  const worker = new Worker('./calculation-worker.js', { type: 'module' })
+  activeWorker = worker
+  setBusy(true)
+  showProgress(action === 'optimize' ? 'Запуск подбора стандартного диаметра…' : 'Запуск расчёта…')
+
+  worker.onmessage = (event) => {
+    const message = event.data ?? {}
+    if (message.jobId !== jobId || worker !== activeWorker) return
+    if (message.type === 'progress') {
+      renderProgress(message.progress)
+      return
+    }
+    if (message.type === 'error') {
+      failWorker(message.message ?? 'Неизвестная ошибка worker')
+      return
+    }
+    if (message.type === 'result') {
+      if (message.result) renderResult(message.result)
+      if (message.optimization) renderOptimization(message.optimization, message.result)
+      stopActiveWorker()
+      finishProgress(message.optimization ? 'Подбор и итоговый расчёт завершены.' : 'Расчёт завершён.')
+    }
+  }
+  worker.onerror = (event) => {
+    if (worker !== activeWorker) return
+    failWorker(event.message || 'Ошибка Web Worker')
+  }
+  worker.postMessage({ jobId, action, parameters })
+}
+
+function runCalculation() {
   try {
-    const parameters = readParameters()
-    const result = calculateCompleteResult(parameters)
-    renderResult(result)
+    startWorkerJob('calculate', readParameters())
   } catch (error) {
     errorBox.textContent = error instanceof Error ? error.message : String(error)
     errorBox.hidden = false
-  } finally {
-    calculateButton.disabled = false
   }
 }
 
 function runOptimization() {
-  errorBox.hidden = true
-  optimizeButton.disabled = true
   try {
-    const parameters = readParameters()
-    const optimization = selectUniformDiameter(parameters)
-    const recommended = optimization.recommended
-    optimizationBox.hidden = false
-
-    if (!recommended) {
-      optimizationBox.textContent = 'В диапазоне стандартных диаметров не найден вариант, проходящий по прочности, прогибу и общей устойчивости.'
-      return
-    }
-
-    form.elements.namedItem('barDiameterMm').value = recommended.diameter
-    const complete = calculateCompleteResult({ ...parameters, barDiameterMm: recommended.diameter })
-    renderResult(complete)
-    optimizationBox.textContent = `Минимальный найденный единый диаметр: ${recommended.diameter} мм. Использование ${format(complete.envelope.maxUtilization, 3)}, прогиб ${format(complete.envelope.maxTopDisplacementM * 1000, 2)} мм, множитель общей устойчивости ${formatFactor(complete.envelope.minimumBucklingFactor)}, первый боковой предел ${formatForce(complete.lateralCapacity.criticalForceKgf, 1)} кгс, боковая общая потеря устойчивости ${formatForce(complete.lateralCapacity.globalBucklingForceKgf, 1)} кгс.`
+    startWorkerJob('optimize', readParameters())
   } catch (error) {
     errorBox.textContent = error instanceof Error ? error.message : String(error)
     errorBox.hidden = false
-  } finally {
-    optimizeButton.disabled = false
   }
 }
 
 calculateButton.addEventListener('click', runCalculation)
 optimizeButton.addEventListener('click', runOptimization)
+cancelCalculationButton.addEventListener('click', cancelActiveJob)
 exportNoteButton.addEventListener('click', () => {
   if (!lastResult || !lastParameters) return
   const generatedAt = new Date().toISOString()
@@ -343,4 +457,5 @@ form.addEventListener('submit', (event) => {
 syncWindFields()
 syncWindPresetFields()
 syncFabricationFields()
+setBusy(false)
 runCalculation()

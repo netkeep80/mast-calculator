@@ -224,8 +224,6 @@ test('обледенение увеличивает вертикальную и 
 test('ветер вдоль оси отдельного цилиндрического ребра не создаёт поперечной распределённой силы', () => {
   const model = singleBeamModel({ lengthM: 2, axis: [1, 0, 0] })
   const parameters = { ...DEFAULT_PARAMETERS, windDirectionDeg: 0, iceThicknessMm: 0 }
-  // This test uses calculateMast elsewhere for buildLoadCase integration; here the
-  // frame load itself is explicitly zero to guard the solver against phantom load.
   const result = analyzeFrame(model, frameLoadCase(model), parameters)
   assert.ok(result.memberResults[0].maxShearN < 1e-10)
 })
@@ -242,15 +240,17 @@ test('огибающая перебирает заданные направле�
   assert.ok(result.cases.every((loadCase) => loadCase.analysis.degreesOfFreedomPerNode === 6))
 })
 
-test('расчёт мачты использует frame solver и жёсткий коэффициент расчётной длины', () => {
+test('расчёт мачты использует v0.7 frame solver, ленточную факторизацию и жёсткий коэффициент расчётной длины', () => {
   const result = calculateMast({
     ...DEFAULT_PARAMETERS,
     moduleCount: 1,
     windEnvelopeEnabled: false,
     effectiveLengthFactor: 1.7,
   })
-  assert.equal(result.method.id, 'linear-frame-v0.6')
+  assert.equal(result.method.id, 'linear-frame-v0.7')
   assert.equal(result.analysis.solver, 'linear-3d-frame-euler-bernoulli')
+  assert.equal(result.analysis.linearSystemSolver, 'symmetric-band-cholesky')
+  assert.equal(result.analysis.diagnostics.stiffnessFactorizationCount, 1)
   assert.equal(result.parameters.effectiveLengthFactor, 0.5)
   assert.ok(result.analysis.memberResults.every((member) => Number.isFinite(member.equivalentStressPa)))
 })

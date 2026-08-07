@@ -1,11 +1,11 @@
-import type { ResolvedProject } from '../../domain/src/contracts.js'
+import type { ResolvedProject } from '../../domain/contracts.js'
 import type {
   LoadCase,
   MastModel,
   RawFrameAnalysis,
   RawMemberResult,
   Vector3,
-} from '../../structural-analysis/src/contracts.js'
+} from '../../structural-analysis/contracts.js'
 
 export interface MemberResult extends RawMemberResult {
   readonly axialForceN: number

@@ -242,12 +242,17 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: bash scripts/simulate-fresh-merge.sh
-      - name: Smoke-test browser entry points
+      - name: Use Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+      - name: Build static web tree
+        run: npm run build:web
+      - name: Smoke-test browser entry points and package APIs
         shell: bash
         run: |
           set -euo pipefail
-          cp logo.jpg site/logo.jpg
-          python3 -m http.server 4173 --directory site >/tmp/mast-calculator-http.log 2>&1 &
+          python3 -m http.server 4173 --directory _site >/tmp/mast-calculator-http.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid"' EXIT
 
@@ -268,41 +273,15 @@ jobs:
           grep --quiet 'Проверить конкретную мачту' /tmp/mast-calculator-index.html
           grep --quiet 'Справочники — проверить исходные значения расчёта' /tmp/mast-calculator-index.html
           curl --fail --silent http://127.0.0.1:4173/logo.jpg >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/app-bootstrap.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/app.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/usage-scenarios.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/usage-style.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/usage.css >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/reference-catalog.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/calculation-worker.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/viewer.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/module-viewer.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/joint-viewer.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/calculate.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/complete-calculation.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/assembly-mass.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/reference-data.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/solver.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/reference-frame.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/module-stack.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/module-verification.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/banded.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/buckling.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/weather.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/connection-catalog.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/joint-hardware-catalog.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/joint-configurator.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/joint-section-check.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/joint-strength-parameters.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/joint-visual-geometry.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/bolt-preload.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/bolt-check.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/weld-check.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/joint-demand.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/connection-check.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/lateral-capacity.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/static-payload-capacity.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/verification.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/calculation-note.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/engine/calculation-project.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/styles.css >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/apps/web/app.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/apps/web/calculation-worker.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/apps/web/viewer.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/apps/web/design-app.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/apps/web/design-storage.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/packages/domain/index.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/packages/numerics/index.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/packages/structural-analysis/index.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/packages/engineering/index.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/packages/application/index.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/packages/design/index.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/packages/reporting/index.js >/dev/null

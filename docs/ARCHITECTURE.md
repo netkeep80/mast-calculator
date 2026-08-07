@@ -90,15 +90,16 @@ This layer has no mast, bolt, weld, weather or application semantics.
 
 ### `packages/structural-analysis`
 
-Structural mechanics and solver paths:
+Raw structural mechanics and solver paths:
 
 - physical frame geometry/model assembly;
 - distributed/nodal loads;
 - global banded frame FEM;
-- module Schur solver and module verification;
+- module Schur solver and module response/verification support;
 - eigen-buckling orchestration;
-- guy-wire nonlinear structural solver;
 - weld-zone stiffness representation.
+
+`analyzeFrame()` owns structural response only: DOF, rotations, reactions, member end actions, global buckling and numerical diagnostics. It does **not** apply reinforcement yield, material safety factor, von Mises/member utilization or guy-wire acceptance criteria.
 
 The independent dense frame solver remains verification/test-support. It is deliberately **not** exported from the normal production index; tests use `packages/structural-analysis/testing.js`.
 
@@ -106,12 +107,16 @@ The independent dense frame solver remains verification/test-support. It is deli
 
 Engineering interpretation/checks on structural response:
 
+- member strength, local Euler capacity and utilization via `analyzeCheckedFrame()`;
 - bolt capacity/preload;
 - joint demand/configuration and nut net-section checks;
 - weld checks;
 - connection envelope;
 - lateral/static/crane capacity calculations;
+- nonlinear guy-wire system plus cable/member acceptance criteria;
 - verification primitives and mixed-diameter verification.
+
+The old member-strength formula was moved verbatim out of the structural solver. `analyzeCheckedFrame()` decorates raw `analyzeFrame()` output without introducing a second FEM implementation.
 
 ### `packages/design`
 
@@ -147,7 +152,7 @@ calculateGuyedProject(input, tiers, options)
 createVerification(result)
 ```
 
-`calculateProject()` owns the complete headless calculation result exposed to environment adapters. Progress is a callback passed through `options`; the application layer does not know about `self.postMessage`, DOM or filesystems.
+`calculateProject()` owns the complete headless calculation result exposed to environment adapters. `calculateGuyedProject()` delegates the engineering guy-wire use case without exposing solver ownership to Web. Progress is a callback passed through `options`; the application layer does not know about `self.postMessage`, DOM or filesystems.
 
 Legacy calculation functions remain inside the same canonical application package for internal/focused tests during the foundation sequence, but no old `site/engine` compatibility path exists. Issue #53/#54 will tighten result/contracts and orchestration further without another physical core copy.
 
@@ -163,7 +168,7 @@ Legacy calculation functions remain inside the same canonical application packag
 - Blob/URL downloads;
 - navigation.
 
-The calculation Worker imports the application public API and calls `calculateProject()`. It no longer performs module-verification enrichment itself.
+The calculation Worker imports the application public API and calls `calculateProject()` / `optimizeProject()`. The guys UI calls `calculateGuyedProject()` rather than importing structural or engineering implementation paths directly. Web no longer performs module-verification enrichment itself.
 
 Some UI preview/orchestration logic is intentionally still scheduled for issue #54; issue #52 establishes the hard physical boundary and public API so that cleanup can occur without moving physics again.
 
@@ -178,6 +183,8 @@ packages/structural-analysis/testing.js
 ```
 
 This exposes the independent dense oracle only to verification/tests. It is not a second production FEM API.
+
+`tests/package-entrypoints.test.js` also guards semantic ownership: member-strength formulae and guy-wire acceptance must remain outside the structural production API.
 
 ## Node/headless execution
 

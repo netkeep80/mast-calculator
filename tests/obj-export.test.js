@@ -126,9 +126,14 @@ test('OBJ exporter rejects incomplete calculation snapshots', () => {
   assert.throws(() => createMastObj({}), /выполненный расчёт/)
 })
 
-test('browser bootstrap exposes a disabled-until-result OBJ download action', () => {
+test('issue #47: OBJ download belongs to design workspace, not calculation bootstrap', () => {
   const bootstrap = fs.readFileSync(new URL('../site/app-bootstrap.js', import.meta.url), 'utf8')
-  assert.match(bootstrap, /export-obj-button/)
-  assert.match(bootstrap, /createMastObj/)
-  assert.match(bootstrap, /\.obj/)
+  const design = fs.readFileSync(new URL('../site/design-app.js', import.meta.url), 'utf8')
+  const page = fs.readFileSync(new URL('../site/design.html', import.meta.url), 'utf8')
+
+  assert.doesNotMatch(bootstrap, /createMastObj/)
+  assert.doesNotMatch(bootstrap, /export-obj-button/)
+  assert.match(design, /createMastObj/)
+  assert.match(design, /export-obj/)
+  assert.match(page, /Скачать OBJ/)
 })

@@ -1,15 +1,23 @@
 import { calculateAssemblyMass } from './assembly-mass.js'
 import { getReinforcementClass } from './catalog.js'
 import { WELD_CONSUMABLES } from './connection-catalog.js'
+import { buildDetailedMastModel } from './detailed-mast-model.js'
+import { buildJointVisualGeometry } from './joint-visual-geometry.js'
+import {
+  dimensionHorizontalSvg,
+  dimensionVerticalSvg,
+  projectMeshToSvg,
+  TECHNICAL_PROJECTION_SCHEMA,
+} from './technical-projection.js'
 
-export const ESKD_EXPORT_SCHEMA = 'mast-calculator/eskd-construction-documentation/v1'
+export const ESKD_EXPORT_SCHEMA = 'mast-calculator/eskd-construction-documentation/v2'
 
 export const ESKD_STANDARDS = Object.freeze([
   Object.freeze({ id: 'ГОСТ Р 2.102-2023', purpose: 'виды и комплектность конструкторских документов' }),
   Object.freeze({ id: 'ГОСТ Р 2.104-2023', purpose: 'основные надписи и дополнительные графы' }),
   Object.freeze({ id: 'ГОСТ Р 2.105-2019', purpose: 'общие требования к текстовым документам' }),
   Object.freeze({ id: 'ГОСТ Р 2.109-2023', purpose: 'основные требования к чертежам' }),
-  Object.freeze({ id: 'ГОСТ Р 2.201-2023', purpose: 'обозначения изделий и конструкторских документов' }),
+  Object.freeze({ id: 'ГОСТ Р 2.201-2023', purpose: 'обозначение изделий и конструкторских документов' }),
   Object.freeze({ id: 'ГОСТ 2.301-68', purpose: 'форматы листов' }),
 ])
 
@@ -24,334 +32,216 @@ const number = (value, digits = 2) => Number.isFinite(Number(value))
   ? new Intl.NumberFormat('ru-RU', { maximumFractionDigits: digits }).format(Number(value))
   : '—'
 
-const svgText = (x, y, text, options = {}) => {
-  const size = options.size ?? 4
-  const anchor = options.anchor ?? 'start'
-  const weight = options.weight ?? 'normal'
-  const rotate = options.rotate == null ? '' : ` transform="rotate(${options.rotate} ${x} ${y})"`
-  return `<text x="${x}" y="${y}" font-size="${size}" text-anchor="${anchor}" font-weight="${weight}"${rotate}>${escapeHtml(text)}</text>`
+function resolvedJointGeometry(result) {
+  return result?.connections?.configurator?.geometry
+    ?? result?.connections?.geometry
+    ?? result?.connections?.resolvedGeometry
+    ?? null
 }
 
-function resolveEskdModel(result) {
-  if (!result?.parameters || !result?.model) throw new Error('Для экспорта КД требуется готовый расчёт мачты')
+function memberDiameters(result) {
+  return [...new Set(result.model.members.map((member) => Math.round(Number(member.diameterM) * 1000 * 1000) / 1000))]
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => a - b)
+}
+
+export function buildEskdConstructionDocumentationModel(result) {
+  if (!result?.parameters || !result?.model?.members?.length) {
+    throw new Error('Для экспорта КД требуется готовый расчёт мачты')
+  }
+  const geometry = resolvedJointGeometry(result)
+  if (!geometry) throw new Error('Для экспорта КД отсутствует выбранная геометрия соединительного узла')
   const p = result.parameters
   const mass = result.assemblyMass ?? calculateAssemblyMass(result)
-  const geometry = result.connections?.configurator?.geometry
-  if (!geometry) throw new Error('Для экспорта КД отсутствует выбранная геометрия соединительного узла')
   const reinforcement = getReinforcementClass(p.reinforcementClass)
   const weld = WELD_CONSUMABLES.find((item) => item.id === p.weldConsumableId)
+  const detailedModel = buildDetailedMastModel(result, { radialSegments: 8, includeJointHardware: true })
+  const jointVisual = buildJointVisualGeometry({
+    geometry,
+    barDiameterMm: Math.max(...memberDiameters(result)),
+    weldPhysicalLengthMm: Number(result.connections?.weld?.critical?.check?.requiredPhysicalLengthMm ?? 0),
+  })
   const moduleCount = Number(result.model.moduleCount)
-  const moduleHeightMm = Number(p.moduleHeightMm)
-  const mastHeightMm = moduleCount * moduleHeightMm
-  const boltClass = result.connections?.configurator?.selected?.boltClass ?? p.jointBoltClass ?? '—'
   return {
     schema: ESKD_EXPORT_SCHEMA,
+    technicalProjectionSchema: TECHNICAL_PROJECTION_SCHEMA,
     productName: 'Мачта модульная',
     moduleName: 'Модуль мачты',
     jointName: 'Узел межмодульный',
     ribName: 'Ребро',
+    documentDesignation: '',
     moduleCount,
-    moduleHeightMm,
-    mastHeightMm,
+    moduleHeightMm: Number(p.moduleHeightMm),
+    mastHeightMm: moduleCount * Number(p.moduleHeightMm),
     ribLengthMm: Number(p.ribCutLengthMm),
-    ribDiameterMm: Number(p.barDiameterMm),
+    ribDiametersMm: memberDiameters(result),
     reinforcement,
     weld,
     weldLegMm: Number(mass.weld.legMm),
     weldLengthMm: Number(mass.weld.designPhysicalLengthPerEndMm),
-    boltClass,
+    boltClass: result.connections?.configurator?.selected?.boltClass ?? p.jointBoltClass ?? '—',
     bolt: mass.hardware.bolt,
     clearanceNut: mass.hardware.clearanceNut,
     couplingNut: mass.hardware.couplingNut,
+    geometry,
+    jointVisual,
+    detailedModel,
     mass,
-    documentDesignation: '',
   }
 }
 
-function titleBlock(model, {
-  name,
-  form = '1',
-  sheet = 1,
-  sheets = 1,
-  scale = 'Б/М',
-  material = '',
-}) {
-  const heightClass = form === '1' ? 'eskd-title-form1' : 'eskd-title-form2'
-  return `
-<div class="eskd-title-block ${heightClass}" aria-label="Основная надпись, форма ${escapeHtml(form)} по ГОСТ Р 2.104-2023">
-  <div class="eskd-approval-grid">
-    <span>Разраб.</span><span class="eskd-signature"></span><span></span><span></span>
-    <span>Провер.</span><span class="eskd-signature"></span><span></span><span></span>
-    <span>Н. контр.</span><span class="eskd-signature"></span><span></span><span></span>
-    <span>Утв.</span><span class="eskd-signature"></span><span></span><span></span>
-  </div>
-  <div class="eskd-title-name">${escapeHtml(name)}</div>
-  <div class="eskd-title-designation">
-    <small>Обозначение</small>
-    <strong>${model.documentDesignation ? escapeHtml(model.documentDesignation) : 'НЕ ПРИСВОЕНО'}</strong>
-  </div>
-  <div class="eskd-title-material">${material ? `<small>Материал</small><br>${escapeHtml(material)}` : ''}</div>
-  <div class="eskd-title-meta"><span>Лит.</span><span>Масса</span><span>Масштаб</span><b>—</b><b>${number(model.mass.mastFabricationEstimate.uniformModulesMassKg, 2)}</b><b>${escapeHtml(scale)}</b></div>
-  <div class="eskd-title-sheet"><span>Лист</span><span>Листов</span><b>${sheet}</b><b>${sheets}</b></div>
-  <div class="eskd-title-org">Организация-разработчик: ____________________</div>
-</div>`
+function titleBlock(model, name, options = {}) {
+  const form = options.form ?? '1'
+  return `<div class="eskd-title-block eskd-title-form${form}" data-title-block-form="${form}">
+    <div class="eskd-signatures"><span>Разраб.</span><b></b><span>Провер.</span><b></b><span>Н. контр.</span><b></b><span>Утв.</span><b></b></div>
+    <div class="eskd-name">${escapeHtml(name)}</div>
+    <div class="eskd-designation"><small>Обозначение</small><strong>${model.documentDesignation || 'НЕ ПРИСВОЕНО'}</strong></div>
+    <div class="eskd-meta"><span>Масса ${number(model.mass.mastFabricationEstimate.uniformModulesMassKg, 2)} кг</span><span>Масштаб ${escapeHtml(options.scale ?? 'Б/М')}</span><span>Лист ${options.sheet ?? 1}</span><span>Листов ${options.sheets ?? 1}</span></div>
+    <div class="eskd-org">Организация-разработчик: ____________________</div>
+  </div>`
 }
 
-function sheet({ model, name, form = '1', sheet = 1, sheets = 1, scale = 'Б/М', material = '', body }) {
-  return `
-<article class="eskd-sheet" data-format="A4" data-title-block-form="${escapeHtml(form)}">
-  <div class="eskd-frame"></div>
-  <div class="eskd-zone eskd-zone-top">1&nbsp;&nbsp;2&nbsp;&nbsp;3&nbsp;&nbsp;4&nbsp;&nbsp;5&nbsp;&nbsp;6&nbsp;&nbsp;7&nbsp;&nbsp;8</div>
-  <div class="eskd-sheet-content">${body}</div>
-  ${titleBlock(model, { name, form, sheet, sheets, scale, material })}
-</article>`
+function sheet(model, name, body, options = {}) {
+  return `<article class="eskd-sheet" data-format="A4" data-document="${escapeHtml(name)}">
+    <div class="eskd-frame"></div>
+    <div class="eskd-content">${body}</div>
+    ${titleBlock(model, name, options)}
+  </article>`
+}
+
+function drawingSvg(content, label) {
+  return `<svg class="eskd-drawing" viewBox="0 0 180 210" role="img" aria-label="${escapeHtml(label)}">${content}</svg>`
 }
 
 function mastDrawing(model) {
-  const modulesShown = Math.min(model.moduleCount, 16)
-  const xLeft = 48
-  const xRight = 96
-  const xMid = (xLeft + xRight) / 2
-  const yBottom = 182
-  const totalGraphicHeight = 145
-  const step = totalGraphicHeight / modulesShown
-  const lines = []
-  for (let index = 0; index < modulesShown; index += 1) {
-    const y0 = yBottom - index * step
-    const y1 = yBottom - (index + 1) * step
-    lines.push(`<line x1="${xLeft}" y1="${y0}" x2="${xRight}" y2="${y0}"/>`)
-    lines.push(`<line x1="${xLeft}" y1="${y0}" x2="${xMid}" y2="${y1}"/>`)
-    lines.push(`<line x1="${xRight}" y1="${y0}" x2="${xMid}" y2="${y1}"/>`)
-    lines.push(`<line x1="${xMid}" y1="${y1}" x2="${xLeft}" y2="${y0 - step * 0.48}"/>`)
-    lines.push(`<line x1="${xMid}" y1="${y1}" x2="${xRight}" y2="${y0 - step * 0.48}"/>`)
-  }
-  const topY = yBottom - totalGraphicHeight
-  return `
-<div class="eskd-drawing-grid">
-<svg class="eskd-drawing" viewBox="0 0 145 215" role="img" aria-label="Сборочный чертёж модульной мачты">
-  <g class="eskd-thick">${lines.join('')}</g>
-  <g class="eskd-thin">
-    <line x1="40" y1="${topY}" x2="30" y2="${topY}"/><line x1="40" y1="${yBottom}" x2="30" y2="${yBottom}"/>
-    <line x1="33" y1="${topY}" x2="33" y2="${yBottom}"/>
-    <path d="M31 ${topY + 5} L33 ${topY} L35 ${topY + 5}"/><path d="M31 ${yBottom - 5} L33 ${yBottom} L35 ${yBottom - 5}"/>
-    <line x1="${xLeft}" y1="190" x2="${xRight}" y2="190"/>
-    <line x1="${xLeft}" y1="186" x2="${xLeft}" y2="194"/><line x1="${xRight}" y1="186" x2="${xRight}" y2="194"/>
-  </g>
-  ${svgText(27, (topY + yBottom) / 2, `H=${number(model.mastHeightMm, 0)}`, { size: 4, anchor: 'middle', rotate: -90 })}
-  ${svgText(xMid, 198, `a=${number(model.ribLengthMm, 0)}`, { size: 4, anchor: 'middle' })}
-  ${model.moduleCount > modulesShown ? svgText(xMid, 108, `условно показано ${modulesShown} из ${model.moduleCount} модулей`, { size: 3.5, anchor: 'middle' }) : ''}
-  ${svgText(105, 55, '1', { size: 5, weight: 'bold' })}<line x1="103" y1="57" x2="88" y2="75" class="eskd-thin"/>
-  ${svgText(105, 95, '2', { size: 5, weight: 'bold' })}<line x1="103" y1="97" x2="90" y2="108" class="eskd-thin"/>
-</svg>
-<div class="eskd-tech">
-  <h4>Технические требования</h4>
-  <ol>
-    <li>Мачту собирать из ${model.moduleCount} одинаковых модулей, ориентация — ножками вниз.</li>
-    <li>Межмодульные соединения — по чертежу «${escapeHtml(model.jointName)}».</li>
-    <li>Перед изготовлением присвоить обозначения КД по ГОСТ Р 2.201-2023 и заполнить подписи.</li>
-    <li>Защитное покрытие и требования к монтажу задаются проектировщиком для конкретной площадки; автоматически не назначаются.</li>
-  </ol>
-  <h4>Позиции</h4><p>1 — ${escapeHtml(model.moduleName)}; 2 — ${escapeHtml(model.jointName)}.</p>
-</div>
-</div>`
-}
-
-function moduleDrawing(model) {
-  return `
-<div class="eskd-drawing-grid">
-<svg class="eskd-drawing" viewBox="0 0 145 215" role="img" aria-label="Сборочный чертёж модуля мачты">
-  <g class="eskd-thick">
-    <polygon points="30,55 100,55 65,112" fill="none"/>
-    <line x1="30" y1="55" x2="42" y2="155"/><line x1="100" y1="55" x2="88" y2="155"/>
-    <line x1="65" y1="112" x2="42" y2="155"/><line x1="65" y1="112" x2="88" y2="155"/>
-    <line x1="30" y1="55" x2="88" y2="155"/><line x1="100" y1="55" x2="42" y2="155"/>
-  </g>
-  <g class="eskd-thin">
-    <line x1="22" y1="55" x2="17" y2="55"/><line x1="38" y1="155" x2="17" y2="155"/><line x1="20" y1="55" x2="20" y2="155"/>
-    <line x1="30" y1="165" x2="100" y2="165"/><line x1="30" y1="160" x2="30" y2="170"/><line x1="100" y1="160" x2="100" y2="170"/>
-  </g>
-  ${svgText(14, 105, `h=${number(model.moduleHeightMm, 1)}`, { size: 4, anchor: 'middle', rotate: -90 })}
-  ${svgText(65, 173, `a=${number(model.ribLengthMm, 1)}`, { size: 4, anchor: 'middle' })}
-  ${svgText(112, 61, '1', { size: 5, weight: 'bold' })}<line x1="108" y1="63" x2="93" y2="66" class="eskd-thin"/>
-  ${svgText(112, 126, '2', { size: 5, weight: 'bold' })}<line x1="108" y1="128" x2="88" y2="142" class="eskd-thin"/>
-</svg>
-<div class="eskd-tech">
-  <h4>Технические требования</h4>
-  <ol>
-    <li>9 рёбер одинаковой длины ${number(model.ribLengthMm, 1)} мм.</li>
-    <li>Материал рёбер: ${escapeHtml(model.reinforcement.label)}, Ø${number(model.ribDiameterMm, 0)}; ${escapeHtml(model.reinforcement.standard)}.</li>
-    <li>Угловые швы: катет ${number(model.weldLegMm, 1)} мм; расчётная физическая длина не менее ${number(model.weldLengthMm, 1)} мм на конец.</li>
-    <li>Сварочный материал: ${escapeHtml(model.weld?.label ?? model.mass.weld.uniformDesignRule)}${model.weld?.standard ? `; ${escapeHtml(model.weld.standard)}` : ''}.</li>
-  </ol>
-  <h4>Позиции</h4><p>1 — ребро; 2 — элементы межмодульного узла.</p>
-</div>
-</div>`
-}
-
-function jointDrawing(model) {
-  const bolt = model.bolt
-  const bottom = model.clearanceNut
-  const top = model.couplingNut
-  return `
-<div class="eskd-drawing-grid">
-<svg class="eskd-drawing" viewBox="0 0 145 215" role="img" aria-label="Сборочный чертёж межмодульного узла">
-  <g class="eskd-thick">
-    <rect x="56" y="42" width="20" height="45" fill="none"/>
-    <rect x="53" y="105" width="26" height="18" fill="none"/>
-    <rect x="62" y="35" width="8" height="98" fill="none"/>
-    <polygon points="57,35 75,35 70,27 62,27" fill="none"/>
-    <line x1="56" y1="55" x2="22" y2="33"/><line x1="76" y1="55" x2="110" y2="33"/>
-    <line x1="56" y1="72" x2="22" y2="92"/><line x1="76" y1="72" x2="110" y2="92"/>
-    <line x1="53" y1="113" x2="20" y2="145"/><line x1="79" y1="113" x2="112" y2="145"/>
-  </g>
-  <g class="eskd-thin">
-    <line x1="90" y1="27" x2="90" y2="133"/><line x1="86" y1="27" x2="94" y2="27"/><line x1="86" y1="133" x2="94" y2="133"/>
-  </g>
-  ${svgText(97, 82, `Lболта=${number(bolt.lengthMm, 0)}`, { size: 4, anchor: 'middle', rotate: -90 })}
-  ${svgText(118, 47, '1', { size: 5, weight: 'bold' })}<line x1="114" y1="49" x2="76" y2="63" class="eskd-thin"/>
-  ${svgText(118, 112, '2', { size: 5, weight: 'bold' })}<line x1="114" y1="114" x2="79" y2="114" class="eskd-thin"/>
-  ${svgText(118, 132, '3', { size: 5, weight: 'bold' })}<line x1="114" y1="134" x2="69" y2="126" class="eskd-thin"/>
-</svg>
-<div class="eskd-tech">
-  <h4>Технические требования</h4>
-  <ol>
-    <li>Болт M${bolt.diameterMm}×${number(bolt.lengthMm, 0)}, класс ${escapeHtml(model.boltClass)}.</li>
-    <li>Проходная гайка: M${bottom.threadDiameterMm}, размер под ключ ${number(bottom.acrossFlatsMm, 1)} мм.</li>
-    <li>Длинная соединительная гайка: M${top.threadDiameterMm}×${number(top.lengthMm, 0)} мм.</li>
-    <li>Болт свободно проходит через проходную гайку и ввинчивается в длинную; зацепление ${number(model.mass.hardware.bolt.threadEngagementMm ?? model.mass.hardware.couplingNut.threadEngagementMm, 1)} мм уточнять по итоговой геометрии.</li>
-    <li>Сварные концы выполнять по расчётной длине не менее ${number(model.weldLengthMm, 1)} мм.</li>
-  </ol>
-  <h4>Позиции</h4><p>1 — длинная гайка; 2 — проходная гайка; 3 — болт.</p>
-</div>
-</div>`
-}
-
-function ribDrawing(model) {
-  return `
-<div class="eskd-drawing-grid">
-<svg class="eskd-drawing" viewBox="0 0 145 215" role="img" aria-label="Чертёж детали ребра">
-  <g class="eskd-thick"><rect x="18" y="92" width="108" height="12" rx="6" fill="none"/></g>
-  <g class="eskd-thin">
-    <line x1="18" y1="120" x2="126" y2="120"/><line x1="18" y1="114" x2="18" y2="126"/><line x1="126" y1="114" x2="126" y2="126"/>
-    <line x1="132" y1="92" x2="132" y2="104"/><line x1="128" y1="92" x2="136" y2="92"/><line x1="128" y1="104" x2="136" y2="104"/>
-  </g>
-  ${svgText(72, 129, `${number(model.ribLengthMm, 1)} мм`, { size: 4.5, anchor: 'middle' })}
-  ${svgText(138, 101, `Ø${number(model.ribDiameterMm, 0)}`, { size: 4.5, anchor: 'middle', rotate: -90 })}
-</svg>
-<div class="eskd-tech">
-  <h4>Технические требования</h4>
-  <ol>
-    <li>Заготовка — арматурный стержень ${escapeHtml(model.reinforcement.label)} Ø${number(model.ribDiameterMm, 0)}.</li>
-    <li>Длина после резки ${number(model.ribLengthMm, 1)} мм. Допуск длины должен быть назначен изготовителем исходя из принятого технологического процесса.</li>
-    <li>Торцы подготовить под принятую технологию сварки; заусенцы удалить.</li>
-    <li>Не подменять этим чертежом требования сертификата на фактическую партию стали.</li>
-  </ol>
-</div>
-</div>`
-}
-
-function specificationTable(rows) {
-  return `<table class="eskd-spec-table"><thead><tr><th>Формат</th><th>Зона</th><th>Поз.</th><th>Обозначение</th><th>Наименование</th><th>Кол.</th><th>Примечание</th></tr></thead><tbody>${rows.map((row) => `<tr class="${row.section ? 'eskd-spec-section' : ''}"><td>${escapeHtml(row.format ?? '')}</td><td>${escapeHtml(row.zone ?? '')}</td><td>${escapeHtml(row.position ?? '')}</td><td>${escapeHtml(row.designation ?? '')}</td><td>${escapeHtml(row.name ?? '')}</td><td>${escapeHtml(row.quantity ?? '')}</td><td>${escapeHtml(row.note ?? '')}</td></tr>`).join('')}</tbody></table>`
+  const scene = model.detailedModel
+  const structural = (object) => object.kind === 'member'
+  const front = projectMeshToSvg(scene, { view: 'front', x: 12, y: 8, width: 98, height: 160, padding: 4, objectFilter: structural, label: 'Вид спереди' })
+  const iso = projectMeshToSvg(scene, { view: 'iso', x: 116, y: 10, width: 55, height: 92, padding: 3, objectFilter: structural, label: 'Изометрия' })
+  const dimensions = [
+    dimensionVerticalSvg(7, 12, 168, `H = ${number(model.mastHeightMm, 0)} мм`),
+    dimensionHorizontalSvg(25, 96, 177, `ребро a = ${number(model.ribLengthMm, 0)} мм`),
+  ].join('')
+  return `<div class="eskd-drawing-grid">${drawingSvg(`${front}${iso}${dimensions}`, 'Сборочный чертёж модульной мачты')}
+    <div class="eskd-tech"><h4>Технические требования</h4><ol>
+      <li>Мачту собирать из ${model.moduleCount} модулей; геометрия видов автоматически получена из той же 3D-модели, что используется в просмотрщике и OBJ.</li>
+      <li>Межмодульные соединения выполнить по отдельному листу узла.</li>
+      <li>Перед выпуском присвоить обозначения КД по ГОСТ Р 2.201-2023, заполнить подписи и провести нормоконтроль.</li>
+      <li>Защитное покрытие, монтажные допуски и требования к основанию назначаются проектировщиком для конкретного объекта.</li>
+    </ol></div></div>`
 }
 
 function mastSpecification(model) {
-  return specificationTable([
-    { section: true, name: 'Документация' },
-    { format: 'А4', name: `${model.productName}. Сборочный чертеж`, quantity: '1', note: 'лист комплекта' },
-    { section: true, name: 'Сборочные единицы' },
-    { position: '1', name: model.moduleName, quantity: model.moduleCount, note: `${number(model.moduleHeightMm, 1)} мм` },
-    { section: true, name: 'Примечание' },
-    { name: 'Обозначения изделий и КД до выпуска в производство присваивает организация-разработчик по ГОСТ Р 2.201-2023.' },
-  ])
+  const jointCount = Math.max(0, 3 * (model.moduleCount - 1))
+  return `<h3>Спецификация изделия</h3><table class="eskd-spec"><thead><tr><th>Поз.</th><th>Наименование</th><th>Кол.</th><th>Примечание</th></tr></thead><tbody>
+    <tr><td>1</td><td>${escapeHtml(model.moduleName)}</td><td>${model.moduleCount}</td><td>унифицированный модуль</td></tr>
+    <tr><td>2</td><td>${escapeHtml(model.jointName)}</td><td>${jointCount}</td><td>по 3 стыка на внутренний уровень</td></tr>
+  </tbody></table><p class="eskd-note">Масса изготовленной мачты по геометрической оценке: ${number(model.mass.mastFabricationEstimate.uniformModulesMassKg, 2)} кг.</p>`
+}
+
+function moduleDrawing(model) {
+  const moduleFilter = (object) => object.moduleIndices?.includes(0)
+  const front = projectMeshToSvg(model.detailedModel, { view: 'front', x: 8, y: 8, width: 78, height: 108, padding: 5, objectFilter: moduleFilter, label: 'Спереди' })
+  const top = projectMeshToSvg(model.detailedModel, { view: 'top', x: 94, y: 8, width: 78, height: 78, padding: 5, objectFilter: moduleFilter, label: 'Сверху' })
+  const iso = projectMeshToSvg(model.detailedModel, { view: 'iso', x: 94, y: 92, width: 78, height: 72, padding: 5, objectFilter: moduleFilter, label: 'Изометрия' })
+  const dimensions = `${dimensionVerticalSvg(5, 12, 112, `h = ${number(model.moduleHeightMm, 1)} мм`)}${dimensionHorizontalSvg(16, 78, 124, `a = ${number(model.ribLengthMm, 1)} мм`)}`
+  return `<div class="eskd-drawing-grid">${drawingSvg(`${front}${top}${iso}${dimensions}`, 'Сборочный чертёж модуля')}
+    <div class="eskd-tech"><h4>Технические требования</h4><ol>
+      <li>Каркас: 9 одинаковых рёбер длиной ${number(model.ribLengthMm, 1)} мм.</li>
+      <li>Арматура: ${escapeHtml(model.reinforcement.label)}, Ø${model.ribDiametersMm.map((d) => number(d, 0)).join('/')} мм; ${escapeHtml(model.reinforcement.standard)}.</li>
+      <li>Угловые швы: катет ${number(model.weldLegMm, 1)} мм; физическая длина не менее ${number(model.weldLengthMm, 1)} мм на конец.</li>
+      <li>Сварочный материал: ${escapeHtml(model.weld?.label ?? 'по расчёту')}${model.weld?.standard ? `; ${escapeHtml(model.weld.standard)}` : ''}.</li>
+    </ol></div></div>`
 }
 
 function moduleSpecification(model) {
-  return specificationTable([
-    { section: true, name: 'Документация' },
-    { format: 'А4', name: `${model.moduleName}. Сборочный чертеж`, quantity: '1' },
-    { format: 'А4', name: `${model.ribName}. Чертеж детали`, quantity: '1' },
-    { section: true, name: 'Детали' },
-    { position: '1', name: `${model.ribName}, ${model.reinforcement.label} Ø${number(model.ribDiameterMm, 0)}×${number(model.ribLengthMm, 1)}`, quantity: '9', note: model.reinforcement.standard },
-    { section: true, name: 'Стандартные и покупные изделия' },
-    { position: '2', name: `Болт M${model.bolt.diameterMm}×${number(model.bolt.lengthMm, 0)}, класс ${model.boltClass}`, quantity: '3' },
-    { position: '3', name: `Гайка проходная M${model.clearanceNut.threadDiameterMm}`, quantity: '3' },
-    { position: '4', name: `Гайка соединительная M${model.couplingNut.threadDiameterMm}×${number(model.couplingNut.lengthMm, 0)}`, quantity: '3' },
-    { section: true, name: 'Материалы' },
-    { position: '5', name: model.weld?.label ?? 'Сварочный материал по расчёту', quantity: '—', note: model.weld?.standard ?? '' },
-  ])
+  return `<h3>Спецификация модуля</h3><table class="eskd-spec"><thead><tr><th>Поз.</th><th>Наименование</th><th>Кол.</th><th>Материал / размер</th></tr></thead><tbody>
+    <tr><td>1</td><td>Ребро</td><td>9</td><td>${escapeHtml(model.reinforcement.label)} Ø${model.ribDiametersMm.map((d) => number(d, 0)).join('/')} × ${number(model.ribLengthMm, 0)}; ${escapeHtml(model.reinforcement.standard)}</td></tr>
+    <tr><td>2</td><td>Болт M${model.bolt.diameterMm}×${number(model.bolt.lengthMm, 0)}</td><td>3</td><td>класс ${escapeHtml(model.boltClass)}</td></tr>
+    <tr><td>3</td><td>Гайка проходная M${model.clearanceNut.threadDiameterMm}</td><td>3</td><td>s=${number(model.clearanceNut.acrossFlatsMm, 1)} мм</td></tr>
+    <tr><td>4</td><td>Гайка соединительная M${model.couplingNut.threadDiameterMm}×${number(model.couplingNut.lengthMm, 0)}</td><td>3</td><td>зацепление ${number(model.geometry.threadEngagementMm, 0)} мм</td></tr>
+    <tr><td>5</td><td>Сварной шов</td><td>18 концов</td><td>k=${number(model.weldLegMm, 1)}; L≥${number(model.weldLengthMm, 1)} мм/конец</td></tr>
+  </tbody></table><p class="eskd-note">Расчётная производственная масса модуля: ${number(model.mass.module.totalMassKg, 3)} кг.</p>`
 }
 
-function normativeIntro(model) {
-  return `
-<section class="page-break eskd-package-intro">
-<h2>15. Комплект конструкторской документации ЕСКД</h2>
-<p>Ниже автоматически сформирован рабочий комплект КД для рассчитанной модульной мачты. Комплект включает спецификацию изделия, сборочный чертёж мачты, сборочный чертёж модуля, спецификацию модуля, сборочный чертёж межмодульного узла и чертёж детали ребра.</p>
-<p><strong>Нормативная база:</strong> ${ESKD_STANDARDS.map((item) => `${escapeHtml(item.id)} — ${escapeHtml(item.purpose)}`).join('; ')}.</p>
-<p class="notice"><strong>Статус документа:</strong> автоматически сформированный проект КД. Генератор намеренно не выдумывает код организации, уникальное обозначение, фамилии и подписи. Перед выпуском в производство организация-разработчик должна присвоить обозначения по ГОСТ Р 2.201-2023, заполнить реквизиты и подписи, назначить отсутствующие технологические допуски/покрытие и провести нормоконтроль. Расчётный HTML не является подписанным подлинником КД.</p>
-<p>Схема экспорта: <code>${escapeHtml(model.schema)}</code>. Формат печатных листов — А4; рамка имеет поле подшивки 20 мм слева и 5 мм по остальным сторонам. Для графических листов используется основная надпись формы 1, для спецификаций — формы 2.</p>
-</section>`
+function jointDrawing(model) {
+  const visual = model.jointVisual
+  const coupling = visual.couplingNut
+  const clearance = visual.clearanceNut
+  const cx = 54
+  const scale = 0.95
+  const y0 = 132
+  const z = (value) => y0 - Number(value) * scale
+  const width = (value) => Number(value) * scale
+  const couplingX = cx - width(coupling.acrossFlatsMm) / 2
+  const clearanceX = cx - width(clearance.acrossFlatsMm) / 2
+  const ribLines = visual.ribs.map((rib) => {
+    const x1 = cx + rib.startPoint[0] * 0.55
+    const y1 = z(rib.startPoint[2])
+    const x2 = cx + rib.endPoint[0] * 0.55
+    const y2 = z(rib.endPoint[2])
+    return `<line class="joint-rib ${rib.group}" x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}"/>`
+  }).join('')
+  const side = `<g class="joint-detail">
+    <rect x="${couplingX}" y="${z(visual.couplingZ1)}" width="${width(coupling.acrossFlatsMm)}" height="${width(visual.couplingZ1 - visual.couplingZ0)}"/>
+    <rect x="${clearanceX}" y="${z(visual.clearanceZ1)}" width="${width(clearance.acrossFlatsMm)}" height="${width(visual.clearanceZ1 - visual.clearanceZ0)}"/>
+    <line class="joint-bolt" x1="${cx}" y1="${z(visual.couplingZ0)}" x2="${cx}" y2="${z(visual.boltTop)}"/>
+    ${ribLines}
+    <text x="8" y="12" class="tech-view-label">Продольный вид</text>
+  </g>`
+  const dims = `${dimensionVerticalSvg(94, z(visual.couplingZ0), z(visual.boltTop), `Lболта ${number(model.bolt.lengthMm, 0)} мм`)}${dimensionHorizontalSvg(28, 80, 150, `M${model.bolt.diameterMm}; sгайки ${number(model.couplingNut.acrossFlatsMm, 0)} мм`)}`
+  const top = `<g transform="translate(126 62)"><polygon class="joint-hex" points="0,-24 20.78,-12 20.78,12 0,24 -20.78,12 -20.78,-12"/><circle class="joint-hole" cx="0" cy="0" r="${Math.max(4, model.bolt.diameterMm * 0.34)}"/><text class="tech-view-label" x="-28" y="-31">Вид сверху</text></g>`
+  return `<div class="eskd-drawing-grid">${drawingSvg(`${side}${top}${dims}`, 'Сборочный чертёж межмодульного узла')}
+    <div class="eskd-tech"><h4>Технические требования</h4><ol>
+      <li>Болт M${model.bolt.diameterMm}×${number(model.bolt.lengthMm, 0)}, класс ${escapeHtml(model.boltClass)} свободно проходит через гайку M${model.clearanceNut.threadDiameterMm} и ввинчивается в длинную M${model.couplingNut.threadDiameterMm}.</li>
+      <li>Длина зацепления резьбы: ${number(model.geometry.threadEngagementMm, 1)} мм ≈ ${number(model.geometry.engagedThreadTurns, 1)} витков.</li>
+      <li>К длинной гайке приварить 4 ребра, к проходной — 2 ребра. Направления рёбер взяты из той же joint geometry, что используется 3D-просмотрщиком.</li>
+      <li>Фактические размеры покупных гаек и болта сверить с документацией поставщика.</li>
+    </ol></div></div>`
 }
 
-function styles() {
-  return `<style>
-@page eskd-a4 { size: A4 portrait; margin: 0; }
-.eskd-sheet { page: eskd-a4; position: relative; width: 210mm; height: 297mm; margin: 0 auto; box-sizing: border-box; background: #fff; color: #000; break-before: page; break-after: page; font-family: Arial, sans-serif; font-size: 3.5mm; overflow: hidden; }
-.eskd-frame { position: absolute; left: 20mm; top: 5mm; right: 5mm; bottom: 5mm; border: .7mm solid #000; box-sizing: border-box; }
-.eskd-zone { position: absolute; font-size: 2.4mm; letter-spacing: 7mm; }
-.eskd-zone-top { left: 28mm; top: 6mm; }
-.eskd-sheet-content { position: absolute; left: 22mm; top: 12mm; width: 181mm; height: 221mm; box-sizing: border-box; }
-.eskd-drawing-grid { display: grid; grid-template-columns: 1fr 58mm; gap: 3mm; width: 100%; height: 100%; }
-.eskd-drawing { width: 100%; height: 100%; }
-.eskd-drawing text { font-family: Arial, sans-serif; fill: #000; }
-.eskd-drawing .eskd-thick, .eskd-thick { stroke: #000; stroke-width: 1.1; fill: none; }
-.eskd-drawing .eskd-thin, .eskd-thin { stroke: #000; stroke-width: .45; fill: none; }
-.eskd-tech { border-left: .35mm solid #000; padding-left: 3mm; font-size: 2.8mm; line-height: 1.25; }
-.eskd-tech h4 { margin: 1mm 0; font-size: 3.2mm; }
-.eskd-tech ol { padding-left: 5mm; margin: 1mm 0 3mm; }
-.eskd-title-block { position: absolute; right: 5mm; bottom: 5mm; width: 185mm; border: .7mm solid #000; box-sizing: border-box; display: grid; grid-template-columns: 65mm 70mm 50mm; grid-template-rows: 15mm 15mm 10mm 15mm; font-size: 2.7mm; background: #fff; }
-.eskd-title-form1 { height: 55mm; }
-.eskd-title-form2 { height: 40mm; grid-template-rows: 15mm 10mm 15mm; }
-.eskd-title-block > div { border-right: .35mm solid #000; border-bottom: .35mm solid #000; padding: 1mm; box-sizing: border-box; overflow: hidden; }
-.eskd-approval-grid { grid-row: 1 / span 4; display: grid; grid-template-columns: 15mm 22mm 14mm 14mm; grid-auto-rows: 7mm; padding: 0 !important; }
-.eskd-approval-grid span { border-right: .25mm solid #000; border-bottom: .25mm solid #000; padding: .8mm; }
-.eskd-signature { min-width: 20mm; }
-.eskd-title-name { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 4.5mm; font-weight: 700; }
-.eskd-title-designation { grid-column: 3; grid-row: 1; text-align: center; }
-.eskd-title-designation strong { display: block; margin-top: 2mm; font-size: 3.7mm; }
-.eskd-title-material { grid-column: 2; grid-row: 3; }
-.eskd-title-meta { grid-column: 3; grid-row: 2 / span 2; display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; padding: 0 !important; }
-.eskd-title-meta span, .eskd-title-meta b { border-right: .25mm solid #000; border-bottom: .25mm solid #000; padding: 1mm .3mm; }
-.eskd-title-sheet { grid-column: 2; grid-row: 4; display: grid; grid-template-columns: repeat(2, 1fr); text-align: center; padding: 0 !important; }
-.eskd-title-sheet span, .eskd-title-sheet b { border-right: .25mm solid #000; padding: 1mm; }
-.eskd-title-org { grid-column: 3; grid-row: 4; font-size: 2.4mm; }
-.eskd-title-form2 .eskd-approval-grid { grid-row: 1 / span 3; }
-.eskd-title-form2 .eskd-title-name { grid-row: 1; }
-.eskd-title-form2 .eskd-title-designation { grid-row: 1; }
-.eskd-title-form2 .eskd-title-material { display: none; }
-.eskd-title-form2 .eskd-title-meta { grid-row: 2; }
-.eskd-title-form2 .eskd-title-sheet { grid-row: 3; }
-.eskd-title-form2 .eskd-title-org { grid-row: 3; }
-.eskd-spec-table { width: 100%; border-collapse: collapse; font-size: 3mm; }
-.eskd-spec-table th, .eskd-spec-table td { border: .3mm solid #000; padding: 1.2mm; height: 7mm; vertical-align: top; }
-.eskd-spec-table th:nth-child(1) { width: 13mm; }.eskd-spec-table th:nth-child(2) { width: 10mm; }.eskd-spec-table th:nth-child(3) { width: 10mm; }.eskd-spec-table th:nth-child(4) { width: 34mm; }.eskd-spec-table th:nth-child(6) { width: 11mm; }.eskd-spec-table th:nth-child(7) { width: 30mm; }
-.eskd-spec-section td { height: 10mm; font-weight: 700; text-decoration: underline; padding-top: 4mm; }
-@media print { .eskd-sheet { margin: 0; box-shadow: none; } .eskd-package-intro { break-before: page; } }
-</style>`
+function ribDrawing(model) {
+  const diameter = Math.max(...model.ribDiametersMm)
+  const y = 86
+  return `<div class="eskd-drawing-grid">${drawingSvg(`
+    <g class="rib-detail"><line x1="22" y1="${y}" x2="152" y2="${y}"/><line x1="22" y1="${y - 2.5}" x2="152" y2="${y - 2.5}"/><line x1="22" y1="${y + 2.5}" x2="152" y2="${y + 2.5}"/><line x1="22" y1="${y - 5}" x2="22" y2="${y + 5}"/><line x1="152" y1="${y - 5}" x2="152" y2="${y + 5}"/></g>
+    ${dimensionHorizontalSvg(22, 152, 112, `L = ${number(model.ribLengthMm, 1)} мм`)}
+    <text x="28" y="65" class="tech-callout">Ø${number(diameter, 0)} ${escapeHtml(model.reinforcement.label)}</text>
+    <line class="tech-leader" x1="52" y1="67" x2="69" y2="82"/>
+  `, 'Чертёж детали ребра')}
+    <div class="eskd-tech"><h4>Технические требования</h4><ol>
+      <li>Заготовка: арматура ${escapeHtml(model.reinforcement.label)}, ${escapeHtml(model.reinforcement.standard)}.</li>
+      <li>Длина после резки ${number(model.ribLengthMm, 1)} мм. Допуск на резку назначить технологом до выпуска КД.</li>
+      <li>Заусенцы удалить. Подготовку концов под сварку назначить по принятой технологии сварки.</li>
+    </ol></div></div>`
 }
 
-export function buildEskdConstructionDocumentationModel(result) {
-  return resolveEskdModel(result)
+function standardsNote() {
+  return ESKD_STANDARDS.map((item) => `${escapeHtml(item.id)} — ${escapeHtml(item.purpose)}`).join('; ')
 }
 
 export function createEskdConstructionDocumentation(result) {
-  const model = resolveEskdModel(result)
-  const sheets = 6
-  const rebarMaterial = `${model.reinforcement.label} Ø${number(model.ribDiameterMm, 0)} · ${model.reinforcement.standard}`
-  return `${styles()}${normativeIntro(model)}
-${sheet({ model, name: `${model.productName}. Сборочный чертеж`, sheet: 1, sheets, body: mastDrawing(model) })}
-${sheet({ model, name: `${model.productName}. Спецификация`, form: '2', sheet: 2, sheets, body: mastSpecification(model) })}
-${sheet({ model, name: `${model.moduleName}. Сборочный чертеж`, sheet: 3, sheets, body: moduleDrawing(model) })}
-${sheet({ model, name: `${model.moduleName}. Спецификация`, form: '2', sheet: 4, sheets, body: moduleSpecification(model) })}
-${sheet({ model, name: `${model.jointName}. Сборочный чертеж`, sheet: 5, sheets, body: jointDrawing(model) })}
-${sheet({ model, name: `${model.ribName}. Чертеж детали`, sheet: 6, sheets, material: rebarMaterial, body: ribDrawing(model) })}`
+  const model = buildEskdConstructionDocumentationModel(result)
+  const sheets = [
+    sheet(model, 'Мачта модульная. Сборочный чертеж', mastDrawing(model), { form: '1', sheet: 1, sheets: 6, scale: 'Б/М' }),
+    sheet(model, 'Мачта модульная. Спецификация', mastSpecification(model), { form: '2', sheet: 2, sheets: 6 }),
+    sheet(model, 'Модуль мачты. Сборочный чертеж', moduleDrawing(model), { form: '1', sheet: 3, sheets: 6, scale: 'Б/М' }),
+    sheet(model, 'Модуль мачты. Спецификация', moduleSpecification(model), { form: '2', sheet: 4, sheets: 6 }),
+    sheet(model, 'Узел межмодульный. Сборочный чертеж', jointDrawing(model), { form: '1', sheet: 5, sheets: 6, scale: '2:1 условно' }),
+    sheet(model, 'Ребро. Чертеж детали', ribDrawing(model), { form: '1', sheet: 6, sheets: 6, scale: 'Б/М' }),
+  ].join('')
+  return `<section class="eskd-package" data-schema="${ESKD_EXPORT_SCHEMA}">${sheets}</section>`
+}
+
+const documentCss = `
+@page{size:A4 portrait;margin:0}*{box-sizing:border-box}body{margin:0;background:#d8dde1;color:#111;font-family:"Arial Narrow",Arial,sans-serif}.eskd-package{display:flex;flex-direction:column;align-items:center;gap:8mm;padding:8mm}.eskd-sheet{position:relative;width:210mm;height:297mm;background:white;page-break-after:always;break-after:page;box-shadow:0 1mm 5mm #0003}.eskd-frame{position:absolute;left:20mm;right:5mm;top:5mm;bottom:5mm;border:.5mm solid #111}.eskd-content{position:absolute;left:25mm;right:10mm;top:10mm;bottom:62mm;overflow:hidden}.eskd-title-block{position:absolute;right:5mm;bottom:5mm;width:185mm;height:55mm;border:.35mm solid #111;display:grid;grid-template-columns:42mm 1fr 58mm;grid-template-rows:24mm 16mm 15mm;font-size:3mm}.eskd-title-block>div{border:.18mm solid #111;padding:1.2mm}.eskd-signatures{grid-row:1/4;display:grid;grid-template-columns:16mm 1fr;grid-auto-rows:6mm}.eskd-signatures b{border-bottom:.15mm solid #777}.eskd-name{font-size:5mm;font-weight:700;text-align:center;display:flex;align-items:center;justify-content:center}.eskd-designation{text-align:center}.eskd-designation small{display:block}.eskd-designation strong{font-size:4mm}.eskd-meta{display:flex;justify-content:space-around;gap:2mm}.eskd-org{text-align:center}.eskd-drawing-grid{display:grid;grid-template-columns:2fr 1fr;gap:4mm;height:100%}.eskd-drawing{width:100%;height:100%;border:.2mm solid #888}.eskd-tech{font-size:3.15mm;line-height:1.25}.eskd-tech h4{margin:0 0 2mm}.eskd-tech ol{padding-left:5mm;margin:0}.eskd-tech li{margin-bottom:2mm}.tech-visible{stroke:#111;stroke-width:.42;fill:none}.tech-hidden{stroke:#777;stroke-width:.22;stroke-dasharray:1.5 1;fill:none}.tech-view-label,.tech-callout{font-size:3.3px;font-weight:700}.tech-dimension{stroke:#111;stroke-width:.25;fill:none}.tech-dimension text{stroke:none;fill:#111;font-size:3.2px}.tech-leader{stroke:#111;stroke-width:.3}.eskd-spec{width:100%;border-collapse:collapse;font-size:3.4mm}.eskd-spec th,.eskd-spec td{border:.25mm solid #111;padding:2mm}.eskd-spec th{height:10mm}.eskd-note{font-size:3.2mm}.joint-detail rect,.joint-hex{fill:#f0f0f0;stroke:#111;stroke-width:.45}.joint-hole{fill:white;stroke:#111;stroke-width:.35}.joint-bolt{stroke:#111;stroke-width:3}.joint-rib{stroke-width:4;stroke-linecap:round}.joint-rib.coupling{stroke:#222}.joint-rib.clearance{stroke:#555}.rib-detail{stroke:#111;stroke-width:.45}@media print{body{background:white}.eskd-package{padding:0;gap:0}.eskd-sheet{box-shadow:none;margin:0}}
+`
+
+export function createEskdConstructionDocumentationHtml(result, metadata = {}) {
+  const model = buildEskdConstructionDocumentationModel(result)
+  const packageHtml = createEskdConstructionDocumentation(result)
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>КД ЕСКД — ${escapeHtml(model.productName)}</title><style>${documentCss}</style></head><body>
+    ${packageHtml}
+    <aside class="eskd-release-note" style="display:none">Схема ${ESKD_EXPORT_SCHEMA}; источник ${escapeHtml(metadata.source ?? 'mast-calculator')}; нормативная база: ${standardsNote()}. Автоматически сформирован проект КД. Обозначения, подписи, технологические допуски, покрытие и нормоконтроль должны быть назначены разработчиком.</aside>
+  </body></html>`
 }

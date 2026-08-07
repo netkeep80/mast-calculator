@@ -6,6 +6,7 @@ import {
   getReinforcementClass,
   theoreticalCutLengthMm,
 } from './engine/catalog.js'
+import { saveDesignResult } from './engine/design-package.js'
 import { renderReferenceCatalogs } from './reference-catalog.js'
 
 const $ = (selector) => document.querySelector(selector)
@@ -23,6 +24,8 @@ const governingDetails = $('#governing-details')
 const verificationDetails = $('#verification-details')
 const referenceDetails = $('#reference-details')
 const jointInputDetails = $('#joint-input-details')
+let designWorkspaceButton = null
+let designWorkspaceNote = null
 
 const SCENARIOS = Object.freeze({
   check: {
@@ -63,8 +66,6 @@ function setMetricLabel(id, text) {
 }
 
 function installIssue36Ui() {
-  // Эти поля раньше позволяли задавать ту же физическую нагрузку вторым способом.
-  // Issue #36 оставляет одну пользовательскую вертикальную величину — массу груза.
   removeLegacyForceControl('extraHorizontalLoadN')
   removeLegacyForceControl('extraVerticalLoadN')
 
@@ -104,6 +105,40 @@ function installIssue36Ui() {
 }
 
 installIssue36Ui()
+
+function installDesignWorkspaceUi() {
+  const exportRow = document.querySelector('.export-row')
+  if (!exportRow) return
+  document.querySelector('#export-obj-button')?.remove()
+  const noteButton = document.querySelector('#export-note-button')
+  if (noteButton) {
+    noteButton.textContent = 'Скачать расчётный проект'
+    noteButton.title = 'Расчёт и верификация без конструкторской документации'
+  }
+  designWorkspaceButton = document.querySelector('#open-design-workspace-button')
+  if (!designWorkspaceButton) {
+    designWorkspaceButton = document.createElement('button')
+    designWorkspaceButton.id = 'open-design-workspace-button'
+    designWorkspaceButton.className = 'secondary'
+    designWorkspaceButton.type = 'button'
+    designWorkspaceButton.disabled = true
+    designWorkspaceButton.textContent = 'Открыть 3D и КД'
+    designWorkspaceButton.title = 'Подробная 3D-модель, OBJ и отдельный комплект конструкторской документации'
+    designWorkspaceButton.addEventListener('click', () => {
+      globalThis.location.href = './design.html'
+    })
+    exportRow.append(designWorkspaceButton)
+  }
+  designWorkspaceNote = document.querySelector('#design-workspace-note')
+  if (!designWorkspaceNote) {
+    designWorkspaceNote = document.createElement('p')
+    designWorkspaceNote.id = 'design-workspace-note'
+    designWorkspaceNote.className = 'hint practical-note'
+    designWorkspaceNote.textContent = 'Расчётный проект содержит только расчёты. Подробная 3D-модель, OBJ и КД по ЕСКД вынесены в отдельный модуль и становятся доступны после расчёта.'
+    exportRow.after(designWorkspaceNote)
+  }
+  document.body.dataset.issue47DesignWorkspace = 'separate'
+}
 
 function selectedScenario() {
   return document.querySelector('input[name="usageScenario"]:checked')?.value ?? 'check'
@@ -174,18 +209,33 @@ function renderDesignScenario(result) {
   )
 }
 
+function boomMetric(boom) {
+  if (!boom) return { value: '—', note: 'расчёт стрелы отсутствует' }
+  if (boom.governingMode !== 'boom-self-weight-overlimit') {
+    return {
+      value: `${format(boom.maximumEndPayloadMassKg, 1)} кг`,
+      note: `собственный вес арматурной стрелы ≈ ${format(boom.boomSelfMassEquivalentKg, 1)} кг; без динамики подъёма`,
+    }
+  }
+  return {
+    value: '0 кг — сам вес не проходит',
+    note: `при горизонтальном положении Uболта=${format(boom.governing?.boltUtilizationAtLimit, 2)} > 1; масса арматурной стрелы ≈ ${format(boom.boomSelfMassEquivalentKg, 1)} кг`,
+  }
+}
+
 function renderLimitsScenario(result) {
   const lateral = result.lateralCapacity
   const boom = result.craneBoomCapacity
   const payload = result.staticPayloadCapacity
   const height = result.heightCapacity
+  const boomAnswer = boomMetric(boom)
   scenarioTitle.textContent = 'Пределы выбранного типа мачты'
   scenarioStatus.textContent = 'ПРЕДЕЛЫ РАССЧИТАНЫ'
   scenarioStatus.className = 'answer-status answer-info'
   scenarioText.textContent = 'Для вертикальной мачты показывается максимальная масса на вершине. Для горизонтальной стрелы выполняется отдельный расчёт: собственный вес арматурных рёбер действует поперёк стрелы и вместе с концевым грузом расходует её несущую способность. Чистый unit-load предел остаётся отдельной верификационной величиной.'
   scenarioMetrics.replaceChildren(
     metricCard('Проектная высота', `${height.design.bounded ? '' : '≥ '}${format(height.design.maximumHeightM, 2)} м`, `${height.design.maximumModules} модулей`),
-    metricCard('Горизонтальная стрела', `${format(boom?.maximumEndPayloadMassKg, 1)} кг`, `собственный вес арматурной стрелы ≈ ${format(boom?.boomSelfMassEquivalentKg, 1)} кг; без динамики подъёма`),
+    metricCard('Горизонтальная стрела', boomAnswer.value, boomAnswer.note),
     metricCard('Максимум на вершине', `${format(payload.maximumTopEquipmentMassKg ?? payload.maximumTotalTopMassKg, 1)} кг`, 'суммарная масса оборудования/груза'),
     metricCard('Можно добавить', `${format(payload.additionalTopEquipmentMassKg ?? payload.remainingAdditionalMassKg, 1)} кг`, `уже задано ${format(payload.configuredTopEquipmentMassKg ?? result.parameters.equipmentMassKg, 1)} кг; чистый lateral upper bound ${format(lateral.criticalForceKgf, 1)} кгс`),
   )
@@ -228,7 +278,6 @@ function renderIssue36DetailedResult(result) {
   const boom = result?.craneBoomCapacity
   const payload = result?.staticPayloadCapacity
   if (!lateral || !payload) return
-
   const maximum = payload.maximumTopEquipmentMassKg ?? payload.maximumTotalTopMassKg
   const remaining = payload.additionalTopEquipmentMassKg ?? payload.remainingAdditionalMassKg
   const configured = payload.configuredTopEquipmentMassKg ?? result.parameters?.equipmentMassKg ?? 0
@@ -291,7 +340,22 @@ function syncScenarioControls() {
   }
 }
 
+function publishDesignWorkspace(result) {
+  if (!designWorkspaceButton) return
+  try {
+    const saved = saveDesignResult(result)
+    designWorkspaceButton.disabled = false
+    designWorkspaceButton.title = `Открыть подробную 3D-модель, OBJ и КД; пакет ${(saved.bytes / 1024).toFixed(0)} КиБ`
+    if (designWorkspaceNote) designWorkspaceNote.textContent = 'Расчётный проект отделён от КД. Последняя рассчитанная конструкция сохранена для модуля «3D и КД»; там доступны просмотр, OBJ, пакет JSON и отдельный комплект ЕСКД.'
+  } catch (error) {
+    designWorkspaceButton.disabled = true
+    designWorkspaceButton.title = error instanceof Error ? error.message : String(error)
+    if (designWorkspaceNote) designWorkspaceNote.textContent = `Не удалось передать конструкцию в модуль 3D/КД: ${designWorkspaceButton.title}`
+  }
+}
+
 export function initializeUsageExperience() {
+  installDesignWorkspaceUi()
   renderReferenceCatalogs(document)
   for (const radio of document.querySelectorAll('input[name="usageScenario"]')) {
     radio.addEventListener('change', syncScenarioControls)
@@ -311,11 +375,9 @@ export function enrichAndRenderUsageResult(result) {
   } catch (error) {
     $('#assembly-mass-explanation').textContent = `Не удалось оценить сборочную массу: ${error instanceof Error ? error.message : String(error)}`
   }
+  publishDesignWorkspace(result)
   globalThis.__mastLastUsageResult = result
   renderScenarioResult(result)
-  // app.js является владельцем базового render pass и регистрирует собственный
-  // Worker-listener после bootstrap. Microtask гарантирует, что упрощённые
-  // формулировки issue #36 применятся уже после старого совместимого render pass.
   queueMicrotask(() => renderIssue36DetailedResult(result))
   return result
 }

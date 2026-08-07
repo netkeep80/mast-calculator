@@ -4,9 +4,47 @@
 
 Опубликованная версия: **https://netkeep80.github.io/mast-calculator/**
 
-## Прототип 1.4 — практические нагрузки без дублирования
+## Прототип 1.5 — расчёты отдельно, 3D и КД отдельно
 
-Issue #36 упрощает пользовательскую модель нагрузки и добавляет отдельный расчёт горизонтальной стрелы.
+Issue #47 разделяет два разных жизненных цикла проекта.
+
+**Калькулятор** отвечает за исходные данные, FEM, нагрузки, соединения, пределы, подбор, верификацию и бумажный **расчётный проект**.
+
+**Модуль 3D и конструкторской документации** (`design.html`) получает уже рассчитанную конструкцию и отвечает за:
+
+- подробный интерактивный просмотр всей мачты;
+- просмотр межмодульного узла;
+- экспорт Wavefront OBJ;
+- переносимый JSON package принятой конструкции;
+- отдельный комплект КД по ЕСКД.
+
+После расчёта в основном интерфейсе появляется кнопка **«Открыть 3D и КД»**. Старый прямой OBJ-экспорт из расчётного экрана убран из фокуса. Бумажный расчётный проект больше не содержит листов ЕСКД.
+
+Между подсистемами используется компактная схема:
+
+```text
+mast-calculator/design-package/v1
+```
+
+Она переносит геометрию FEM-модели, фактические диаметры рёбер, выбранный физический соединительный узел и производственную массу, но не копирует тяжёлые эксплуатационные load cases и не запускает второй FEM.
+
+КД обновлена до:
+
+```text
+mast-calculator/eskd-construction-documentation/v2
+mast-calculator/technical-projection/v1
+```
+
+Виды мачты и модуля теперь автоматически строятся из той же `detailed-mast-model`, что используется интерактивным 3D viewer и OBJ. Старая ручная SVG-схема больше не является источником чертежной геометрии.
+
+Подробнее:
+
+- [`docs/DESIGN_WORKSPACE.md`](docs/DESIGN_WORKSPACE.md)
+- [`docs/ESKD_CONSTRUCTION_DOCUMENTATION.md`](docs/ESKD_CONSTRUCTION_DOCUMENTATION.md)
+- [`docs/INTEGRATED_3D_VIEWER.md`](docs/INTEGRATED_3D_VIEWER.md)
+- [`docs/3D_MODEL_EXPORT.md`](docs/3D_MODEL_EXPORT.md)
+
+## Практические сценарии расчёта
 
 Пользователь начинает с одного из четырёх вопросов:
 
@@ -17,9 +55,9 @@ Issue #36 упрощает пользовательскую модель наг�
 
 Главное правило issue #36: одна физическая нагрузка не должна задаваться двумя способами. Из пользовательской модели удалены произвольные `extraHorizontalLoadN` и `extraVerticalLoadN`. Вертикальная нагрузка вершины задаётся одной понятной величиной — **массой оборудования/груза в килограммах**.
 
-Внутренние известные силы, необходимые аналитическим тестам и normalized capacity cases, передаются через отдельный `topPointLoadN` API и не являются параметрами пользовательской формы.
+Внутренние известные силы для analytical tests и normalized capacity cases передаются через `topPointLoadN` и не являются пользовательскими параметрами.
 
-Подробный контракт: [`docs/ISSUE_36_STATIC_LOAD_SIMPLIFICATION.md`](docs/ISSUE_36_STATIC_LOAD_SIMPLIFICATION.md).
+Подробнее: [`docs/ISSUE_36_STATIC_LOAD_SIMPLIFICATION.md`](docs/ISSUE_36_STATIC_LOAD_SIMPLIFICATION.md).
 
 ## Раскрой арматуры
 
@@ -34,8 +72,6 @@ Issue #36 упрощает пользовательскую модель наг�
 ```text
 a = Lstock / nparts
 ```
-
-Расчётное ядро отвергает нецелые значения и значения вне `1…48`.
 
 ## Физический модуль
 
@@ -55,7 +91,7 @@ h = a*sqrt(2/3)
 H = N*h
 ```
 
-Три нижних production nodes пока имеют идеальную жёсткую заделку по шести DOF. Отдельные аналитические tests с шарнирными точечными опорами являются только verification fixtures.
+Три нижних production nodes пока имеют идеальную жёсткую заделку по шести DOF. Отдельные аналитические tests с шарнирными точечными опорами являются verification fixtures.
 
 ## Эксплуатационные нагрузки
 
@@ -71,14 +107,11 @@ Legacy `extraHorizontalLoadN` и `extraVerticalLoadN`, даже если вст�
 
 ## Максимальная масса на вершине вертикальной мачты
 
-Отдельная gravity-only задача отвечает на два практически нужных вопроса:
+Gravity-only задача возвращает:
 
 ```text
 maximumTopEquipmentMassKg
-  максимальная суммарная масса оборудования/груза на верхней грани
-
 additionalTopEquipmentMassKg
-  сколько ещё кг можно добавить сверх уже установленной массы
 ```
 
 Проверяются:
@@ -89,19 +122,11 @@ Ubolt <= 1
 lambda_cr >= 1
 ```
 
-Собственный вес мачты сохраняется; ветер и лёд в этой специальной задаче отключаются.
-
-Отдельный structural output «эквивалентный объём воды» удалён. Если кому-то нужен объём, это обычное внешнее преобразование:
-
-```text
-V = m/rho
-```
-
-Подробнее: [`docs/STATIC_PAYLOAD_CAPACITY.md`](docs/STATIC_PAYLOAD_CAPACITY.md).
+Собственный вес мачты сохраняется; ветер и лёд выключены. Подробнее: [`docs/STATIC_PAYLOAD_CAPACITY.md`](docs/STATIC_PAYLOAD_CAPACITY.md).
 
 ## Чистый поперечный unit-load
 
-Существующий lateral validation case остаётся отдельным reference calculation:
+Reference calculation:
 
 ```text
 F0 = 1 Н поперёк вершины
@@ -111,35 +136,20 @@ ice = 0
 equipment = 0
 ```
 
-Он даёт:
-
-```text
-Flim = min(Fmember, Fglobal, Fbolt)
-mideal = Flim/g0
-```
-
-`mideal` — полезный чистый upper/reference bound, но не расчёт реальной горизонтальной стрелы, потому что собственный вес самой стрелы здесь специально исключён.
+Он даёт отдельный чистый upper/reference bound и не подменяет расчёт горизонтальной стрелы. При преднатянутом болте масштабируется только внешняя нагрузка; постоянный `F0,max` от затяжки не умножается вместе с unit-load.
 
 Подробнее: [`docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md`](docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md).
 
-## Горизонтальная стрела — issue #36
+## Горизонтальная стрела
 
-Для вопроса «сколько можно подвесить на конце, если мачту использовать как стрелу» добавлен отдельный `craneBoomCapacity`.
-
-Та же frame-модель мысленно поворачивается горизонтально. Эквивалентно этому вектор собственного веса рёбер поворачивается в горизонтальную плоскость и становится распределённой поперечной нагрузкой:
+`craneBoomCapacity` поворачивает ту же frame-модель горизонтально. Собственный вес рёбер становится распределённой поперечной нагрузкой, а на конец прикладывается пробный груз:
 
 ```text
-A = pi*d²/4
 qg = rho*A*g*gamma_g
-```
-
-Пробный концевой груз:
-
-```text
 Pend = m*g*gamma_payload
 ```
 
-Для каждого направления в секторе 120° выполняется поиск максимальной проходящей массы с условиями:
+Для каждого направления проверяются:
 
 ```text
 Umember <= 1
@@ -153,11 +163,7 @@ lambda_cr >= 1
 craneBoomCapacity.maximumEndPayloadMassKg
 ```
 
-В отличие от `Flim/g0`, здесь **учтён поперечный собственный вес арматурных frame members**. Для типового regression case новый предел обязан быть ниже чистого tip-load upper bound.
-
-Пока не включена отдельная fabrication mass гаек/болтов/сварки, а также не моделируются динамика подъёма, рывок, трос, блоки, лебёдка, поворотный узел, усталость и специальные нормы для грузоподъёмных механизмов. Поэтому это инженерная предварительная оценка, а не паспортная SWL крана.
-
-Подробнее: [`docs/CRANE_BOOM_CAPACITY.md`](docs/CRANE_BOOM_CAPACITY.md).
+Пока не включена отдельная fabrication mass гаек/болтов/сварки и не моделируются динамика подъёма, трос, блоки, лебёдка, поворотный узел и специальные crane-code factors. Подробнее: [`docs/CRANE_BOOM_CAPACITY.md`](docs/CRANE_BOOM_CAPACITY.md).
 
 ## Расчётное ядро
 
@@ -173,13 +179,13 @@ ux, uy, uz, rx, ry, rz
 N, Vy, Vz, T, My, Mz
 ```
 
-Одна и та же статическая задача проверяется тремя независимыми путями:
+Одна и та же статическая задача проверяется тремя путями:
 
 1. global symmetric-band FEM;
 2. exact module Schur condensation;
 3. independent dense reference FEM + Gaussian elimination.
 
-CI сравнивает DOF, reactions и local end forces. Internal point-load fixtures для cross-check проходят через `topPointLoadN`, а не через удалённые пользовательские extra-force fields.
+CI сравнивает DOF, reactions и local end forces.
 
 ## Соединительный узел
 
@@ -195,7 +201,7 @@ CI сравнивает DOF, reactions и local end forces. Internal point-load 
                     | болт Mx ввинчивается сюда
 ```
 
-Auto-конфигуратор выбирает и затем фиксирует физический комплект. Усиленные проверки issue #33 включают:
+Auto-конфигуратор выбирает и фиксирует физический комплект. Усиленные проверки включают:
 
 ```text
 Anut,net/Arib >= 2
@@ -203,16 +209,33 @@ F0,nom = T/(K*d)
 F0,max = (1+Gamma)*F0,nom
 Nt,strength = F0,max + Nt,external
 Ns,direct = |Fperp|
-Aeff,weld >= kweld*Arib, 2 <= kweld <= 3
+Aeff,weld >= kweld*Arib
 ```
 
-Тот же зафиксированный узел используется при operational cases, lateral/static limits, horizontal boom и поиске максимальной высоты.
+Тот же узел используется в operational cases, lateral/static limits, horizontal boom, height search, detailed 3D и КД.
 
 Подробнее:
 
 - [`docs/JOINT_CONFIGURATOR.md`](docs/JOINT_CONFIGURATOR.md)
 - [`docs/CONNECTIONS.md`](docs/CONNECTIONS.md)
 - [`docs/JOINT_STRENGTH_AND_VISUALIZATION.md`](docs/JOINT_STRENGTH_AND_VISUALIZATION.md)
+
+## Подробная 3D-модель
+
+Общий источник geometry:
+
+```text
+mast-calculator/detailed-mast-model/v1
+```
+
+Он строит polygon mesh:
+
+- каждого арматурного ребра с фактическим диаметром member;
+- длинных и проходных гаек;
+- болтов и головок;
+- ownership по физическим модулям.
+
+Эта модель используется основным `MastViewer`, отдельным design workspace и OBJ exporter. Design workspace не создаёт вторую геометрическую модель мачты.
 
 ## Масса физической сборки
 
@@ -223,7 +246,7 @@ Aeff,weld >= kweld*Arib, 2 <= kweld <= 3
 - масса сваренного и закреплённого модуля;
 - оценка массы всей изготовленной мачты.
 
-Fabrication mass пока не возвращается автоматически в FEM self-weight: требуемая длина сварки становится известна после FEM и создаёт feedback `усилия -> шов -> масса -> усилия`. По той же причине horizontal-boom model пока включает собственный вес арматурных members, но не отдельную массу hardware/weld deposit.
+Fabrication mass пока не возвращается автоматически в FEM self-weight: требуемая длина сварки становится известна после FEM и создаёт feedback `усилия -> шов -> масса -> усилия`.
 
 ## Справочники и верификация
 
@@ -244,24 +267,24 @@ Joint strength and visualization
 Support reaction statics
 Usage scenarios and reference catalogs
 Static loads, crane boom and cut range
+Design workspace / ESKD / OBJ regression
 Tests Ubuntu/macOS/Windows
 Static site smoke test
 ```
 
-Focused issue #36 suite:
+Focused suite нового архитектурного слоя:
 
 ```bash
-npm run test:issue36
+npm run test:design
 ```
-
-Проверяет `1…48`, удаление extra-force semantics, internal point-load API, top-mass reserve, отсутствие water-specific result, horizontal-boom self weight/end payload и CI policy.
 
 ## Основная документация
 
+- [`docs/DESIGN_WORKSPACE.md`](docs/DESIGN_WORKSPACE.md)
+- [`docs/ESKD_CONSTRUCTION_DOCUMENTATION.md`](docs/ESKD_CONSTRUCTION_DOCUMENTATION.md)
 - [`docs/USAGE_SCENARIOS.md`](docs/USAGE_SCENARIOS.md)
 - [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)
 - [`docs/CALCULATION_ARCHITECTURE.md`](docs/CALCULATION_ARCHITECTURE.md)
-- [`docs/ISSUE_36_STATIC_LOAD_SIMPLIFICATION.md`](docs/ISSUE_36_STATIC_LOAD_SIMPLIFICATION.md)
 - [`docs/STATIC_PAYLOAD_CAPACITY.md`](docs/STATIC_PAYLOAD_CAPACITY.md)
 - [`docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md`](docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md)
 - [`docs/CRANE_BOOM_CAPACITY.md`](docs/CRANE_BOOM_CAPACITY.md)

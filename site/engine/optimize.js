@@ -14,11 +14,15 @@ export function selectUniformDiameter(parameters, diameters = STANDARD_DIAMETERS
   const orderedDiameters = [...diameters].sort((left, right) => left - right)
   const variants = []
   const stopAtFirstPassing = options.stopAtFirstPassing ?? true
+  // This API deliberately optimizes one uniform diameter. An explicit mixed
+  // module profile belongs to the normal calculation path and must not shadow
+  // the candidate diameter being evaluated here.
+  const { moduleDiametersMm: _ignoredProfile, ...uniformParameters } = parameters
 
   for (let index = 0; index < orderedDiameters.length; index += 1) {
     const diameter = orderedDiameters[index]
     const result = calculateMast(
-      { ...parameters, barDiameterMm: diameter },
+      { ...uniformParameters, barDiameterMm: diameter },
       {
         onProgress: (event) => options.onProgress?.({
           phase: 'variant',

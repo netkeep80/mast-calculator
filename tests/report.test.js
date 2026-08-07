@@ -66,13 +66,13 @@ test('CSV начинается с модуля и содержит усилия 
   assert.equal(csv.trim().split('\r\n').length, result.model.members.length + 1)
 })
 
-test('snapshot v8 содержит physical modules, modular solver, height capacity и усиленный двухгаечный узел', () => {
+test('snapshot v9 содержит physical modules, simplified top mass, horizontal boom и усиленный узел', () => {
   const generatedAt = '2026-08-07T08:00:00.000Z'
   const buildInfo = { repository: 'netkeep80/mast-calculator', ref: 'main', sha: 'abc123', runId: '42' }
   const snapshot = createCalculationExport(result, result.parameters, generatedAt, buildInfo)
   const geometry = result.connections.configurator.geometry
 
-  assert.equal(snapshot.schema, 'mast-calculator/calculation-snapshot/v8')
+  assert.equal(snapshot.schema, 'mast-calculator/calculation-snapshot/v9')
   assert.equal(snapshot.software.sha, 'abc123')
   assert.equal(snapshot.summary.loadCaseCount, 4)
   assert.equal(snapshot.summary.windPresetId, 'custom')
@@ -89,7 +89,15 @@ test('snapshot v8 содержит physical modules, modular solver, height capa
   assert.equal(snapshot.loadCases[0].analysis.modular.modules.length, result.model.moduleCount)
 
   assert.ok(snapshot.summary.lateralCriticalForceKgf > 0)
-  assert.ok(snapshot.summary.maximumTotalTopMassKg > 0)
+  assert.ok(snapshot.summary.maximumTopEquipmentMassKg > 0)
+  assert.ok(snapshot.summary.additionalTopEquipmentMassKg >= 0)
+  assert.ok(snapshot.summary.craneBoomMaximumEndPayloadMassKg > 0)
+  assert.ok(snapshot.summary.craneBoomSelfWeightN > 0)
+  assert.ok(snapshot.summary.craneBoomSelfMassEquivalentKg > 0)
+  assert.equal(snapshot.summary.craneBoomMaximumEndPayloadMassKg, snapshot.craneBoomCapacity.maximumEndPayloadMassKg)
+  assert.equal('equivalentWaterVolumeM3' in snapshot.summary, false)
+  assert.equal('equivalentWaterVolumeM3' in snapshot.staticPayloadCapacity, false)
+
   assert.equal(snapshot.summary.configuredBoltDiameterMm, geometry.bolt.diameterMm)
   assert.equal(snapshot.summary.configuredBoltClass, result.connections.configurator.selected.boltClass)
   assert.equal(snapshot.connections.method, 'two-nut-intermodule-joint-and-member-end-weld-v3')
@@ -117,20 +125,23 @@ test('snapshot v8 содержит physical modules, modular solver, height capa
   assert.ok(snapshot.verification.checks.some((check) => check.id === 'external-fem' && check.status === 'not-verified'))
 })
 
-test('машинный JSON v8 остаётся внутренним средством воспроизводимости', () => {
+test('машинный JSON v9 остаётся внутренним средством воспроизводимости', () => {
   const report = JSON.parse(createCalculationJson(
     result,
     result.parameters,
     '2026-08-07T08:00:00.000Z',
     { sha: 'abc123' },
   ))
-  assert.equal(report.schema, 'mast-calculator/calculation-snapshot/v8')
+  assert.equal(report.schema, 'mast-calculator/calculation-snapshot/v9')
   assert.equal(report.software.sha, 'abc123')
   assert.equal(report.model.modules.length, 2)
   assert.equal(report.loadCases[0].analysis.modular.method, 'module-schur-top-down-v1')
   assert.ok(report.heightCapacity.evaluationCount > 0)
   assert.ok(report.lateralCapacity.criticalForceKgf > 0)
-  assert.ok(report.staticPayloadCapacity.maximumTotalTopMassKg > 0)
+  assert.ok(report.staticPayloadCapacity.maximumTopEquipmentMassKg > 0)
+  assert.ok(report.craneBoomCapacity.maximumEndPayloadMassKg > 0)
+  assert.ok(report.craneBoomCapacity.boomSelfWeightN > 0)
+  assert.equal('equivalentWaterVolumeM3' in report.summary, false)
   assert.equal(report.connections.bolt.selected.applicable, true)
   assert.equal(report.connections.configurator.geometry.bottomClearanceNut.ribCount, 2)
   assert.equal(report.connections.configurator.geometry.topCouplingNut.ribCount, 4)
@@ -139,7 +150,7 @@ test('машинный JSON v8 остаётся внутренним средс�
   assert.equal(report.verification.counts.failed, 0)
 })
 
-test('бумажный проект содержит global, modular, height, bolt, weld, физический узел и verification formulas', () => {
+test('бумажный проект содержит global, modular, height, bolt, weld, horizontal boom и verification formulas', () => {
   const html = createCalculationProjectHtml(
     result,
     result.parameters,
@@ -168,6 +179,9 @@ test('бумажный проект содержит global, modular, height, bo
   assert.match(html, /Усиленная проверка соединительного узла/)
   assert.match(html, /F0,max/)
   assert.match(html, /Aeff,weld/)
+  assert.match(html, /Горизонтальная стрела: собственный вес и концевой груз/)
+  assert.match(html, /qg = ρ·A·g·γg/)
+  assert.match(html, /максимальный концевой груз/)
   assert.match(html, /Паспорт верификации: как неспециалисту проверять расчёт/)
   assert.match(html, /Независимый КЭ-комплекс/)
   assert.match(html, /НЕ ПРОВЕРЕНО/)
@@ -178,7 +192,7 @@ test('бумажный расчётный проект не содержит JSO
   const html = createCalculationProjectHtml(result, result.parameters)
   assert.doesNotMatch(html, /Полный JSON/i)
   assert.doesNotMatch(html, /Машинное приложение/i)
-  assert.doesNotMatch(html, /calculation-snapshot\/v8/)
+  assert.doesNotMatch(html, /calculation-snapshot\/v9/)
   assert.doesNotMatch(html, /<pre>/i)
 })
 

@@ -33,11 +33,14 @@ test('ручное ветровое давление сохраняется ка
   assert.match(app, /windSpeedFromPressurePa/)
 })
 
-test('интерфейс показывает предельную боковую нагрузку вершины в кгс', () => {
+test('интерфейс разделяет первый боковой предел и общую потерю устойчивости в кгс', () => {
   assert.match(html, /id="metric-lateral-capacity"/)
+  assert.match(html, /id="metric-lateral-buckling"/)
+  assert.match(html, /Боковая сила общей потери устойчивости/)
   assert.match(html, /id="metric-lateral-mode"/)
   assert.match(html, /id="lateral-capacity-description"/)
   assert.match(app, /calculateLateralCapacity/)
+  assert.match(app, /globalBucklingForceKgf/)
   assert.match(app, /кгс/)
 })
 

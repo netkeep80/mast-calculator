@@ -40,9 +40,12 @@ function summarizeOptimization(optimization) {
       passesStrength: variant.passesStrength,
       passesDisplacement: variant.passesDisplacement,
       passesBuckling: variant.passesBuckling,
+      passesConnection: variant.passesConnection,
       utilization: variant.result.envelope.maxUtilization,
       displacementMm: variant.result.envelope.maxTopDisplacementM * 1000,
       bucklingFactor: variant.result.envelope.minimumBucklingFactor,
+      jointBoltDiameterMm: variant.result.connections?.configurator?.geometry?.bolt?.diameterMm ?? null,
+      jointBoltClass: variant.result.connections?.configurator?.selected?.boltClass ?? null,
     })),
   }
 }
@@ -59,7 +62,7 @@ function runOptimization(jobId, parameters) {
   const automaticParameters = { ...parameters, jointConfiguratorMode: 'auto' }
   postProgress(jobId, {
     phase: 'optimize',
-    label: `Подбор диаметра: до ${STANDARD_DIAMETERS_MM.length} стандартных вариантов`,
+    label: `Подбор арматуры и соединительного узла: до ${STANDARD_DIAMETERS_MM.length} стандартных вариантов`,
     fraction: 0,
   })
   const optimization = selectUniformDiameter(automaticParameters, STANDARD_DIAMETERS_MM, {
@@ -74,7 +77,7 @@ function runOptimization(jobId, parameters) {
   })
   const summary = summarizeOptimization(optimization)
   if (!optimization.recommended) {
-    postProgress(jobId, { phase: 'done', label: 'Подбор завершён: подходящий диаметр не найден', fraction: 1 })
+    postProgress(jobId, { phase: 'done', label: 'Подбор завершён: подходящий комплект арматуры и узла не найден', fraction: 1 })
     self.postMessage({ type: 'result', jobId, result: null, optimization: summary })
     return
   }
@@ -82,7 +85,7 @@ function runOptimization(jobId, parameters) {
   const diameter = optimization.recommended.diameter
   postProgress(jobId, {
     phase: 'optimize',
-    label: `Минимальный проходящий диаметр найден после ${optimization.evaluatedCount} вариантов: Ø${diameter} мм`,
+    label: `Минимальный проходящий комплект найден после ${optimization.evaluatedCount} вариантов: арматура Ø${diameter} мм`,
     fraction: optimizationShare,
   })
   const result = addModuleVerification(calculateCompleteMastWithConfiguredJoint({
@@ -97,7 +100,11 @@ function runOptimization(jobId, parameters) {
       `Итоговый расчёт Ø${diameter} мм`,
     ),
   }))
-  postProgress(jobId, { phase: 'done', label: `Подбор завершён: Ø${diameter} мм`, fraction: 1 })
+  const joint = result.connections?.configurator
+  const jointLabel = joint?.geometry
+    ? `; болт M${joint.geometry.bolt.diameterMm}×${joint.geometry.bolt.lengthMm} ${joint.selected.boltClass}`
+    : ''
+  postProgress(jobId, { phase: 'done', label: `Подбор завершён: арматура Ø${diameter} мм${jointLabel}`, fraction: 1 })
   self.postMessage({ type: 'result', jobId, result, optimization: summary })
 }
 

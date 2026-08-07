@@ -250,6 +250,17 @@ function exportStaticPayloadCapacity(staticPayloadCapacity) {
   }
 }
 
+function exportVerification(verification) {
+  if (!verification) return null
+  return {
+    ...verification,
+    counts: { ...verification.counts },
+    thresholds: { ...verification.thresholds },
+    levels: verification.levels.map((level) => ({ ...level, checkIds: [...level.checkIds] })),
+    checks: verification.checks.map((check) => ({ ...check })),
+  }
+}
+
 export function createCalculationExport(
   result,
   parameters = result?.parameters,
@@ -262,9 +273,10 @@ export function createCalculationExport(
   const members = buildMemberEnvelope(result)
   const lateralCapacity = exportLateralCapacity(result.lateralCapacity)
   const staticPayloadCapacity = exportStaticPayloadCapacity(result.staticPayloadCapacity)
+  const verification = exportVerification(result.verification)
 
   return {
-    schema: 'mast-calculator/calculation-snapshot/v5',
+    schema: 'mast-calculator/calculation-snapshot/v6',
     generatedAt,
     software: {
       method: result.method ?? null,
@@ -297,12 +309,17 @@ export function createCalculationExport(
       remainingAdditionalTopMassKg: staticPayloadCapacity?.remainingAdditionalMassKg ?? null,
       equivalentWaterVolumeM3: staticPayloadCapacity?.equivalentWaterVolumeM3 ?? null,
       staticPayloadGoverningMode: staticPayloadCapacity?.governingMode ?? null,
+      verificationStatus: verification?.status ?? null,
+      verificationPassed: verification?.counts?.passed ?? null,
+      verificationFailed: verification?.counts?.failed ?? null,
+      verificationNotVerified: verification?.counts?.notVerified ?? null,
     },
     diagnostics: { ...result.analysis.diagnostics },
     model: exportModel(result.model),
     loadCases: result.cases.map(exportLoadCase),
     lateralCapacity,
     staticPayloadCapacity,
+    verification,
     material,
     members,
     warnings: [...result.warnings],

@@ -1,3 +1,4 @@
+import './usage-style.js'
 import { buildReferenceData } from './engine/reference-data.js'
 
 const format = (value, digits = 3) => Number.isFinite(Number(value))

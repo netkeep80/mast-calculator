@@ -38,3 +38,4 @@ for (const file of tracked) {
 
 console.log(`Updated moved-path references in ${changed.length} tracked files.`)
 for (const file of changed) console.log(file)
+// One-shot migration: the workflow deletes this helper after committing results.

@@ -27,6 +27,41 @@ function weldRows(data) {
 <tr><td>${escapeHtml(item.label)}</td><td>${item.process === 'wire' ? 'проволока' : 'электрод'}</td><td>${number(item.rwunMPa, 0)}</td><td>${number(item.rwfMPa, 0)}</td><td>${escapeHtml(item.standard)}</td></tr>`).join('')
 }
 
+function jointStrengthAppendix(result, data) {
+  const connections = result.connections
+  const sections = connections?.nutSections
+  const selected = connections?.bolt?.selected
+  const demand = selected?.governingDemand
+  const check = selected?.governingCheck
+  const weld = connections?.weld?.critical?.check
+  if (!sections) return '<p>Усиленная проверка соединительного узла неприменима.</p>'
+  return `
+<h3>14.6. Усиленная проверка соединительного узла</h3>
+<p>Дополнительные критерии issue #33 не заменяют силовые проверки СП 16. Они контролируют геометрический запас материала гайки, эффективную площадь шва и расход растягивающего резерва болта при затяжке.</p>
+<div class="formula">
+  <div class="formula-symbolic">Ahex = √3/2·s²; Anut = Ahex − πD1²/4; Arib = πd²/4</div>
+  <div class="formula-result">длинная гайка: Anut/Arib=${number(sections.couplingNut.ratioToSingleRib, 3)}; проходная: ${number(sections.clearanceNut.ratioToSingleRib, 3)}; требуется ≥${number(sections.requiredRatio, 2)}×</div>
+</div>
+<div class="formula">
+  <div class="formula-symbolic">F0,nom = T/(K·d); F0,max=(1+Γ)·F0,nom</div>
+  <div class="formula-result">${check?.preload ? `T=${number(check.preload.tighteningTorqueNm, 1)} Н·м; K=${number(check.preload.nutFactor, 3)}; Γ=${number(check.preload.preloadVariation, 3)}; F0,max=${number(check.preload.maximumPreloadN / 1000, 3)} кН` : 'для текущей модели внутренний болт не нагружен'}</div>
+</div>
+<div class="formula">
+  <div class="formula-symbolic">Nt,strength = F0,max + Nt,external</div>
+  <div class="formula-symbolic">Ubolt = √[(Ns/Nbs)² + (Nt,strength/Nbt)²]</div>
+  <div class="formula-result">${check ? `Nt,external=${number(check.serviceExternalTensionN / 1000, 3)} кН; Nt,strength=${number(check.strengthTensionN / 1000, 3)} кН; Upreload=${number(check.preloadUtilization, 4)}; Ubolt=${number(check.utilization, 4)}` : '—'}</div>
+</div>
+<div class="formula">
+  <div class="formula-symbolic">F⊥ = F − e(e·F); Ns,direct=|F⊥|</div>
+  <div class="formula-result">${demand ? `прямой срез от наклонной силы=${number(demand.shearFromInclinedForceN / 1000, 3)} кН; угол результирующей к оси болта=${number(demand.acuteAngleToBoltAxisDeg, 2)}°` : '—'}</div>
+</div>
+<div class="formula">
+  <div class="formula-symbolic">Aeff,weld = βf·kf·lweff ≥ kweld·Arib</div>
+  <div class="formula-result">${weld?.minimumAreaRatio != null ? `kweld=${number(weld.minimumAreaRatio, 2)}; Aeff/Arib=${number(weld.requiredAreaRatio, 3)}; требование по площади даёт lweff≥${number(weld.requiredByAreaRatioMm, 1)} мм` : '—'}</div>
+</div>
+<p class="equation-note">Torque-preload relation: ${escapeHtml(data.jointDesign.boltPreload.source)}. Коэффициент площади шва 2–3× и минимум 2× для нетто-сечения гайки являются дополнительными консервативными критериями этого проекта, а не цитатой нормы.</p>`
+}
+
 export function createFabricationAndReferenceAppendix(result) {
   const mass = result.assemblyMass ?? calculateAssemblyMass(result)
   const data = buildReferenceData()
@@ -73,5 +108,6 @@ export function createFabricationAndReferenceAppendix(result) {
 <h4>Электроды и проволока</h4>
 <table><thead><tr><th>Материал</th><th>Тип</th><th>Rwun</th><th>Rwf</th><th>Источник</th></tr></thead><tbody>${weldRows(data)}</tbody></table>
 <p>Полный справочник диаметров, Ab/Abn, обычных и длинных гаек доступен в браузерном интерфейсе и формируется тем же <code>buildReferenceData()</code>.</p>
+${jointStrengthAppendix(result, data)}
 </section>`
 }

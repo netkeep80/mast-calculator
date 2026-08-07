@@ -3,7 +3,7 @@
 Wavefront OBJ экспортирует рассчитанную мачту как polygon mesh. После issues #45 и #47 экранная подробная 3D-модель, отдельный design workspace и OBJ используют **один и тот же генератор геометрии**:
 
 ```text
-site/engine/detailed-mast-model.js
+packages/design/src/detailed-mast-model.js
 mast-calculator/detailed-mast-model/v1
 ```
 
@@ -49,7 +49,7 @@ statistics
 
 ```text
 MastViewer
-site/design.html
+apps/web/design.html
 createMastObj()
 technical-projection.js -> виды КД
 ```

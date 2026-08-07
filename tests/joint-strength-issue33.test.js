@@ -209,8 +209,8 @@ test('issue #33: 3D-геометрия содержит 4+2 реальных р�
 })
 
 test('issue #33: browser bootstrap содержит управление затяжкой и area-reserve, viewer — текстурированные грани', () => {
-  const bootstrap = readFileSync(new URL('../site/app-bootstrap.js', import.meta.url), 'utf8')
-  const viewer = readFileSync(new URL('../site/joint-viewer.js', import.meta.url), 'utf8')
+  const bootstrap = readFileSync(new URL('../apps/web/app-bootstrap.js', import.meta.url), 'utf8')
+  const viewer = readFileSync(new URL('../apps/web/joint-viewer.js', import.meta.url), 'utf8')
   assert.match(bootstrap, /jointTighteningTorqueNm/)
   assert.match(bootstrap, /jointNutFactor/)
   assert.match(bootstrap, /jointNutSectionAreaRatio/)

@@ -136,7 +136,7 @@ function assertBucklingIdentity(state) {
 }
 
 test('третий solver действительно независим от production global/Schur implementation', () => {
-  const source = fs.readFileSync(new URL('../site/engine/reference-frame.js', import.meta.url), 'utf8')
+  const source = fs.readFileSync(new URL('../packages/structural-analysis/src/reference-frame.js', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /from ['"]\.\/solver\.js['"]/)
   assert.doesNotMatch(source, /from ['"]\.\/module-stack\.js['"]/)
   assert.doesNotMatch(source, /from ['"]\.\/banded\.js['"]/)

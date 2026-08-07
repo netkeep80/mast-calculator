@@ -35,7 +35,7 @@ C. independent dense reference FEM
    dense generalized buckling reference for small/medium cases
 ```
 
-Он реализован в `site/engine/reference-frame.js`.
+Он реализован в `packages/structural-analysis/src/reference-frame.js`.
 
 ## 2. Принцип независимости
 

@@ -11,9 +11,9 @@ import { calculateLateralCapacity } from '../packages/engineering/index.js'
 import { buildLoadCase } from '../packages/structural-analysis/index.js'
 import { calculateStaticPayloadCapacity } from '../packages/engineering/index.js'
 
-const usageSource = fs.readFileSync(new URL('../site/usage-scenarios.js', import.meta.url), 'utf8')
-const loadsSource = fs.readFileSync(new URL('../site/engine/loads.js', import.meta.url), 'utf8')
-const completeSource = fs.readFileSync(new URL('../site/engine/complete-calculation.js', import.meta.url), 'utf8')
+const usageSource = fs.readFileSync(new URL('../apps/web/usage-scenarios.js', import.meta.url), 'utf8')
+const loadsSource = fs.readFileSync(new URL('../packages/structural-analysis/src/loads.js', import.meta.url), 'utf8')
+const completeSource = fs.readFileSync(new URL('../packages/application/src/complete-calculation.js', import.meta.url), 'utf8')
 
 test('issue #36: раскрой содержит каждый целый вариант 1…48', () => {
   assert.deepEqual(STOCK_BAR_DIVISIONS, Array.from({ length: 48 }, (_, index) => index + 1))

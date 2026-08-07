@@ -2,15 +2,15 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
 
-const html = fs.readFileSync(new URL('../site/index.html', import.meta.url), 'utf8')
-const app = fs.readFileSync(new URL('../site/app.js', import.meta.url), 'utf8')
-const bootstrap = fs.readFileSync(new URL('../site/app-bootstrap.js', import.meta.url), 'utf8')
-const usage = fs.readFileSync(new URL('../site/usage-scenarios.js', import.meta.url), 'utf8')
-const viewer = fs.readFileSync(new URL('../site/viewer.js', import.meta.url), 'utf8')
-const moduleViewer = fs.readFileSync(new URL('../site/module-viewer.js', import.meta.url), 'utf8')
-const jointViewer = fs.readFileSync(new URL('../site/joint-viewer.js', import.meta.url), 'utf8')
-const jointVisualGeometry = fs.readFileSync(new URL('../site/engine/joint-visual-geometry.js', import.meta.url), 'utf8')
-const worker = fs.readFileSync(new URL('../site/calculation-worker.js', import.meta.url), 'utf8')
+const html = fs.readFileSync(new URL('../apps/web/index.html', import.meta.url), 'utf8')
+const app = fs.readFileSync(new URL('../apps/web/app.js', import.meta.url), 'utf8')
+const bootstrap = fs.readFileSync(new URL('../apps/web/app-bootstrap.js', import.meta.url), 'utf8')
+const usage = fs.readFileSync(new URL('../apps/web/usage-scenarios.js', import.meta.url), 'utf8')
+const viewer = fs.readFileSync(new URL('../apps/web/viewer.js', import.meta.url), 'utf8')
+const moduleViewer = fs.readFileSync(new URL('../apps/web/module-viewer.js', import.meta.url), 'utf8')
+const jointViewer = fs.readFileSync(new URL('../apps/web/joint-viewer.js', import.meta.url), 'utf8')
+const jointVisualGeometry = fs.readFileSync(new URL('../packages/design/src/joint-visual-geometry.js', import.meta.url), 'utf8')
+const worker = fs.readFileSync(new URL('../apps/web/calculation-worker.js', import.meta.url), 'utf8')
 
 test('UI не позволяет вручную вводить геометрию правильного октаэдра', () => {
   assert.match(html, /name="moduleHeightMm"[^>]*readonly/)

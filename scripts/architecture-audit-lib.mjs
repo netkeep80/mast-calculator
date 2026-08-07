@@ -291,8 +291,8 @@ export function evaluatePolicy(report, baseline = {}) {
   const modulePaths = new Set(report.modules.map((module) => module.path))
   const violations = []
 
-  if (report.modules.some((module) => module.path.startsWith('site/engine/'))) {
-    violations.push({ type: 'legacy-path', path: 'site/engine', detail: 'moved core must not remain in the web tree' })
+  if (report.modules.some((module) => module.path.startsWith('apps/web/engine/'))) {
+    violations.push({ type: 'legacy-path', path: 'apps/web/engine', detail: 'moved core must not remain in the web tree' })
   }
 
   for (const module of report.modules) {

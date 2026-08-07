@@ -5,9 +5,9 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const html = fs.readFileSync(path.join(root, 'site', 'index.html'), 'utf8')
-const scenarios = fs.readFileSync(path.join(root, 'site', 'usage-scenarios.js'), 'utf8')
-const reference = fs.readFileSync(path.join(root, 'site', 'reference-catalog.js'), 'utf8')
+const html = fs.readFileSync(path.join(root, 'apps', 'web', 'index.html'), 'utf8')
+const scenarios = fs.readFileSync(path.join(root, 'apps', 'web', 'usage-scenarios.js'), 'utf8')
+const reference = fs.readFileSync(path.join(root, 'apps', 'web', 'reference-catalog.js'), 'utf8')
 
 function hasScenario(value) {
   return new RegExp(`name="usageScenario"\\s+value="${value}"`).test(html)

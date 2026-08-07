@@ -127,9 +127,9 @@ test('OBJ exporter rejects incomplete calculation snapshots', () => {
 })
 
 test('issue #47: OBJ download belongs to design workspace, not calculation bootstrap', () => {
-  const bootstrap = fs.readFileSync(new URL('../site/app-bootstrap.js', import.meta.url), 'utf8')
-  const design = fs.readFileSync(new URL('../site/design-app.js', import.meta.url), 'utf8')
-  const page = fs.readFileSync(new URL('../site/design.html', import.meta.url), 'utf8')
+  const bootstrap = fs.readFileSync(new URL('../apps/web/app-bootstrap.js', import.meta.url), 'utf8')
+  const design = fs.readFileSync(new URL('../apps/web/design-app.js', import.meta.url), 'utf8')
+  const page = fs.readFileSync(new URL('../apps/web/design.html', import.meta.url), 'utf8')
 
   assert.doesNotMatch(bootstrap, /createMastObj/)
   assert.doesNotMatch(bootstrap, /export-obj-button/)

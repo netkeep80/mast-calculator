@@ -163,8 +163,8 @@ test('integrated MastViewer renders filled detailed faces instead of only FEM ce
 })
 
 test('viewer and OBJ exporter are wired to one detailed-model source', () => {
-  const viewerSource = fs.readFileSync(new URL('../site/viewer.js', import.meta.url), 'utf8')
-  const objSource = fs.readFileSync(new URL('../site/engine/obj-export.js', import.meta.url), 'utf8')
+  const viewerSource = fs.readFileSync(new URL('../apps/web/viewer.js', import.meta.url), 'utf8')
+  const objSource = fs.readFileSync(new URL('../packages/design/src/obj-export.js', import.meta.url), 'utf8')
   assert.match(viewerSource, /buildDetailedMastModel/)
   assert.match(viewerSource, /drawDetailedModel/)
   assert.match(objSource, /buildDetailedMastModel/)

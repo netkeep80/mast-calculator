@@ -84,8 +84,8 @@ test('issue #36: масса оборудования остаётся единс
 })
 
 test('issue #36: UI оставляет одну массу и удаляет произвольные силы из пользовательской формы', () => {
-  const viewer = fs.readFileSync(new URL('../site/module-viewer.js', import.meta.url), 'utf8')
-  const usage = fs.readFileSync(new URL('../site/usage-scenarios.js', import.meta.url), 'utf8')
+  const viewer = fs.readFileSync(new URL('../apps/web/module-viewer.js', import.meta.url), 'utf8')
+  const usage = fs.readFileSync(new URL('../apps/web/usage-scenarios.js', import.meta.url), 'utf8')
 
   assert.match(viewer, /нагрузка на верхнюю грань/i)
   assert.doesNotMatch(viewer, /нагрузка от стека сверху/i)

@@ -1,38 +1,53 @@
 # Архитектура расчётного ядра
 
-Документ фиксирует границы между изготовлением, геометрией, глобальным FEM-расчётом, будущим расчётом реальных узлов и бумажной отчётностью.
+Документ фиксирует границы между изготовлением, погодными сценариями, геометрией, глобальным FEM-расчётом, отдельной боковой проверкой, будущим расчётом реальных узлов и бумажной отчётностью.
 
 ## 1. Поток данных
 
 ```text
 Практический ввод
-  stock length / parts / diameter / material / loads
+  stock length / parts / diameter / material / weather / loads
+        │
+        ├──────────────► Weather preset resolver
+        │                 Beaufort/custom -> v -> q = rho*v²/2
         │
         ▼
 Fabrication + Material catalogue
         │
         ├── a = Lstock / nparts
         ├── h = a*sqrt(2/3)
-        └── E, nu, Ry, Rm, rho
+        └── E, nu, Ry, Rm, rho_steel
         │
         ▼
 Regular-octahedron geometry
         │
-        ▼
-Global 3D frame FEM
-  rigid ideal welded joints
+        ├──────────────► Operational load cases
+        │                 gravity / ice / wind / equipment
+        │                        │
+        │                        ▼
+        │                 Global 3D frame FEM
+        │                        │
+        │                        ├── u / rotations
+        │                        ├── reactions / moments
+        │                        ├── member N/V/T/M
+        │                        ├── stress / local Euler
+        │                        └── eigen-buckling
         │
-        ├── displacements / rotations
-        ├── reactions / reaction moments
-        ├── member N/V/T/M
-        ├── stresses / local Euler check
-        └── global eigen-buckling
+        └──────────────► Unit lateral tip-load cases
+                          1 N horizontal, 0..120° sector
+                                 │
+                                 ▼
+                          Global 3D frame FEM
+                                 │
+                                 ├── Fmember = 1/U(1 N)
+                                 ├── Fglobal = lambda_cr*1 N
+                                 └── Flim = min(...)
+
+Operational envelope + lateral capacity
         │
         ├──────────────► UI / CSV
-        │
         ├──────────────► Printable calculation project
-        │
-        └──────────────► Internal CalculationSnapshot
+        └──────────────► Internal CalculationSnapshot v4
                            regression / cross-check only
 
 Future:
@@ -97,30 +112,47 @@ Fabrication model не должна незаметно менять FEM geometry
 }
 ```
 
-Расчётные модули получают уже разрешённые свойства и не должны дублировать каталожные значения.
+Расчётные модули получают уже разрешённые свойства и не дублируют каталожные значения.
 
-## 4. Geometry model
+## 4. Weather model
 
-### 4.1. Regular octahedron
+`weather.js` отделяет пользовательское название погодного сценария от механической нагрузки.
 
-Для длины ребра `a`:
+```js
+{
+  windPresetId,
+  windPresetLabel,
+  beaufortForce,
+  windSpeedMs,
+  windPressurePa
+}
+```
+
+Для Beaufort preset:
+
+```text
+q = rho_air*v²/2
+rho_air = 1.225 kg/m³
+```
+
+После разрешения preset остальной solver работает с `windPressurePa` и не знает, каким способом оно было выбрано.
+
+`custom` сохраняет ручной ввод давления.
+
+Погодные preset не являются нормативным ветровым районированием; это UI-level сценарии для сравнения.
+
+## 5. Geometry model
+
+Для длины ребра `a` правильного октаэдра:
 
 ```text
 R = a/sqrt(3)
 h = a*sqrt(2/3)
 ```
 
-Каждый уровень содержит три узла на окружности радиуса `R`.
+Каждый уровень содержит три узла на окружности радиуса `R`. Соседние уровни повёрнуты на 60°.
 
-Уровни чередуются по углу:
-
-```text
-0°, +60°, 0°, +60°, ...
-```
-
-или эквивалентно соседний переход геометрически зеркален предыдущему.
-
-Каждый модуль содержит:
+Модуль содержит:
 
 ```text
 3 horizontal edges
@@ -128,9 +160,7 @@ h = a*sqrt(2/3)
 = 9 edges
 ```
 
-Все девять рёбер правильного октаэдра обязаны иметь одну длину `a`; это regression invariant.
-
-### 4.2. Nodes
+Все девять рёбер обязаны иметь одну длину `a`; это regression invariant.
 
 Frame node:
 
@@ -142,13 +172,11 @@ Frame node:
 }
 ```
 
-В версии 0.5 нижние три узла полностью заделаны.
+Нижние три узла полностью заделаны.
 
-## 5. Frame element
+## 6. Frame element
 
-### 5.1. Degrees of freedom
-
-На каждом конце элемента:
+На каждом конце:
 
 ```text
 [ux, uy, uz, rx, ry, rz]
@@ -156,20 +184,17 @@ Frame node:
 
 На элемент — 12 DOF.
 
-### 5.2. Section properties
-
 Круглое сплошное сечение:
 
 ```text
 A = pi*d²/4
 Iy = Iz = pi*d⁴/64
 J = pi*d⁴/32
+W = pi*d³/32
 G = E/[2*(1+nu)]
 ```
 
-### 5.3. Local stiffness
-
-Euler–Bernoulli frame element использует коэффициенты:
+Euler–Bernoulli frame element использует:
 
 ```text
 EA/L
@@ -180,17 +205,15 @@ GJ/L
 2EI/L
 ```
 
-Локальная 12×12 матрица `ke` строится в ортонормированном локальном базисе элемента.
-
-### 5.4. Coordinate transformation
+Локальная матрица преобразуется:
 
 ```text
 Ke = T^T * ke * T
 ```
 
-Локальные оси выбираются из направления элемента и устойчивого reference vector. Аналитический тест проверяет, что поворот всей консоли в глобальной системе не меняет физический результат.
+Поворот всей консоли в глобальной системе не должен менять физический результат; это отдельный тест.
 
-## 6. Distributed loads
+## 7. Distributed loads
 
 `buildLoadCase` разделяет:
 
@@ -200,15 +223,9 @@ nodalMoments[nodeId]                // Nm, зарезервировано
 memberDistributedLoads[memberId]   // N/m, global XYZ
 ```
 
-Собственный вес, лёд и ветер являются распределёнными нагрузками элемента.
+Собственный вес, лёд и ветер — distributed member loads.
 
-### 6.1. Consistent nodal load vector
-
-Равномерная локальная нагрузка преобразуется в 12-компонентный consistent load vector. Для поперечных компонент возникают не только силы `qL/2`, но и конечные моменты `qL²/12`.
-
-Это принципиальное отличие от старой truss-модели.
-
-### 6.2. Wind projection
+Для равномерной поперечной нагрузки consistent vector содержит силы `qL/2` и конечные моменты `qL²/12`.
 
 Для цилиндрического элемента:
 
@@ -216,9 +233,9 @@ memberDistributedLoads[memberId]   // N/m, global XYZ
 qwind_vec = p * cd * dout * gamma_w * (ew - ex*(ex dot ew))
 ```
 
-Ветер, направленный вдоль оси ребра, даёт нулевую распределённую аэродинамическую силу.
+Ветер вдоль оси ребра даёт нулевую поперечную аэродинамическую нагрузку.
 
-## 7. Global assembly and solution
+## 8. Global assembly and solution
 
 Для каждого элемента:
 
@@ -227,13 +244,13 @@ Ke -> global K
 feq -> global F
 ```
 
-После сборки и исключения restrained DOFs:
+После исключения restrained DOFs:
 
 ```text
 Kfree * ufree = Ffree
 ```
 
-Текущий prototype использует плотный решатель с partial pivoting. Для размеров рассматриваемой мачты это допустимо; при существенном росте числа DOF потребуется sparse solver.
+Текущий прототип использует плотный solver с partial pivoting. При существенном росте числа DOF потребуется sparse solver.
 
 Результат:
 
@@ -244,11 +261,12 @@ Kfree * ufree = Ffree
   reactions,
   reactionMoments,
   memberResults,
+  buckling,
   diagnostics
 }
 ```
 
-## 8. Member end actions and stresses
+## 9. Member end actions and stresses
 
 Локальный вектор конечных усилий:
 
@@ -256,13 +274,13 @@ Kfree * ufree = Ffree
 fend = ke * ue - feq
 ```
 
-Он содержит на двух концах:
+На концах он содержит:
 
 ```text
 N, Vy, Vz, T, My, Mz
 ```
 
-Из него рассчитываются:
+Напряжения:
 
 ```text
 sigma_N = |N|/A
@@ -282,24 +300,15 @@ sigma_eq = sqrt(sigma² + 3*tau²)
 DeltaM = q_perp*L²/8
 ```
 
-к максимуму конечных изгибающих моментов, чтобы не потерять возможный внутренний максимум одноэлементной балки.
+к максимуму конечных изгибающих моментов.
 
-## 9. Local Euler check
-
-Отдельно от frame stress check:
+## 10. Local Euler check
 
 ```text
 Leff = mu*L
 N_E = pi²*E*I/Leff²/gamma_M
-```
-
-В версии 0.5:
-
-```text
 mu = 0.5
 ```
-
-из-за идеализации двух жёстко заделанных концов.
 
 Итог:
 
@@ -307,48 +316,129 @@ mu = 0.5
 eta_member = max(eta_stress, eta_Euler)
 ```
 
-## 10. Global eigen-buckling
+## 11. Global eigen-buckling
 
-После статического решения по продольным усилиям строится initial-stress/geometric stiffness matrix frame-elements.
+После статического решения по продольным усилиям строится frame geometric stiffness:
 
 ```text
 (K + lambda*KG) * phi = 0
 ```
 
-Сохраняются:
+Сохраняются `criticalLoadFactor`, translational/rotational mode и residuals.
 
-- `criticalLoadFactor`;
-- translational mode;
-- rotational mode;
-- residual/eigenResidual;
-- iterations.
+Это линейная собственная задача, не nonlinear collapse analysis.
 
-Это линейная собственная задача, а не nonlinear collapse analysis.
+## 12. Lateral capacity pipeline
 
-## 11. Physical joint demand — следующий слой
+### 12.1. Отдельный normalized load case
 
-Глобальный FEM не знает, какой конкретно болт или сварной шов реализует идеальный узел.
+`lateral-capacity.js` создаёт чистый испытательный случай:
 
-Интерфейс global FEM → joint check:
+```text
+F0 = 1 N horizontal
+```
+
+Он распределяется поровну по top nodes. Отключаются:
+
+```text
+gravity
+ice
+wind
+equipment
+extra loads
+```
+
+Это делает результат воспроизводимым и пригодным для лабораторного/натурного сравнения.
+
+### 12.2. Member limit
+
+В линейной модели использование пропорционально силе:
+
+```text
+Fmember = 1 / eta_member(F0=1 N)
+```
+
+Тип member limit сохраняется как `material-strength` или `local-member-buckling`.
+
+### 12.3. Global limit
+
+Если единичная боковая сила создаёт физически значимое сжатие:
+
+```text
+Fglobal = lambda_cr(F0=1 N) * 1 N
+```
+
+Если максимальное сжатие меньше `1e-9 N`, `KG` считается вызванной только машинным шумом и global lateral buckling принимается бесконечным. Это требуется для чисто поперечной сплошной консоли, где осевое усилие теоретически равно нулю.
+
+### 12.4. Governing limit
+
+```text
+Flim = min(Fmember, Fglobal)
+```
+
+Проверяется сектор 120° вращательной симметрии. Default step = 15°.
+
+Результат хранит:
+
+```js
+{
+  criticalForceN,
+  criticalForceKgf,
+  memberLimitForceN,
+  globalBucklingForceN,
+  governingMode,
+  directionDeg,
+  criticalMemberId,
+  cases
+}
+```
+
+`kgf` — только presentation unit:
+
+```text
+Fkgf = FN / 9.80665
+```
+
+## 13. Solid-rod validation model
+
+Специальный sanity-check не является эксплуатационной геометрией. Он строится при:
+
+```text
+d_rib = a/2
+D_mast = 2a/sqrt(3)
+```
+
+Сравнительная модель — сплошная круглая консоль:
+
+```text
+height = H_mast
+diameter = D_mast
+material = same
+```
+
+Площадь шести рёбер относительно solid rod:
+
+```text
+A6/Asolid = 9/8 = 1.125
+```
+
+CI сравнивает боковую предельную силу и линейную жёсткость. Цель — обнаружить ошибки порядка величин, единиц и топологии, а не заставить разные конструкции давать идентичные числа.
+
+## 14. Physical joint demand — следующий слой
+
+Global FEM не знает конкретный болт/шов. Контракт:
 
 ```js
 {
   jointId,
   loadCaseId,
-  action: {
-    N,
-    Vy,
-    Vz,
-    T,
-    My,
-    Mz
-  }
+  action: { N, Vy, Vz, T, My, Mz }
 }
 ```
 
-Критическое правило: связанный набор `N/V/T/M` должен происходить из одного load case. Нельзя комбинировать независимые максимумы из разных случаев и выдавать их за реально существующий vector demand.
+Связанный набор `N/V/T/M` должен происходить из одного load case.
 
-## 12. Joint definition — планируемая модель
+## 15. Joint definition — планируемая модель
 
 ```js
 {
@@ -360,15 +450,7 @@ eta_member = max(eta_stress, eta_Euler)
     boltPropertyClass,
     engagementLengthMm
   },
-  welds: [
-    {
-      type,
-      lengthMm,
-      legMm,
-      position,
-      direction
-    }
-  ],
+  welds: [{ type, lengthMm, legMm, position, direction }],
   welding: {
     process,
     consumableStandard,
@@ -380,65 +462,57 @@ eta_member = max(eta_stress, eta_Euler)
 
 `jointCheck()` должен вернуть отдельные limit states и governing result.
 
-## 13. Reporting contract
+## 16. Reporting contract
 
-### 13.1. Screen and CSV
+UI и CSV читают готовый solver/envelope. Они не решают FEM повторно.
 
-UI и CSV читают готовые результаты solver/envelope. Они не решают FEM повторно.
-
-### 13.2. Printable calculation project
-
-Пользовательский отчёт — человекочитаемый инженерный документ:
+Printable calculation project показывает:
 
 ```text
 inputs
 geometry derivation
-section-property formulas
+section properties
+weather q=rho*v²/2
 load formulas
-frame FEM equations
+frame equations
 critical member substitutions
 Euler check
 eigen-buckling
+lateral Fmember/Fglobal/Flim
 result tables
 diagnostics
 limitations
 ```
 
-В бумажном документе **нет JSON dump**.
+В бумажном документе нет JSON dump.
 
-### 13.3. Internal CalculationSnapshot
-
-Для regression/cross-check допускается внутренний snapshot:
+Internal `CalculationSnapshot v4` хранит:
 
 ```text
 software/method/Git SHA
-parameters
+parameters + weather resolution
 nodes/members/restraints
-loadCases
+operational load cases
+lateral capacity cases
 member results
 buckling
 diagnostics
 ```
 
-Он не является пользовательским отчётом и не экспортируется отдельной кнопкой.
+Он нужен для regression/cross-check и не экспортируется пользователю отдельной кнопкой.
 
-## 14. Reporting source-of-truth rule
+## 17. Source-of-truth rule
 
 Report renderer запрещено:
 
 - повторно решать `K*u=F`;
-- заново вычислять member forces из другой модели;
-- подменять solver values вручную введёнными числами;
-- округлять значения до того, как они попали в проверки.
+- заново строить другую FEM-модель;
+- подменять solver values;
+- округлять значения до проверок.
 
-Разрешено:
+Допускаются formatting, unit conversion, sorting и наглядные алгебраические подстановки из тех же параметров/results.
 
-- вычислять наглядные алгебраические подстановки из тех же исходных параметров;
-- форматировать единицы;
-- округлять только отображаемое значение;
-- сортировать таблицы.
-
-## 15. Numerical diagnostics
+## 18. Numerical diagnostics
 
 Каждый solve сохраняет:
 
@@ -450,34 +524,38 @@ globalMomentResidual
 buckling residual
 ```
 
-Результат с неудовлетворительной диагностикой не должен молча отображаться как надёжный.
+Результат с неудовлетворительной диагностикой не должен молча считаться надёжным.
 
-## 16. Verification layers
+## 19. Verification layers
 
 ### Analytical
 
 - axial `FL/EA`;
 - cantilever `PL³/(3EI)`;
 - cantilever rotation `PL²/(2EI)`;
-- fixed-fixed uniform load `qL/2`, `qL²/12`;
-- analytical eigensystems.
+- fixed-fixed `qL/2`, `qL²/12`;
+- lateral yield `P=Ryd*W/L`;
+- analytical eigensystems;
+- `q=rho*v²/2` and inverse conversion.
 
 ### Invariants
 
-- force equilibrium;
-- moment equilibrium;
-- regular-octahedron equal edges;
-- alternating geometry regression;
+- force/moment equilibrium;
+- equal octahedron edges;
+- alternating geometry;
 - coordinate-rotation invariance;
+- complete Beaufort 0..12 and monotonic pressure;
+- solid-rod area ratio `9/8`;
+- solid-rod capacity/stiffness same-order sanity bands;
 - UI/report contracts.
 
 ### Independent FEM cross-check
 
-Reference models from a separate solver must eventually live under a dedicated validation directory and be compared in CI with explicit tolerances.
+Reference models from a separate solver должны быть добавлены в отдельный validation directory с явными допусками.
 
-## 17. CI as part of calculation architecture
+## 20. CI as part of calculation architecture
 
-Calculation software is not considered changed safely until:
+Изменение расчётного ПО не считается безопасным, пока не прошли:
 
 ```text
 syntax checks
@@ -489,6 +567,6 @@ secret scan
 static-site smoke test
 ```
 
-have passed.
-
 Подробности: [`CI_CD_REVIEW.md`](CI_CD_REVIEW.md).
+
+Подробности боковой проверки и weather/solid-rod validation: [`LATERAL_CAPACITY_WEATHER_VALIDATION.md`](LATERAL_CAPACITY_WEATHER_VALIDATION.md).

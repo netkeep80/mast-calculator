@@ -5,17 +5,17 @@ import {
   calculateBoltCapacity,
   checkBoltDemand,
   minimumBoltForClass,
-} from '../site/engine/bolt-check.js'
+} from '../packages/engineering/index.js'
 import {
   getBoltSize,
   metricThreadStressAreaMm2,
-} from '../site/engine/connection-catalog.js'
-import { DEFAULT_PARAMETERS, calculateCompleteMast, calculateMast } from '../site/engine/calculate.js'
-import { splitJointDemandForBolt } from '../site/engine/joint-demand.js'
+} from '../packages/domain/index.js'
+import { DEFAULT_PARAMETERS, calculateCompleteMast, calculateMast } from '../packages/application/index.js'
+import { splitJointDemandForBolt } from '../packages/engineering/index.js'
 import {
   calculateMinimumWeldLength,
   recommendWeldConsumable,
-} from '../site/engine/weld-check.js'
+} from '../packages/engineering/index.js'
 
 const approximately = (actual, expected, relative = 1e-10, absolute = 1e-9) => {
   const tolerance = Math.max(absolute, Math.abs(expected) * relative)

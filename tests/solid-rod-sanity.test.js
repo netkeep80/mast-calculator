@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS, resolveCalculationParameters } from '../site/engine/calculate.js'
-import { generateMastModel } from '../site/engine/geometry.js'
-import { calculateLateralCapacity } from '../site/engine/lateral-capacity.js'
+import { DEFAULT_PARAMETERS, resolveCalculationParameters } from '../packages/application/index.js'
+import { generateMastModel } from '../packages/structural-analysis/index.js'
+import { calculateLateralCapacity } from '../packages/engineering/index.js'
 
 function solidCantileverFromMast(parameters) {
   const edgeM = parameters.ribCutLengthMm / 1000

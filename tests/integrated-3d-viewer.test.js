@@ -2,13 +2,13 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
 
-import { generateMastModel } from '../site/engine/geometry.js'
-import { buildJointHardwareGeometry } from '../site/engine/joint-hardware-catalog.js'
+import { generateMastModel } from '../packages/structural-analysis/index.js'
+import { buildJointHardwareGeometry } from '../packages/domain/index.js'
 import {
   buildDetailedMastModel,
   DETAILED_MAST_MODEL_SCHEMA,
-} from '../site/engine/detailed-mast-model.js'
-import { MastViewer } from '../site/viewer.js'
+} from '../packages/design/index.js'
+import { MastViewer } from '../apps/web/viewer.js'
 
 function fixtureResult(moduleCount = 2, moduleDiametersMm = null) {
   const triangleSideMm = 1000

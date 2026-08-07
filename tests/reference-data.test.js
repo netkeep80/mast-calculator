@@ -3,21 +3,21 @@ import test from 'node:test'
 import {
   REINFORCEMENT_CLASSES,
   STANDARD_DIAMETERS_MM,
-} from '../site/engine/catalog.js'
+} from '../packages/domain/index.js'
 import {
   BOLT_PROPERTY_CLASSES,
   BOLT_SIZES,
   WELD_CONSUMABLES,
-} from '../site/engine/connection-catalog.js'
+} from '../packages/domain/index.js'
 import {
   COUPLING_NUTS,
   REGULAR_NUTS,
-} from '../site/engine/joint-hardware-catalog.js'
-import { METRIC_COARSE_THREADS } from '../site/engine/metric-thread-catalog.js'
+} from '../packages/domain/index.js'
+import { METRIC_COARSE_THREADS } from '../packages/domain/index.js'
 import {
   buildReferenceData,
   REFERENCE_DATA_SCHEMA,
-} from '../site/engine/reference-data.js'
+} from '../packages/application/index.js'
 
 test('справочник строится из тех же каталогов, которые использует расчёт', () => {
   const data = buildReferenceData()

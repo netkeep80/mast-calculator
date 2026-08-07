@@ -7,8 +7,8 @@ import {
   factorSymmetricBand,
   relativeBandResidual,
   solveSymmetricBandFactor,
-} from '../site/engine/banded.js'
-import { solveDenseSystem } from '../site/engine/linear-algebra.js'
+} from '../packages/numerics/index.js'
+import { solveDenseSystem } from '../packages/numerics/index.js'
 
 const approximately = (actual, expected, tolerance = 1e-10) => {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} != ${expected}`)

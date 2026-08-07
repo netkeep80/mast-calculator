@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
-import { createCalculationProjectHtml } from '../site/engine/calculation-project.js'
-import { calculateCompleteMastWithConfiguredJoint } from '../site/engine/complete-calculation.js'
+import { DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { createCalculationProjectHtml } from '../packages/reporting/index.js'
+import { calculateCompleteMastWithConfiguredJoint } from '../packages/application/index.js'
 
 test('полный пользовательский расчёт содержит сборочную массу и горизонтальную стрелу до экспорта документа', () => {
   const result = calculateCompleteMastWithConfiguredJoint({

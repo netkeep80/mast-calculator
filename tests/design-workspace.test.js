@@ -1,20 +1,22 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
-import { calculateCompleteMastWithConfiguredJoint } from '../site/engine/complete-calculation.js'
+import { DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { calculateCompleteMastWithConfiguredJoint } from '../packages/application/index.js'
 import {
   buildDesignPackage,
   DESIGN_PACKAGE_SCHEMA,
-  DESIGN_PACKAGE_STORAGE_KEY,
   designResultFromPackage,
-  loadDesignPackage,
   parseDesignPackage,
-  saveDesignPackage,
   serializeDesignPackage,
-} from '../site/engine/design-package.js'
-import { buildDetailedMastModel } from '../site/engine/detailed-mast-model.js'
-import { createMastObj } from '../site/engine/obj-export.js'
+} from '../packages/design/index.js'
+import {
+  DESIGN_PACKAGE_STORAGE_KEY,
+  loadDesignPackage,
+  saveDesignPackage,
+} from '../site/design-storage.js'
+import { buildDetailedMastModel } from '../packages/design/index.js'
+import { createMastObj } from '../packages/design/index.js'
 
 function calculation() {
   return calculateCompleteMastWithConfiguredJoint({

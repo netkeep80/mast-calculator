@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calculateMast, DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
+import { calculateMast, DEFAULT_PARAMETERS } from '../packages/application/index.js'
 import {
   calculateStaticPayloadCapacity,
   STATIC_PAYLOAD_PROGRESS_STEPS,
-} from '../site/engine/static-payload-capacity.js'
+} from '../packages/engineering/index.js'
 
 function oneModule(parameters = {}) {
   const result = calculateMast({

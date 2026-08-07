@@ -6,8 +6,8 @@ import {
   DEFAULT_PARAMETERS,
   HEIGHT_SEARCH_PROGRESS_STEPS,
   windDirections,
-} from '../site/engine/calculate.js'
-import { STATIC_PAYLOAD_PROGRESS_STEPS } from '../site/engine/static-payload-capacity.js'
+} from '../packages/application/index.js'
+import { STATIC_PAYLOAD_PROGRESS_STEPS } from '../packages/engineering/index.js'
 
 let benchmark40Cache = null
 

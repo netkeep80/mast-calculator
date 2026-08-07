@@ -4,12 +4,12 @@ import test from 'node:test'
 import {
   STOCK_BAR_DIVISIONS,
   theoreticalCutLengthMm,
-} from '../site/engine/catalog.js'
-import { DEFAULT_PARAMETERS, calculateMast, resolveCalculationParameters } from '../site/engine/calculate.js'
-import { generateMastModel } from '../site/engine/geometry.js'
-import { calculateLateralCapacity } from '../site/engine/lateral-capacity.js'
-import { buildLoadCase } from '../site/engine/loads.js'
-import { calculateStaticPayloadCapacity } from '../site/engine/static-payload-capacity.js'
+} from '../packages/domain/index.js'
+import { DEFAULT_PARAMETERS, calculateMast, resolveCalculationParameters } from '../packages/application/index.js'
+import { generateMastModel } from '../packages/structural-analysis/index.js'
+import { calculateLateralCapacity } from '../packages/engineering/index.js'
+import { buildLoadCase } from '../packages/structural-analysis/index.js'
+import { calculateStaticPayloadCapacity } from '../packages/engineering/index.js'
 
 const usageSource = fs.readFileSync(new URL('../site/usage-scenarios.js', import.meta.url), 'utf8')
 const loadsSource = fs.readFileSync(new URL('../site/engine/loads.js', import.meta.url), 'utf8')

@@ -2,27 +2,27 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   BOLT_SIZES,
-} from '../site/engine/connection-catalog.js'
+} from '../packages/domain/index.js'
 import {
   clearanceNutOptionsForBolt,
   minimumClearanceNutForBolt,
-} from '../site/engine/joint-hardware-catalog.js'
+} from '../packages/domain/index.js'
 import {
   AUTO_MAX_PRELOAD_UTILIZATION,
   configureIntermoduleJoint,
-} from '../site/engine/joint-configurator.js'
+} from '../packages/engineering/index.js'
 import {
   METRIC_COARSE_THREADS,
   getMetricCoarseThread,
-} from '../site/engine/metric-thread-catalog.js'
-import { calculateMinimumWeldLength } from '../site/engine/weld-check.js'
-import { calculateWeldServiceDegradation } from '../site/engine/weld-service-degradation.js'
-import { calculateEquivalentMemberWeldZoneStiffness } from '../site/engine/weld-zone-stiffness.js'
+} from '../packages/domain/index.js'
+import { calculateMinimumWeldLength } from '../packages/engineering/index.js'
+import { calculateWeldServiceDegradation } from '../packages/domain/index.js'
+import { calculateEquivalentMemberWeldZoneStiffness } from '../packages/structural-analysis/index.js'
 import {
   DEFAULT_PARAMETERS,
   resolveCalculationParameters,
-} from '../site/engine/calculate.js'
-import { generateMastModel } from '../site/engine/geometry.js'
+} from '../packages/application/index.js'
+import { generateMastModel } from '../packages/structural-analysis/index.js'
 
 const baseJointParameters = {
   ...DEFAULT_PARAMETERS,

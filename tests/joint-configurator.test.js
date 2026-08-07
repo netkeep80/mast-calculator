@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calculateCompleteMast, DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
-import { calculateCompleteMastWithConfiguredJoint } from '../site/engine/complete-calculation.js'
+import { calculateCompleteMast, DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { calculateCompleteMastWithConfiguredJoint } from '../packages/application/index.js'
 import {
   buildJointHardwareGeometry,
   clearanceNutOptionsForBolt,
   metricInternalThreadMinorDiameterMm,
   minimumClearanceNutForBolt,
-} from '../site/engine/joint-hardware-catalog.js'
-import { configureIntermoduleJoint } from '../site/engine/joint-configurator.js'
+} from '../packages/domain/index.js'
+import { configureIntermoduleJoint } from '../packages/engineering/index.js'
 
 const baseParameters = {
   ...DEFAULT_PARAMETERS,

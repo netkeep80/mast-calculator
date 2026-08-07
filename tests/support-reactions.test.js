@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS, resolveCalculationParameters } from '../site/engine/calculate.js'
-import { generateMastModel } from '../site/engine/geometry.js'
-import { buildLoadCase } from '../site/engine/loads.js'
-import { analyzeIndependentDenseFrame } from '../site/engine/reference-frame.js'
-import { analyzeFrame } from '../site/engine/solver.js'
+import { DEFAULT_PARAMETERS, resolveCalculationParameters } from '../packages/application/index.js'
+import { generateMastModel } from '../packages/structural-analysis/index.js'
+import { buildLoadCase } from '../packages/structural-analysis/index.js'
+import { analyzeIndependentDenseFrame } from '../packages/structural-analysis/testing.js'
+import { analyzeFrame } from '../packages/structural-analysis/index.js'
 
 const GRAVITY_M_S2 = 9.80665
 

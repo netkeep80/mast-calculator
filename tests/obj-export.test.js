@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
 
-import { generateMastModel } from '../site/engine/geometry.js'
-import { buildJointHardwareGeometry } from '../site/engine/joint-hardware-catalog.js'
-import { createMastObj } from '../site/engine/obj-export.js'
+import { generateMastModel } from '../packages/structural-analysis/index.js'
+import { buildJointHardwareGeometry } from '../packages/domain/index.js'
+import { createMastObj } from '../packages/design/index.js'
 
 function fixtureResult(moduleCount = 2, moduleDiametersMm = null) {
   const triangleSideMm = 1000

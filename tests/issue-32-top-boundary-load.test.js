@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
-import { calculateMast, DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
-import { buildLoadCase } from '../site/engine/loads.js'
+import { calculateMast, DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { buildLoadCase } from '../packages/structural-analysis/index.js'
 
 const GRAVITY = 9.80665
 const norm3 = (value) => Math.hypot(...value)

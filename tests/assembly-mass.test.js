@@ -6,9 +6,9 @@ import {
   estimateFilletWeldMassKg,
   estimateNutMassKg,
   reinforcementMassPerMeterKg,
-} from '../site/engine/assembly-mass.js'
-import { calculateMast, DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
-import { buildJointHardwareGeometry } from '../site/engine/joint-hardware-catalog.js'
+} from '../packages/design/index.js'
+import { calculateMast, DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { buildJointHardwareGeometry } from '../packages/domain/index.js'
 
 const approximately = (actual, expected, relative = 1e-10, absolute = 1e-12) => {
   const tolerance = Math.max(absolute, Math.abs(expected) * relative)

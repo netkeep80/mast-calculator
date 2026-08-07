@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
-import { buildLoadCase } from '../site/engine/loads.js'
+import { DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { buildLoadCase } from '../packages/structural-analysis/index.js'
 
 const approximately = (actual, expected, relative = 1e-10, absolute = 1e-10) => {
   const tolerance = Math.max(absolute, Math.abs(expected) * relative)

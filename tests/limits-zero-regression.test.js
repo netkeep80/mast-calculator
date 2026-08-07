@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calculateCompleteMast, DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
+import { calculateCompleteMast, DEFAULT_PARAMETERS } from '../packages/application/index.js'
 
 test('40 modules, 12 m / 20 cuts, Ø16 A500C do not collapse limits to 1 module / 1 kg', { timeout: 30_000 }, () => {
   const result = calculateCompleteMast({

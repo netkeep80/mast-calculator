@@ -127,7 +127,7 @@
     },
     "design-package-obj-round-trip": {
       "schema": "mast-calculator/design-package/v1",
-      "serializedBytes": 86140,
+      "serializedBytes": 86076,
       "model": { "modules": 3, "nodes": 12, "members": 27 },
       "mesh": { "structuralMembers": 27, "hardwareObjects": 30 },
       "obj": { "bytes": 75379, "vertexLines": 1464, "faceLines": 1242, "hasStructuralGroup": true, "hasJointHardwareGroup": true }

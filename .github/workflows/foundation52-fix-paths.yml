@@ -3,7 +3,7 @@ name: Foundation 52 moved-path cleanup
 on:
   pull_request:
     branches: [main]
-    types: [synchronize]
+    types: [synchronize, ready_for_review]
 
 permissions:
   contents: read

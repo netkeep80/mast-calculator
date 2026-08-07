@@ -534,7 +534,7 @@ buckling residual
 - cantilever `PL³/(3EI)`;
 - cantilever rotation `PL²/(2EI)`;
 - fixed-fixed `qL/2`, `qL²/12`;
-- lateral yield `P=Ryd*W/L`;
+- lateral cantilever limit from the actual solver check `sigma_eq = sqrt((PL/W)² + 3(4P/(3A))²)`;
 - analytical eigensystems;
 - `q=rho*v²/2` and inverse conversion.
 

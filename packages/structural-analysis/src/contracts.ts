@@ -1,4 +1,4 @@
-import type { ResolvedProject } from '../../domain/src/contracts.js'
+import type { ResolvedProject } from '../../domain/contracts.js'
 
 export type Vector3 = readonly [number, number, number]
 export type Vector6 = readonly [number, number, number, number, number, number]

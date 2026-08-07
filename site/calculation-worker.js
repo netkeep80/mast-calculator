@@ -59,7 +59,8 @@ function runCalculation(jobId, parameters) {
 
 function runOptimization(jobId, parameters) {
   const optimizationShare = 0.78
-  const automaticParameters = { ...parameters, jointConfiguratorMode: 'auto' }
+  const { moduleDiametersMm: _ignoredMixedProfile, ...uniformParameters } = parameters
+  const automaticParameters = { ...uniformParameters, jointConfiguratorMode: 'auto' }
   postProgress(jobId, {
     phase: 'optimize',
     label: `Подбор арматуры и соединительного узла: до ${STANDARD_DIAMETERS_MM.length} стандартных вариантов`,

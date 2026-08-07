@@ -51,6 +51,23 @@ test('negative fixture detects browser coupling in engineering core', () => {
   assert.ok(violations.some((item) => item.type === 'environment' && item.detail === 'localStorage'))
 })
 
+test('Node process access is detected but domain process fields and parameters are not', () => {
+  const root = fixture({
+    'site/engine/domain.js': "export const weld = { process: 'electrode' }\nexport function choose(process) { return process }\n",
+    'site/engine/node-coupled.js': 'export const mode = process.env.NODE_ENV\n',
+  })
+  const report = analyzeRepository(root)
+  const domain = report.modules.find((item) => item.path === 'site/engine/domain.js')
+  const nodeCoupled = report.modules.find((item) => item.path === 'site/engine/node-coupled.js')
+  assert.ok(!domain.environment.globals.includes('process'))
+  assert.ok(nodeCoupled.environment.globals.includes('process'))
+  assert.ok(evaluatePolicy(report, {}).some((item) => (
+    item.type === 'environment'
+    && item.path === 'site/engine/node-coupled.js'
+    && item.detail === 'process'
+  )))
+})
+
 test('explicit exact-path baseline exception suppresses only documented coupling', () => {
   const root = fixture({
     'site/engine/a.js': 'export function read() { return localStorage.length + window.devicePixelRatio }\n',

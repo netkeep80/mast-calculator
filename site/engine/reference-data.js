@@ -17,8 +17,19 @@ import {
   WELD_LEG_SIZES_MM,
 } from './joint-hardware-catalog.js'
 import { reinforcementMassPerMeterKg } from './assembly-mass.js'
+import {
+  DEFAULT_NUT_FACTOR,
+  DEFAULT_PRELOAD_VARIATION,
+  DEFAULT_TIGHTENING_TORQUE_NM,
+} from './bolt-preload.js'
+import { DEFAULT_NUT_TO_RIB_AREA_RATIO } from './joint-section-check.js'
+import {
+  DEFAULT_WELD_TO_RIB_AREA_RATIO,
+  MAX_WELD_TO_RIB_AREA_RATIO,
+  MIN_WELD_TO_RIB_AREA_RATIO,
+} from './weld-check.js'
 
-export const REFERENCE_DATA_SCHEMA = 'mast-calculator/reference-data/v1'
+export const REFERENCE_DATA_SCHEMA = 'mast-calculator/reference-data/v2'
 
 export function buildReferenceData() {
   const reinforcementClasses = Object.values(REINFORCEMENT_CLASSES).map((item) => ({ ...item }))
@@ -57,6 +68,27 @@ export function buildReferenceData() {
     welding: {
       consumables: weldConsumables,
       filletLegSizesMm: [...WELD_LEG_SIZES_MM],
+    },
+    jointDesign: {
+      boltPreload: {
+        relation: 'T = K*F0*d',
+        defaultTighteningTorqueNm: DEFAULT_TIGHTENING_TORQUE_NM,
+        defaultNutFactor: DEFAULT_NUT_FACTOR,
+        defaultPreloadVariation: DEFAULT_PRELOAD_VARIATION,
+        source: 'NASA-STD-5020A Appendix A / NASA Fastener Design Manual; K должен уточняться для фактической резьбы, покрытия и смазки',
+      },
+      nutNetSection: {
+        minimumAreaRatioToSingleRib: DEFAULT_NUT_TO_RIB_AREA_RATIO,
+        relation: 'Anut,net / Arib >= ksection',
+        source: 'Дополнительный геометрический критерий проекта issue #33, не нормативная замена проверки резьбы/смятия',
+      },
+      weldEffectiveArea: {
+        relation: 'Aweld,eff = beta_f*kf*leff',
+        minimumAreaRatioToRib: MIN_WELD_TO_RIB_AREA_RATIO,
+        defaultAreaRatioToRib: DEFAULT_WELD_TO_RIB_AREA_RATIO,
+        maximumSelectableAreaRatioToRib: MAX_WELD_TO_RIB_AREA_RATIO,
+        source: 'Эффективная площадь = effective throat × effective length; коэффициент 2–3× является дополнительным критерием issue #33',
+      },
     },
   }
 }

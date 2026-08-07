@@ -82,7 +82,7 @@ test('отдельная страница содержит 3D, OBJ, JSON и КД
   const designHtml = fs.readFileSync(new URL('../apps/web/design.html', import.meta.url), 'utf8')
   const designApp = fs.readFileSync(new URL('../apps/web/design-app.js', import.meta.url), 'utf8')
   const mainHtml = fs.readFileSync(new URL('../apps/web/index.html', import.meta.url), 'utf8')
-  assert.match(designHtml, /<title>3D и КД мачты<\/title>/)
+  assert.match(designHtml, /<title>3D и конструкторская документация мачты<\/title>/)
   assert.match(designHtml, /id="export-obj"/)
   assert.match(designHtml, /id="export-package"/)
   assert.match(designHtml, /id="export-eskd"/)

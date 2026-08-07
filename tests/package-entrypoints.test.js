@@ -29,6 +29,26 @@ test('every production package public entrypoint imports in a plain Node process
   }
 })
 
+test('structural response and engineering acceptance remain separate public contracts', () => {
+  const structuralSource = fs.readFileSync(
+    new URL('../packages/structural-analysis/src/solver.js', import.meta.url),
+    'utf8',
+  )
+  const memberCheckSource = fs.readFileSync(
+    new URL('../packages/engineering/src/member-check.js', import.meta.url),
+    'utf8',
+  )
+
+  assert.equal('calculateGuyedMast' in structural, false)
+  assert.equal(typeof engineering.calculateGuyedMast, 'function')
+  assert.equal(typeof engineering.analyzeCheckedFrame, 'function')
+  assert.doesNotMatch(structuralSource, /memberStrengthResult|designYieldPa|stressUtilization|bucklingUtilization/)
+  assert.match(memberCheckSource, /memberStrengthResult/)
+  assert.match(memberCheckSource, /designYieldPa/)
+  assert.match(memberCheckSource, /stressUtilization/)
+  assert.match(memberCheckSource, /bucklingUtilization/)
+})
+
 test('independent dense FEM is available only from structural verification entrypoint', () => {
   assert.equal(typeof structuralTesting.analyzeIndependentDenseFrame, 'function')
   assert.equal('analyzeIndependentDenseFrame' in structural, false)

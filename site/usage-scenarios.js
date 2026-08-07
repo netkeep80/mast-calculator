@@ -27,7 +27,7 @@ const jointInputDetails = $('#joint-input-details')
 const SCENARIOS = Object.freeze({
   check: {
     label: 'Проверить мачту',
-    description: 'Проверяется выбранная конструкция при заданной погоде и оборудовании.',
+    description: 'Проверяется выбранная конструкция при заданной погоде и массе оборудования.',
   },
   design: {
     label: 'Подобрать конструкцию',
@@ -35,7 +35,7 @@ const SCENARIOS = Object.freeze({
   },
   limits: {
     label: 'Рассчитать пределы',
-    description: 'В фокусе максимальная высота, боковая сила и масса на вершине.',
+    description: 'В фокусе максимальная высота, груз на вершине и поперечная грузоподъёмность как консольной стрелы.',
   },
   verify: {
     label: 'Рассчитать и проверить',
@@ -46,6 +46,64 @@ const SCENARIOS = Object.freeze({
 const format = (value, digits = 2) => Number.isFinite(Number(value))
   ? new Intl.NumberFormat('ru-RU', { maximumFractionDigits: digits }).format(value)
   : '—'
+
+function closestMetricArticle(id) {
+  return document.querySelector(id)?.closest('article') ?? null
+}
+
+function removeLegacyForceControl(name) {
+  const element = form?.elements.namedItem(name)
+  element?.closest('label')?.remove()
+}
+
+function setMetricLabel(id, text) {
+  const article = closestMetricArticle(id)
+  const caption = article?.querySelector('span')
+  if (caption) caption.textContent = text
+}
+
+function installIssue36Ui() {
+  // Эти поля раньше позволяли задавать ту же физическую нагрузку вторым способом.
+  // Issue #36 оставляет одну пользовательскую вертикальную величину — массу груза.
+  removeLegacyForceControl('extraHorizontalLoadN')
+  removeLegacyForceControl('extraVerticalLoadN')
+
+  const equipment = form?.elements.namedItem('equipmentMassKg')
+  if (equipment?.closest('label')) {
+    const label = equipment.closest('label')
+    for (const node of [...label.childNodes]) {
+      if (node.nodeType === Node.TEXT_NODE) node.textContent = ''
+    }
+    label.prepend(document.createTextNode('Уже установленная масса на вершине, кг'))
+  }
+
+  for (const details of document.querySelectorAll('details.input-details')) {
+    const summary = details.querySelector(':scope > summary')
+    if (summary?.textContent.includes('Уточнить ветер и дополнительные нагрузки')) {
+      summary.textContent = 'Уточнить ветер и параметры среды'
+      for (const note of details.querySelectorAll('.practical-note')) {
+        if (/не задавайте одну и ту же нагрузку дважды/i.test(note.textContent)) note.remove()
+      }
+    }
+  }
+
+  setMetricLabel('#metric-lateral-capacity', 'Груз на конце идеализированной стрелы')
+  setMetricLabel('#metric-static-payload', 'Максимальная масса на вершине')
+  setMetricLabel('#metric-static-reserve', 'Сколько ещё можно добавить сверху')
+  const waterArticle = closestMetricArticle('#metric-water-volume')
+  if (waterArticle) waterArticle.hidden = true
+
+  const lateralCardTitle = document.querySelector('.lateral-card h3')
+  if (lateralCardTitle) lateralCardTitle.textContent = 'Поперечная грузоподъёмность / консольная стрела'
+  const staticCardTitle = document.querySelector('.static-payload-card h3')
+  if (staticCardTitle) staticCardTitle.textContent = 'Масса груза на вершине вертикальной мачты'
+
+  const eyebrow = document.querySelector('.page-header .eyebrow')
+  if (eyebrow) eyebrow.textContent = 'Калькулятор мачты · прототип 1.4'
+  document.body.dataset.issue36StaticLoadModel = 'top-mass-only'
+}
+
+installIssue36Ui()
 
 function selectedScenario() {
   return document.querySelector('input[name="usageScenario"]:checked')?.value ?? 'check'
@@ -123,12 +181,12 @@ function renderLimitsScenario(result) {
   scenarioTitle.textContent = 'Пределы выбранного типа мачты'
   scenarioStatus.textContent = 'ПРЕДЕЛЫ РАССЧИТАНЫ'
   scenarioStatus.className = 'answer-status answer-info'
-  scenarioText.textContent = 'Это специальные предельные сценарии. Они отвечают не на вопрос «пройдёт ли текущая эксплуатация», а на вопрос «что наступит первым при увеличении высоты или нагрузки». '
+  scenarioText.textContent = 'Оставлены только практически однозначные предельные величины: высота, масса груза на верхней грани и поперечный unit-load предел, который можно читать как идеализированную консольную стрелу.'
   scenarioMetrics.replaceChildren(
     metricCard('Проектная высота', `${height.design.bounded ? '' : '≥ '}${format(height.design.maximumHeightM, 2)} м`, `${height.design.maximumModules} модулей`),
-    metricCard('Боковая сила', `${format(lateral.criticalForceKgf, 1)} кгс`, `механизм: ${lateral.governingMode}`),
-    metricCard('Масса на вершине', `${format(payload.maximumTotalTopMassKg, 1)} кг`, `дополнительно ${format(payload.remainingAdditionalMassKg, 1)} кг`),
-    metricCard('Вода', `${format(payload.equivalentWaterVolumeM3, 3)} м³`, `${format(payload.equivalentWaterVolumeLiters, 0)} л`),
+    metricCard('Стрела крана', `${format(lateral.idealizedCraneBoomPayloadKg ?? lateral.criticalForceKgf, 1)} кг`, 'идеализированный концевой поперечный груз; собственный вес горизонтальной стрелы не включён'),
+    metricCard('Максимум на вершине', `${format(payload.maximumTopEquipmentMassKg ?? payload.maximumTotalTopMassKg, 1)} кг`, 'суммарная масса оборудования/груза'),
+    metricCard('Можно добавить', `${format(payload.additionalTopEquipmentMassKg ?? payload.remainingAdditionalMassKg, 1)} кг`, `уже задано ${format(payload.configuredTopEquipmentMassKg ?? result.parameters.equipmentMassKg, 1)} кг`),
   )
 }
 
@@ -162,6 +220,27 @@ function renderScenarioResult(result) {
   referenceDetails.open = scenario === 'verify'
   allMetricsDetails.open = false
   governingDetails.open = scenario === 'limits'
+}
+
+function renderIssue36DetailedResult(result) {
+  const lateral = result?.lateralCapacity
+  const payload = result?.staticPayloadCapacity
+  if (!lateral || !payload) return
+
+  const maximum = payload.maximumTopEquipmentMassKg ?? payload.maximumTotalTopMassKg
+  const remaining = payload.additionalTopEquipmentMassKg ?? payload.remainingAdditionalMassKg
+  const configured = payload.configuredTopEquipmentMassKg ?? result.parameters?.equipmentMassKg ?? 0
+
+  const staticDescription = $('#static-payload-description')
+  if (staticDescription) {
+    staticDescription.textContent = `Gravity-only расчёт: максимальная суммарная масса оборудования/груза на вершине ${format(maximum, 1)} кг. Уже задано ${format(configured, 1)} кг, поэтому до первого расчётного предела можно добавить ещё ${format(remaining, 1)} кг. Ветер и лёд в этой специальной предельной задаче отключены.`
+  }
+  const lateralDescription = $('#lateral-capacity-description')
+  if (lateralDescription) {
+    lateralDescription.textContent = `Поперечный unit-load предел вершины ${format(lateral.criticalForceKgf, 1)} кгс (${format(lateral.idealizedCraneBoomPayloadKg ?? lateral.criticalForceKgf, 1)} кг эквивалентного концевого груза при g₀). Его можно использовать как оценку идеализированной консольной стрелы; собственный вес горизонтально ориентированной стрелы в этом нормированном тесте специально исключён.`
+  }
+  const waterArticle = closestMetricArticle('#metric-water-volume')
+  if (waterArticle) waterArticle.hidden = true
 }
 
 function renderAssemblyMass(result) {
@@ -229,5 +308,9 @@ export function enrichAndRenderUsageResult(result) {
   }
   globalThis.__mastLastUsageResult = result
   renderScenarioResult(result)
+  // app.js является владельцем базового render pass и регистрирует собственный
+  // Worker-listener после bootstrap. Microtask гарантирует, что упрощённые
+  // формулировки issue #36 применятся уже после старого совместимого render pass.
+  queueMicrotask(() => renderIssue36DetailedResult(result))
   return result
 }

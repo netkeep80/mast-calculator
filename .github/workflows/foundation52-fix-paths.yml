@@ -1,0 +1,46 @@
+name: Foundation 52 moved-path cleanup
+
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+permissions:
+  contents: read
+
+env:
+  GIT_CONFIG_KEY_0: init.defaultBranch
+  GIT_CONFIG_VALUE_0: main
+
+jobs:
+  fix:
+    if: github.head_ref == 'agent/issue-52-headless-core'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout migration branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/issue-52-headless-core
+          fetch-depth: 0
+      - name: Use Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+      - name: Rewrite moved source references
+        run: node scripts/foundation52-fix-paths.mjs
+      - name: Remove one-shot cleanup machinery
+        shell: bash
+        run: rm scripts/foundation52-fix-paths.mjs .github/workflows/foundation52-fix-paths.yml
+      - name: Commit cleaned paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Update references to canonical source layout"
+          git push origin HEAD:agent/issue-52-headless-core

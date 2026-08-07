@@ -1,38 +1,28 @@
-# Боковая нагрузка, погодные сценарии и solid-rod sanity-check
+# Боковая unit-load проверка, погода и solid-rod sanity-check
 
 Статус: спецификация и верификация прототипа **1.4**.
 
-## 1. Назначение отдельной боковой проверки
+## 1. Назначение
 
-Обычный wind calculation распределяет давление по всем рёбрам и оборудованию. Для натурного контрольного опыта и оценки поперечной несущей способности удобнее приложить известную горизонтальную силу к вершине мачты.
+Обычный эксплуатационный wind case распределяет давление по всем рёбрам и оборудованию. Для проверки самого frame/connection response существует отдельная нормированная задача с известной горизонтальной силой на вершине.
 
-Этот special case не смешивается с эксплуатационной ветровой огибающей.
-
-Он определяет первый из трёх пределов:
-
-1. material strength / local member buckling;
-2. global eigen-buckling frame-модели;
-3. выбранный межмодульный болт.
-
-Issue #36 дополнительно даёт этому числу понятную практическую интерпретацию:
-
-```text
-m_crane,ideal = Flim / g
-```
-
-То есть `idealizedCraneBoomPayloadKg` — эквивалентная масса концевого груза, создающего такую же поперечную силу. Это полезная оценка конструкции как **идеализированной консольной стрелы**, но не паспортная грузоподъёмность крана.
+Это **reference/validation case**, а не расчёт горизонтальной стрелы с собственным весом. Полноценный special case issue #36 описан отдельно: [`CRANE_BOOM_CAPACITY.md`](CRANE_BOOM_CAPACITY.md).
 
 ## 2. Нормированный расчёт 1 Н
 
-На верхнюю треугольную грань прикладывается внутренняя test-fixture нагрузка:
+На верхнюю треугольную грань через внутренний test-fixture API прикладывается:
 
 ```text
 F0 = 1 Н horizontal
 ```
 
-Сила делится поровну между тремя top nodes.
+Сила делится поровну между тремя top nodes:
 
-Issue #36 отделяет эту силу от пользовательских параметров: она передаётся в `buildLoadCase(..., { topPointLoadN })`, а не через поля «дополнительная горизонтальная сила» формы.
+```text
+buildLoadCase(model, parameters, {
+  topPointLoadN: [Fx,Fy,0]
+})
+```
 
 Отключаются:
 
@@ -43,31 +33,17 @@ self weight
 equipment
 ```
 
-В линейной frame-модели actions/displacements масштабируются с внешней силой.
+Issue #36 принципиально не использует для этого пользовательские `extraHorizontalLoadN`/`extraVerticalLoadN`.
 
-Member limit:
+## 3. Пределы
 
-```text
-Fmember = 1/U_member(F0)
-```
-
-Global limit при физически значимом осевом сжатии:
+Для линейной frame-модели:
 
 ```text
-Fglobal = lambda_cr(F0)*1 Н
-```
-
-Connection layer для каждого внутреннего node собирает два upward member и вычисляет unit bolt utilization:
-
-```text
-Ubolt(F0)
-Fbolt = 1/Ubolt(F0)
-```
-
-Итог:
-
-```text
-Flim = min(Fmember, Fglobal, Fbolt)
+Fmember = 1/Umember(1 Н)
+Fglobal = lambda_cr(1 Н)*1 Н
+Fbolt = 1/Ubolt(1 Н)
+Flim = min(Fmember,Fglobal,Fbolt)
 ```
 
 Governing mode:
@@ -79,64 +55,56 @@ global-buckling
 bolt-connection
 ```
 
-## 3. Что именно означает «стрела крана»
+Независимо сохраняются governing directions для member/global/bolt/overall limits.
 
-Для конструкции, повернутой горизонтально, вес подвешенного на конце груза действует поперёк продольной оси. Поэтому преобразование `Flim/g` даёт полезный эквивалент массы такого концевого груза.
+## 4. Численный эквивалент массы
 
-Но текущий нормированный lateral case **специально исключает собственный вес**. Следовательно, он не учитывает поперечное действие веса самой горизонтально ориентированной стрелы, динамику подъёма, рывок, тросовую геометрию, шарнир/опору стрелы и нормативные коэффициенты подъёмного сооружения.
-
-Поэтому в UI формулировка должна оставаться явной:
+Для удобства comparison:
 
 ```text
-идеализированная консольная стрела
+1 кгс = 9.80665 Н
+mideal = Flim/9.80665
 ```
 
-а не «разрешённая грузоподъёмность крана».
-
-## 4. Фильтр machine-noise для global buckling
-
-`KG` зависит от предварительных axial actions. У идеально прямой solid cantilever под чистой transverse load осевое сжатие теоретически равно нулю.
-
-Поэтому global eigen-buckling бокового special case учитывается только если максимальное сжатие превышает:
+`mideal` численно равно массе, вес которой при стандартном `g0` создаёт такую силу. В API сохранено compatibility имя:
 
 ```text
-1e-9 Н
+idealizedCraneBoomPayloadKg
 ```
 
-Это исключает ложный finite eigenvalue из rounding noise и не отключает реальный решётчатый buckling мачты.
+Но после issue #36 это **не основной crane-boom result**. Оно остаётся pure-tip upper/reference bound, потому что собственный вес горизонтально ориентированной стрелы здесь равен нулю по определению test case.
 
-## 5. Направления
+Основной результат стрелы:
 
-Треугольная мачта периодична через 120°:
+```text
+result.craneBoomCapacity.maximumEndPayloadMassKg
+```
+
+Он отдельно учитывает поперечный self weight арматурных members.
+
+## 5. Фильтр machine-noise для global buckling
+
+У идеально прямой solid cantilever под чистой transverse load осевое сжатие теоретически равно нулю. Поэтому global eigen-buckling учитывается только при значимом compression:
+
+```text
+Ncompression > 1e-9 Н
+```
+
+Это отсекает rounding noise и не отключает реальный lattice buckling мачты.
+
+## 6. Направления
+
+Из-за 120° rotational symmetry достаточно:
 
 ```text
 0 <= alpha < 120°
 ```
 
-Default step `15°`; шаг настраивается.
-
-Отдельно сохраняются governing directions для member/global/bolt/overall limits.
-
-## 6. Н/кН/кгс и эквивалент массы
-
-Core хранит N. Для силы:
-
-```text
-1 кгс = 9.80665 Н
-F_kgf = F_N/9.80665
-```
-
-Численно значение в `кгс` совпадает с массой в kg, вес которой при стандартном `g0` создаёт эту силу:
-
-```text
-idealizedCraneBoomPayloadKg = criticalForceN / 9.80665
-```
-
-Единицы при этом различны: `кгс` — сила, `кг` — масса.
+Default step `15°`; пользовательский параметр допускает более грубую сетку.
 
 ## 7. Погодные сценарии
 
-Weather dropdown использует Beaufort 0–12 и отдельный custom pressure mode.
+Weather dropdown использует Beaufort 0–12 и custom pressure mode.
 
 Для preset:
 
@@ -145,7 +113,7 @@ q = rho*v²/2
 rho = 1.225 kg/m³
 ```
 
-Beaufort 12 в текущем preset начинается с 33 m/s. Это сравнительный сценарий, не replacement для СП 20, height factors, gust/pulsation и нормативных combinations.
+Шкала Бофорта здесь является сравнительным способом ввода, а не заменой нормативному wind zoning/height/gust/combinations.
 
 ## 8. Solid-rod sanity-check
 
@@ -157,23 +125,16 @@ D_solid = 2a/sqrt(3)
 A6/Asolid = 9/8 = 1.125
 ```
 
-После появления bolt check sanity сравнивает именно frame/member capacity:
+Сравнивается порядок member capacity и lateral stiffness:
 
 ```text
-P_mast = mast.memberLimitForceN
-P_solid = solid.memberLimitForceN
+0.5 < Pmember,mast/Pmember,solid < 2.5
+0.3 < Kmast/Ksolid < 3.0
 ```
 
-Regression bands:
+Это sanity-check масштаба/единиц/topology, а не теорема эквивалентности решётки и сплошного стержня.
 
-```text
-0.5 < P_member,mast/P_member,solid < 2.5
-0.3 < K_mast/K_solid < 3.0
-```
-
-Цель — ловить gross scale/unit/stiffness/topology errors, а не добиваться равенства разных конструкций.
-
-## 9. Аналитическая проверка unit lateral algorithm
+## 9. Аналитическая проверка круглой консоли
 
 Для круглой консоли `L,d` под tip load `P`:
 
@@ -188,30 +149,17 @@ sigma_eq = sqrt((P*L/W)² + 3*(4P/(3A))²)
 При `sigma_eq=Ryd`:
 
 ```text
-P_y = Ryd / sqrt((L/W)² + 3*(4/(3A))²)
+Py = Ryd / sqrt((L/W)² + 3*(4/(3A))²)
 ```
 
-Нормированный `1 Н` algorithm должен воспроизводить эту величину.
+Нормированный algorithm должен воспроизводить эту величину.
 
-## 10. Connection regression для бокового case
+## 10. Практическая проверка
 
-Требуется:
+Для реальной вертикальной мачты безопаснее начинать с controlled load-deflection series: известная поперечная сила, направление, displacement, residual displacement после разгрузки, состояние weld/bolt/nut.
 
-- `Fbolt` finite для multi-module mast;
-- one-module model не выдумывает internal bolt;
-- увеличение bolt diameter/property class повышает `Fbolt`;
-- `Flim` может иметь mode `bolt-connection`;
-- bolt unit utilization строится из coincident actions одного direction case;
-- `idealizedCraneBoomPayloadKg === criticalForceKgf` численно при стандартном `g0`.
+Destructive test требует отдельной программы безопасности.
 
-## 11. Практическая натурная проверка
+## 11. Граница интерпретации
 
-Безопасный первый этап — controlled load-deflection series. Полезно фиксировать applied lateral force, direction, top displacement, residual displacement after unloading и состояние weld/bolt/nut.
-
-Переход к destructive test требует отдельной программы безопасности и не должен следовать напрямую из числа `Flim`.
-
-## 12. Граница интерпретации
-
-`Fmember`, `Fglobal`, `Fbolt`, `Flim` и `idealizedCraneBoomPayloadKg` относятся к текущей idealized model.
-
-Реальная крановая эксплуатация требует отдельного расчёта собственного веса горизонтальной стрелы, динамики, узла опирания/поворота, троса, усталости и нормативных коэффициентов.
+Pure lateral `Flim` не включает self weight, погоду, equipment и динамику. Для вопроса «сколько кг можно подвесить на конце горизонтальной конструкции» следует использовать [`CRANE_BOOM_CAPACITY.md`](CRANE_BOOM_CAPACITY.md), где self weight арматурных members уже действует поперёк стрелы.

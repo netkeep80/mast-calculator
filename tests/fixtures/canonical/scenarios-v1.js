@@ -4,25 +4,21 @@ export const CANONICAL_SCENARIOS = Object.freeze([
   Object.freeze({
     id: 'one-module-self-weight',
     kind: 'mast',
-    fullState: true,
     input: { moduleCount: 1, windPresetId: 'custom', windPressurePa: 0, windEnvelopeEnabled: false, equipmentMassKg: 0, equipmentWindAreaM2: 0, iceThicknessMm: 0 },
   }),
   Object.freeze({
     id: 'one-module-heavy-top-mass',
     kind: 'mast',
-    fullState: true,
     input: { moduleCount: 1, windPresetId: 'custom', windPressurePa: 0, windEnvelopeEnabled: false, equipmentMassKg: 1000, equipmentWindAreaM2: 0, iceThicknessMm: 0 },
   }),
   Object.freeze({
     id: 'two-module-oblique-wind',
     kind: 'mast',
-    fullState: true,
     input: { moduleCount: 2, windPresetId: 'custom', windPressurePa: 380, windEnvelopeEnabled: false, windDirectionDeg: 37, equipmentMassKg: 20, equipmentWindAreaM2: 0.35, iceThicknessMm: 0 },
   }),
   Object.freeze({
     id: 'four-module-wind-ice-equipment',
     kind: 'mast',
-    fullState: true,
     input: { moduleCount: 4, windPresetId: 'custom', windPressurePa: 620, windEnvelopeEnabled: false, windDirectionDeg: 23, equipmentMassKg: 75, equipmentWindAreaM2: 0.8, iceThicknessMm: 8 },
   }),
   Object.freeze({

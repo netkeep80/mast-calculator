@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Расчёт дополнительных растяжек модульной мачты: ярусы, тросы, анкеры, преднатяг и реакции узлов">
+  <title>Растяжки мачты · Калькулятор мачты</title>
+  <link rel="stylesheet" href="./styles.css">
+  <style>
+    .guy-page { max-width: 1500px; margin: 0 auto; padding: 1rem; }
+    .guy-nav { display:flex; gap:.75rem; align-items:center; margin-bottom:1rem; }
+    .guy-nav a { color:inherit; font-weight:700; }
+    .guy-tier-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem; }
+    .guy-tier { border:1px solid var(--border, #ccd4dc); border-radius:12px; padding:1rem; margin:.75rem 0; }
+    .guy-tier h3 { margin-top:0; }
+    .guy-summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem; margin:1rem 0; }
+    .guy-summary-grid article { border:1px solid var(--border, #ccd4dc); border-radius:12px; padding:.85rem; }
+    .guy-summary-grid span, .guy-summary-grid small { display:block; }
+    .guy-summary-grid strong { display:block; font-size:1.35rem; margin:.25rem 0; }
+    .guy-actions { display:flex; flex-wrap:wrap; gap:.75rem; margin:1rem 0; }
+    .guy-status-pass { color:#176c3a; }
+    .guy-status-fail { color:#a32323; }
+    .guy-note { max-width:1000px; }
+    .guy-table td, .guy-table th { white-space:nowrap; }
+    .guy-catalog-source { white-space:normal !important; min-width:260px; }
+  </style>
+</head>
+<body>
+  <main class="guy-page">
+    <nav class="guy-nav"><a href="./index.html">← Основной калькулятор</a><span>Дополнительные растяжки · issue #23</span></nav>
+
+    <section class="panel">
+      <p class="eyebrow">Калькулятор мачты · растяжки</p>
+      <h1>Расчёт дополнительных растяжек</h1>
+      <p class="subtitle guy-note">Растяжки работают только на растяжение. Расчёт учитывает геометрию каждого троса, преднатяг, осевую жёсткость, изменение направления силы при деформации, отключение провисшего троса и реакцию узла крепления. Высота крепления автоматически привязывается к ближайшему узлу между модулями.</p>
+    </section>
+
+    <section class="panel">
+      <h2>1. Мачта и нагрузка</h2>
+      <div class="form-grid">
+        <label>Число модулей<input id="module-count" type="number" min="1" max="200" step="1"></label>
+        <label>Диаметр арматуры<select id="bar-diameter"></select></label>
+        <label>Класс арматуры<select id="reinforcement-class"></select></label>
+        <label>Длина прутка<select id="stock-length"></select></label>
+        <label>Разделить пруток на частей<select id="stock-pieces"></select></label>
+        <label>Давление ветра, Па<input id="wind-pressure" type="number" min="0" step="10"></label>
+        <label>Направление ветра, °<input id="wind-direction" type="number" step="5"></label>
+        <label>Шаг огибающей, °<input id="wind-step" type="number" min="5" max="180" step="5"></label>
+        <label class="checkbox"><input id="wind-envelope" type="checkbox"> Перебирать направления ветра</label>
+        <label>Масса оборудования, кг<input id="equipment-mass" type="number" min="0" step="1"></label>
+        <label>Парусная площадь, м²<input id="equipment-area" type="number" min="0" step="0.01"></label>
+        <label>Доп. горизонтальная сила, Н<input id="extra-horizontal" type="number" min="0" step="10"></label>
+        <label>Доп. вертикальная сила вниз, Н<input id="extra-vertical" type="number" min="0" step="10"></label>
+        <label>Толщина льда, мм<input id="ice-thickness" type="number" min="0" step="1"></label>
+        <label>Допустимое отклонение, мм<input id="displacement-limit" type="number" min="1" step="1"></label>
+        <label>Минимальный λ общей устойчивости<input id="buckling-limit" type="number" min="1" step="0.1"></label>
+      </div>
+      <p id="mast-geometry" class="hint practical-note"></p>
+    </section>
+
+    <section class="panel">
+      <h2>2. Ярусы растяжек</h2>
+      <div class="form-grid">
+        <label>Число ярусов<input id="tier-count" type="number" min="1" max="8" step="1" value="2"></label>
+        <label>Коэффициент запаса троса<input id="guy-safety" type="number" min="1" step="0.25" value="3"></label>
+        <label>Эффективность заделки<input id="termination-efficiency" type="number" min="0.1" max="1" step="0.05" value="0.8"></label>
+      </div>
+      <div id="tiers"></div>
+      <p class="hint practical-note"><strong>Расстояние до анкера</strong> измеряется по земле от оси мачты. Угол каждой растяжки программа получает из фактической координаты выбранного узла и анкера — его не надо вводить вручную.</p>
+    </section>
+
+    <section class="panel">
+      <div class="guy-actions">
+        <button id="calculate-guys" class="primary" type="button">Рассчитать мачту с растяжками</button>
+        <button id="reset-guys" class="secondary" type="button">Сбросить пример</button>
+      </div>
+      <p id="error" class="error" hidden></p>
+    </section>
+
+    <section id="results" class="panel" hidden>
+      <h2>3. Результат</h2>
+      <h3 id="pass-status"></h3>
+      <div class="guy-summary-grid">
+        <article><span>Прогиб без растяжек</span><strong id="bare-displacement">—</strong><small>ветровая огибающая</small></article>
+        <article><span>Прогиб с растяжками</span><strong id="guyed-displacement">—</strong><small id="displacement-change">—</small></article>
+        <article><span>Макс. использование ребра</span><strong id="member-utilization">—</strong><small>U ≤ 1</small></article>
+        <article><span>Общая устойчивость</span><strong id="buckling-factor">—</strong><small id="buckling-criterion">—</small></article>
+        <article><span>Макс. использование троса</span><strong id="cable-utilization">—</strong><small>с учётом запаса и заделки</small></article>
+        <article><span>Тросов / общая длина</span><strong id="cable-count">—</strong><small id="cable-mass">—</small></article>
+      </div>
+
+      <h3>Огибающая по каждой растяжке</h3>
+      <div class="table-scroll"><table class="member-table compact-table guy-table">
+        <thead><tr><th>Ярус</th><th>Трос</th><th>Узел</th><th>Высота, м</th><th>Анкер, м</th><th>Угол к земле</th><th>Длина, м</th><th>Tmin, кН</th><th>Tmax, кН</th><th>Рабочая, кН</th><th>Umax</th><th>Провисал</th></tr></thead>
+        <tbody id="cable-envelope-body"></tbody>
+      </table></div>
+
+      <h3>Реакции в определяющем ветровом случае</h3>
+      <p id="governing-case" class="hint practical-note"></p>
+      <div class="table-scroll"><table class="member-table compact-table guy-table">
+        <thead><tr><th>Ярус</th><th>Трос</th><th>Узел</th><th>T, кН</th><th>Fx узла, кН</th><th>Fy узла, кН</th><th>Fz узла, кН</th><th>|Rузла|, кН</th><th>Нагрузка анкера, кН</th></tr></thead>
+        <tbody id="reaction-body"></tbody>
+      </table></div>
+
+      <h3>Предупреждения и границы модели</h3>
+      <ul id="warnings"></ul>
+    </section>
+
+    <section class="panel">
+      <details>
+        <summary>Справочник стальных тросов</summary>
+        <p class="hint practical-note">Встроенные значения нужны для предварительного расчёта. Для рабочего проекта заменяйте минимальную разрывную нагрузку, массу и эффективный модуль на данные сертификата конкретного троса.</p>
+        <div class="table-scroll"><table class="member-table reference-table guy-table">
+          <thead><tr><th>Трос</th><th>Ø, мм</th><th>Металлическая A, мм²</th><th>Масса, кг/м</th><th>Fmin, кН</th><th>Eэфф, ГПа</th><th>Источник/допущение</th></tr></thead>
+          <tbody id="catalog-body"></tbody>
+        </table></div>
+      </details>
+    </section>
+  </main>
+  <script type="module" src="./guys-app.js"></script>
+</body>
+</html>

@@ -19,7 +19,7 @@ jobs:
   architecture:
     name: Architecture audit
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     concurrency:
       group: architecture-${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: true
@@ -40,6 +40,10 @@ jobs:
           node-version: '24.x'
       - name: Check JavaScript syntax
         run: npm run check
+      - name: Typecheck canonical contracts
+        run: npm run typecheck
+      - name: Test runtime contract validation
+        run: npm run test:contracts
       - name: Test architecture audit tooling
         run: npm run test:architecture
       - name: Enforce current architecture baseline

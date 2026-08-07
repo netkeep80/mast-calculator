@@ -40,9 +40,12 @@ test('dребра = a/2 даёт сопоставимое количество �
   assert.ok(Math.abs(sixRibArea / solidArea - 9 / 8) < 1e-12)
 })
 
-test('толсторёберная мачта и цельный пруток того же габарита имеют один порядок боковой прочности', () => {
-  // Специально используем не производственный сортамент, а предельный
-  // проверочный случай пользователя: dребра = a/2.
+test('толсторёберная frame-модель мачты и цельный пруток того же габарита имеют один порядок боковой прочности', () => {
+  // Это sanity-check именно глобального frame/member solver, а не реального
+  // межмодульного болта. Поэтому сравниваем memberLimitForceN, а не новый
+  // общий criticalForceN=min(member, global buckling, bolt). Иначе слабый
+  // штатный M24 закономерно ломает предельную толсторёберную геометрию и
+  // перестаёт проверяться исходный инвариант масштабов FEM.
   const parameters = resolveCalculationParameters({
     ...DEFAULT_PARAMETERS,
     stockBarLengthMm: 1200,
@@ -57,14 +60,14 @@ test('толсторёберная мачта и цельный пруток т�
 
   const mast = calculateLateralCapacity(generateMastModel(parameters), parameters)
   const solid = calculateLateralCapacity(solidCantileverFromMast(parameters), parameters)
-  const capacityRatio = mast.criticalForceN / solid.criticalForceN
+  const capacityRatio = mast.memberLimitForceN / solid.memberLimitForceN
   const mastStiffness = 1 / mast.governing.unitTopDisplacementM
   const solidStiffness = 1 / solid.governing.unitTopDisplacementM
   const stiffnessRatio = mastStiffness / solidStiffness
 
   assert.ok(
     capacityRatio > 0.5 && capacityRatio < 2.5,
-    `боковая прочность должна быть сопоставима: Pмачты/Pпрутка = ${capacityRatio}`,
+    `боковая прочность frame/member должна быть сопоставима: Pмачты/Pпрутка = ${capacityRatio}`,
   )
   assert.ok(
     stiffnessRatio > 0.3 && stiffnessRatio < 3,

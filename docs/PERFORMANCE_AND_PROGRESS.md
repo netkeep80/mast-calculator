@@ -1,8 +1,8 @@
 # Производительность расчёта и индикация прогресса
 
-Статус: архитектура производительности прототипа **1.1**.
+Статус: архитектура производительности прототипа **1.2**.
 
-## 1. Global frame scale
+## 1. Масштаб global frame
 
 Для 40 одинаковых модулей:
 
@@ -13,200 +13,179 @@
 720 free DOF after rigid base fixation
 ```
 
-Topology соединяет только один level и соседние levels, поэтому при level-order numbering глобальная stiffness matrix ленточная.
-
-Текущий regression invariant:
+Topology соединяет только соседние уровни, поэтому при level-order numbering матрица жёсткости имеет малую полуширину. Regression invariant:
 
 ```text
 half-bandwidth <= 35
 ```
 
-Dense storage `O(n²)` и dense factorization `O(n³)` для production path не требуются.
+Production path не требует dense global storage/inverse.
 
 ## 2. Symmetric band Cholesky
 
-`site/engine/banded.js` хранит только нижнюю симметричную ленту.
+`site/engine/banded.js` хранит нижнюю симметричную ленту.
 
-При `n=720`, `b=35` порядок storage:
+Для `n=720`, `b=35`:
 
 ```text
-n*(b+1) = 720*36 = 25920 values
+storage ~ n*(b+1) = 25920 values
+factorization ~ O(n*b^2)
+solve ~ O(n*b)
 ```
 
-вместо:
+Вместо dense:
 
 ```text
-n² = 518400 values
+storage O(n^2)
+solve/factorization O(n^3)
 ```
 
-Asymptotics:
+`compileFrameSystem()` factorizes `K` один раз на geometry, затем фактор используется всеми operational wind cases и специальными load cases той же геометрии.
+
+## 3. Помодульный static solver
+
+Каждый module — 36 DOF, интерфейс — 18 DOF.
+
+Top-down Schur condensation и bottom-up recovery используют `N` небольших interface factorizations вместо dense inverse полной мачты.
+
+Помодульный путь одновременно является second solver и cross-check global FEM.
+
+## 4. Dense third solver — только CI oracle
+
+`reference-frame.js` специально использует dense global matrices и Gaussian elimination, чтобы численно и архитектурно отличаться от production solver.
+
+Он не включён в обычный пользовательский Worker calculation. Dense reference запускается только в ограниченных тестовых моделях dedicated `Triple FEM equivalence`.
+
+Иначе независимая проверка резко ухудшила бы время и память браузерного расчёта больших мачт.
+
+## 5. Exact rotational symmetry ветра
+
+Полная пользовательская угловая сетка сначала строится логически, затем удаляются только точные повторы, связанные с 120° вращательной симметрией трёхгранной мачты.
+
+При default step 30°:
 
 ```text
-storage       O(n*b)
-factorization O(n*b²)
-solve         O(n*b)
+12 directions full circle
+-> 4 unique FEM solves
+0, 30, 60, 90 deg
 ```
 
-## 3. Compile once, solve many
+Это не приближённая редукция, а использование симметрии текущей идеальной модели.
 
-`compileFrameSystem()` один раз на geometry/material/diameter/restraints выполняет:
+## 6. Автоконфигуратор узла и производительность
+
+Issue #21 добавляет конечный discrete catalogue:
 
 ```text
-member geometry/transforms
-free DOF map
-K assembly
-banded Cholesky(K)
+bolt classes
+bolt diameters
+clearance nuts
+coupling nuts
+standard bolt lengths
+weld inputs
 ```
 
-После этого operational wind cases, lateral cases и static-payload trials переиспользуют factorization.
-
-Invariant:
+Для каждого bolt candidate выполняются только малые algebraic operations над уже полученными joint resultants:
 
 ```text
-stiffnessFactorizationCount = 1
+candidate geometry
+reff
+Nt/Ns
+bolt capacity
+geometry checks
 ```
 
-для одного complete calculation текущей geometry.
+Новый configurator не выполняет новый global FEM solve для каждого bolt candidate.
 
-## 4. Matrix-free global buckling
+## 7. Критический invariant: выбранный узел фиксируется
 
-Eigenproblem:
+`calculateCompleteMastWithConfiguredJoint()` выполняет operational solve и только затем выбирает physical joint.
+
+После выбора:
 
 ```text
-(K + lambda*KG)*phi = 0
+jointConfiguratorMode = manual internally
+resolved physical parameters are frozen
 ```
 
-переписывается как оператор:
+С этой же сборкой выполняются:
 
 ```text
-A(v) = solve(K,-KG*v)
-mu = eigenvalue(A)
-lambda = 1/mu
-```
-
-Явный `K^-1` и dense transformed matrix не строятся.
-
-Generalized Lanczos использует готовую band Cholesky factorization и проверяет actual generalized residual.
-
-## 5. Новый modular static path 1.1
-
-Issue #18 добавляет второй static solver, но не возвращает приложение к dense global algebra.
-
-Один physical module имеет:
-
-```text
-3 bottom node * 6 DOF = 18
-3 top node    * 6 DOF = 18
-module total           = 36 DOF
-```
-
-`compileModuleStack()` собирает только 36×36 stiffness каждого physical module и выполняет top-down Schur recursion по 18×18 interface matrices.
-
-Для `N` modules:
-
-```text
-interface factorizations = N
-matrix size per factorization = 18×18
-```
-
-То есть дополнительная стоимость static cross-check растёт примерно линейно с числом modules и не требует второго factorization глобальной 720×720 system.
-
-## 6. Почему modular solver не заменяет global factorization полностью
-
-Для обычного static response Schur stack mathematically equivalent global assembly и используется как independent cross-check.
-
-Но global eigen-buckling требует coupled `K/KG` всей мачты. Поэтому текущая performance architecture:
-
-```text
-global banded K: once
-modular 18x18 Schur factors: once per module
-static cases: both paths
-buckling: global matrix-free path only
-```
-
-Это сознательно сохраняет независимость проверок и корректность global modes.
-
-## 7. Maximum-height search
-
-Наивный вариант issue #18 мог бы считать:
-
-```text
-N = 1,2,3,...,heightSearchMaxModules
-```
-
-что стало бы дорого при верхней границе 200–500 modules.
-
-Поэтому `calculateMaximumHeight()` использует:
-
-```text
-1. exponential bracketing: 1,2,4,8,...
-2. binary refinement PASS/FAIL interval
-3. local integer neighbourhood scan around boundary
-```
-
-При монотонной границе число candidate geometries имеет порядок:
-
-```text
-O(log Nmax) + small constant neighbourhood
-```
-
-а не `O(Nmax)`.
-
-Local scan нужен для контроля возможного discrete parity effect от alternating 60° orientation.
-
-`result.heightCapacity.evaluationCount` и `performance.heightSearchEvaluationCount` позволяют regression-test отслеживать фактическое число candidate solves.
-
-## 8. Ограничение поиска высоты
-
-`heightSearchMaxModules` является protective upper bound, default `200`, hard-clamped to `500`.
-
-Если failure до этой границы не найден:
-
-```text
-bounded = false
-```
-
-и UI/report показывают `>= Hsearch` вместо того, чтобы выдавать search bound за физический maximum.
-
-## 9. Web Worker
-
-Тяжёлые операции выполняются в `site/calculation-worker.js`:
-
-```text
-operational global FEM
-modular Schur cross-check
-buckling
 lateral capacity
-static payload search
-height capacity search
-rebar diameter optimization
-verification augmentation
+static top payload
+maximum-height search
 ```
 
-Main thread выполняет только:
+Это не только физическая корректность, но и performance invariant: trial calculations не запускают новый catalogue search и не меняют изделие на каждой итерации.
+
+## 8. Подбор арматуры и узла
+
+`selectUniformDiameter()` проверяет standard rebar diameters по возрастанию.
+
+Для каждого diameter operational `calculateMast()` автоматически конфигурирует подходящий joint. Вариант проходит только при:
 
 ```text
-form/UI
-progress/ETA
-full mast canvas
-selected-module canvas
-CSV/paper rendering from finished result
+strength
+serviceability displacement
+global buckling
+physical connection
 ```
 
-## 10. Progress contract
+Поиск прекращается на первом проходящем standard diameter. После этого только один раз выполняется полный `calculateCompleteMastWithConfiguredJoint()` для окончательного выбранного комплекта.
 
-Core callback:
+## 9. Maximum-height search
+
+Полный linear scan `1..Nmax` запрещён.
+
+Используется:
+
+```text
+exponential bracketing
+binary refinement
+local integer neighbourhood scan
+```
+
+Это особенно важно, потому что candidate height требует полноценного frame/buckling/connection calculation.
+
+## 10. Static payload search
+
+Максимальная top mass находится bracket/binary search, а не мелким линейным шагом.
+
+На каждой trial mass используются уже скомпилированная geometry/global stiffness и один фиксированный physical joint.
+
+## 11. Web Worker
+
+Heavy calculations не выполняются в main UI thread.
+
+Поток:
+
+```text
+app-bootstrap.js / app.js
+        |
+        v
+calculation-worker.js
+        |
+        v
+calculateCompleteMastWithConfiguredJoint()
+```
+
+Main thread получает только:
+
+```text
+progress
+result
+error
+```
+
+Отмена:
 
 ```js
-{
-  phase,
-  label,
-  completed,
-  total
-}
+worker.terminate()
 ```
 
-Major phases 1.1:
+## 12. Progress phases
+
+Пользователь видит не только spinner, а semantic этапы:
 
 ```text
 compile
@@ -214,86 +193,67 @@ wind
 lateral
 static-payload
 height-capacity
+optimize
 done
 ```
 
-UI переводит это в fraction, elapsed time и ETA.
+Для optimization текст явно говорит о подборе арматуры **и соединительного узла**.
 
-## 11. Height progress budget
+Интерфейс показывает:
 
-`HEIGHT_SEARCH_PROGRESS_STEPS` задаёт фиксированный budget progress bar, а actual candidate count сохраняется отдельно.
+- процент;
+- текущий этап;
+- деталь текущего расчёта;
+- прошедшее время;
+- ETA после накопления достаточной статистики;
+- кнопку отмены.
 
-Это разделяет:
+## 13. CI performance protection
 
-- UX progress contract;
-- реальное число evaluated module counts.
-
-Даже если cache или search strategy меняются, progress остаётся монотонным и заканчивается на 100%.
-
-## 12. Cancel
-
-Пользовательская отмена:
-
-```js
-worker.terminate()
-```
-
-немедленно останавливает текущий calculation job и освобождает main UI для нового запуска.
-
-## 13. Rebar optimization
-
-`selectUniformDiameter()` проверяет standard rebar diameters по возрастанию и может остановиться на первом проходящем.
-
-Optimization candidates используют обычный global calculation. После выбора minimum diameter выполняется complete result, который уже включает modular analysis, height capacity, connections и verification.
-
-Так expensive full reporting/height search не должен без необходимости повторяться для каждой строковой candidate diameter сверх существующей optimization logic.
-
-## 14. Regression expectations
-
-CI контролирует минимум:
+Регрессионные тесты проверяют:
 
 ```text
-40 modules
-720 free DOF
-bandwidth <= 35
-global K factorization count = 1
-finite wind/lateral/static results
-modular/global difference < 1e-8
-module interface residual < 1e-8
-height search finite evaluation count
-verification internal checks pass
-progress monotonic and final 100%
+free DOF for 40 modules = 720
+half-bandwidth <= 35
+stiffness factorization count = 1
+module/global equality
+bounded complete calculation time
+height-search evaluation bound
 ```
 
-Runtime guard является защитой от возврата к minute-scale dense behavior, а не обещанием одинакового millisecond time на любом CPU.
-
-## 15. Static-site smoke
-
-CI запускает HTTP server над `site/` и проверяет доступность browser entry points, включая:
+Отдельные dedicated jobs не подменяют полный suite:
 
 ```text
-app.js
-calculation-worker.js
-viewer.js
-module-viewer.js
-engine/solver.js
-engine/module-stack.js
-engine/module-verification.js
-engine/banded.js
-engine/buckling.js
-engine/connection-check.js
-engine/calculation-project.js
+Triple FEM equivalence
+Joint configurator
+Tests Ubuntu/macOS/Windows
 ```
 
-Это предотвращает ситуацию, когда Node tests проходят, но GitHub Pages не может загрузить новый ES module.
+`Joint configurator` дешёв и проверяет M24/M30/80 reference assembly, auto/manual и freeze invariant.
 
-## 16. Future performance work
+## 14. Почему время CI больше времени одного браузерного расчёта
 
-Если будет добавлена geometric nonlinearity/P-Delta/contact:
+Полный CI сознательно повторяет тесты:
 
-- `K` перестанет быть полностью reusable between iterations;
-- current linear Schur factors также потребуют update;
-- progress должен учитывать nonlinear iterations;
-- performance regressions нужно будет разделить на linear and nonlinear modes.
+- dedicated narrow gate даёт понятную причину ошибки;
+- тот же код входит в `npm test` на трёх ОС;
+- performance regression отдельно считает 40-module case;
+- triple solver использует медленный dense oracle.
 
-Нельзя механически переносить текущую `compile once, solve many` гарантию на nonlinear model.
+Это избыточность для доверия, а не production overhead пользователя.
+
+## 15. Что потребует пересмотра performance architecture
+
+Текущие оптимизации относятся к линейной ideal-rigid-joint модели.
+
+При добавлении:
+
+```text
+P-Delta
+material nonlinearity
+contact/slip
+nonlinear joint stiffness
+incremental load stepping
+```
+
+нельзя механически сохранять правило «K factorized once». Тогда потребуются iteration/update/factorization policies и новая performance baseline.

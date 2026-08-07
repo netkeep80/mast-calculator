@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "test:emitted": "node scripts/build-test-runtime.mjs && node --test .build/tests",
+    "test:emitted": "node scripts/run-emitted-tests.mjs",
     "test:physics": "node --test tests/canonical-regression.test.js tests/physics-invariants-seeded.test.js tests/triple-solver-crosscheck.test.js",
     "test:canonical": "node --test tests/canonical-regression.test.js",
     "test:properties": "node --test tests/physics-invariants-seeded.test.js",

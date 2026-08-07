@@ -29,10 +29,7 @@ test('issue #32: один модуль с 1000 кг показывает пол�
   const state = result.analysis.moduleResults[0]
   const expectedWeightN = 1000 * GRAVITY * parameters.equipmentLoadFactor
 
-  // Структурных модулей выше действительно нет.
   assert.ok(norm3(state.topStructuralResultantFromAbove.forceN) < 1e-6)
-
-  // Но непосредственная нагрузка оборудования обязана присутствовать на грани.
   approximately(state.topDirectResultant.forceN[2], -expectedWeightN)
   approximately(state.topResultantFromAbove.forceN[2], -expectedWeightN)
   approximately(norm3(state.topResultantFromAbove.forceN), expectedWeightN)
@@ -68,8 +65,6 @@ test('issue #36: масса оборудования остаётся единс
   const parameters = quietParameters({
     equipmentMassKg: 100,
     equipmentLoadFactor: 1.25,
-    // Старое поле может встретиться в сохранённом snapshot, но больше не является
-    // пользовательской нагрузкой и не должно менять физический load case.
     extraVerticalLoadN: 500,
   })
   const loads = buildLoadCase(model, parameters)
@@ -80,8 +75,6 @@ test('issue #36: масса оборудования остаётся единс
   approximately(loads.nodalResultant[2], -expectedEquipmentWeightN)
   assert.equal('extraVerticalLoadN' in loads, false)
 
-  // Если независимой проверке всё-таки нужна известная сила, она передаётся не
-  // через пользовательские параметры, а через отдельный внутренний fixture API.
   const fixture = buildLoadCase(model, {
     ...parameters,
     equipmentMassKg: 0,
@@ -99,5 +92,6 @@ test('issue #36: UI оставляет одну массу и удаляет п�
   assert.match(usage, /removeLegacyForceControl\('extraHorizontalLoadN'\)/)
   assert.match(usage, /removeLegacyForceControl\('extraVerticalLoadN'\)/)
   assert.match(usage, /Уже установленная масса на вершине, кг/)
-  assert.match(usage, /внутренн.*point-load|внутренн.*unit-load/i)
+  assert.match(usage, /unit-load/i)
+  assert.match(usage, /идеализированн.*консольн.*стрел/i)
 })

@@ -20,6 +20,27 @@ test('практические параметры закупки и матери
   }
 })
 
+test('погодные явления выбираются из выпадающего списка вплоть до урагана', () => {
+  assert.match(html, /<select name="windPresetId"><\/select>/)
+  assert.match(app, /WEATHER_PRESETS/)
+  assert.match(app, /getWeatherPreset/)
+  assert.match(html, /Скорость сценария, м\/с/)
+})
+
+test('ручное ветровое давление сохраняется как отдельный пользовательский режим', () => {
+  assert.match(app, /CUSTOM_WIND_PRESET_ID/)
+  assert.match(app, /windPressureFromSpeedMs/)
+  assert.match(app, /windSpeedFromPressurePa/)
+})
+
+test('интерфейс показывает предельную боковую нагрузку вершины в кгс', () => {
+  assert.match(html, /id="metric-lateral-capacity"/)
+  assert.match(html, /id="metric-lateral-mode"/)
+  assert.match(html, /id="lateral-capacity-description"/)
+  assert.match(app, /calculateLateralCapacity/)
+  assert.match(app, /кгс/)
+})
+
 test('бумажный проект доступен, пользовательского JSON-экспорта нет', () => {
   assert.match(html, /id="export-note-button"[^>]*>Скачать расчётный проект</)
   assert.doesNotMatch(html, /export-json-button/)
@@ -39,6 +60,6 @@ test('результирующая таблица показывает N, V, M �
   assert.match(html, /<th>σэкв, МПа<\/th>/)
 })
 
-test('версия пользовательского прототипа обновлена до 0.5', () => {
-  assert.match(html, /прототип 0\.5/)
+test('версия пользовательского прототипа обновлена до 0.6', () => {
+  assert.match(html, /прототип 0\.6/)
 })

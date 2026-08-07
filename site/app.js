@@ -1,4 +1,13 @@
-import { calculateMast, DEFAULT_PARAMETERS } from './engine/calculate.js'
+import { calculateMast, DEFAULT_PARAMETERS, resolveCalculationParameters } from './engine/calculate.js'
+import {
+  getReinforcementClass,
+  REINFORCEMENT_CLASS_IDS,
+  STANDARD_DIAMETERS_MM,
+  STOCK_BAR_DIVISIONS,
+  STOCK_BAR_LENGTHS_MM,
+  theoreticalCutLengthMm,
+} from './engine/catalog.js'
+import { createCalculationNoteHtml } from './engine/calculation-note.js'
 import { selectUniformDiameter } from './engine/optimize.js'
 import {
   buildMaterialSummary,
@@ -11,6 +20,7 @@ import { MastViewer } from './viewer.js'
 const form = document.querySelector('#parameters-form')
 const calculateButton = document.querySelector('#calculate-button')
 const optimizeButton = document.querySelector('#optimize-button')
+const exportNoteButton = document.querySelector('#export-note-button')
 const exportCsvButton = document.querySelector('#export-csv-button')
 const exportJsonButton = document.querySelector('#export-json-button')
 const errorBox = document.querySelector('#error')
@@ -20,25 +30,52 @@ const optimizationBox = document.querySelector('#optimization-result')
 const showBucklingMode = document.querySelector('#show-buckling-mode')
 const memberResultsBody = document.querySelector('#member-results-body')
 const materialSummaryBox = document.querySelector('#material-summary')
+const materialInfoBox = document.querySelector('#material-info')
 const viewer = new MastViewer(document.querySelector('#mast-canvas'))
 
 let lastResult = null
 let lastParameters = null
+let buildInfo = {
+  repository: 'netkeep80/mast-calculator',
+  ref: 'local',
+  sha: 'development',
+  runId: 'local',
+}
 
-const fieldNames = [
-  'moduleCount', 'triangleSideMm', 'moduleHeightMm', 'barDiameterMm',
-  'youngModulusGPa', 'yieldStrengthMPa', 'densityKgM3', 'effectiveLengthFactor',
-  'materialSafetyFactor', 'deadLoadFactor', 'windLoadFactor', 'equipmentLoadFactor',
-  'windPressurePa', 'dragCoefficient', 'windDirectionDeg', 'windEnvelopeStepDeg',
-  'equipmentMassKg', 'equipmentWindAreaM2', 'equipmentDragCoefficient',
-  'extraHorizontalLoadN', 'extraVerticalLoadN', 'iceThicknessMm', 'iceDensityKgM3',
-  'displacementLimitMm', 'minimumBucklingFactor',
+fetch('./build-info.json', { cache: 'no-store' })
+  .then((response) => response.ok ? response.json() : null)
+  .then((value) => { if (value) buildInfo = { ...buildInfo, ...value } })
+  .catch(() => {})
+
+const numericFieldNames = [
+  'moduleCount', 'moduleHeightMm', 'stockBarLengthMm', 'stockBarPieces', 'barDiameterMm',
+  'effectiveLengthFactor', 'materialSafetyFactor', 'deadLoadFactor', 'windLoadFactor',
+  'equipmentLoadFactor', 'windPressurePa', 'dragCoefficient', 'windDirectionDeg',
+  'windEnvelopeStepDeg', 'equipmentMassKg', 'equipmentWindAreaM2',
+  'equipmentDragCoefficient', 'extraHorizontalLoadN', 'extraVerticalLoadN',
+  'iceThicknessMm', 'iceDensityKgM3', 'displacementLimitMm', 'minimumBucklingFactor',
 ]
 
-for (const name of fieldNames) {
+function populateSelect(name, values, label = String) {
+  const select = form.elements.namedItem(name)
+  select.replaceChildren(...values.map((value) => {
+    const option = document.createElement('option')
+    option.value = value
+    option.textContent = label(value)
+    return option
+  }))
+}
+
+populateSelect('stockBarLengthMm', STOCK_BAR_LENGTHS_MM, (value) => `${value / 1000} м`)
+populateSelect('stockBarPieces', STOCK_BAR_DIVISIONS, (value) => `${value}`)
+populateSelect('barDiameterMm', STANDARD_DIAMETERS_MM, (value) => `Ø${value}`)
+populateSelect('reinforcementClass', REINFORCEMENT_CLASS_IDS, (value) => getReinforcementClass(value).label)
+
+for (const name of numericFieldNames) {
   const input = form.elements.namedItem(name)
   if (input) input.value = DEFAULT_PARAMETERS[name]
 }
+form.elements.namedItem('reinforcementClass').value = DEFAULT_PARAMETERS.reinforcementClass
 form.elements.namedItem('closeTopRing').checked = DEFAULT_PARAMETERS.closeTopRing
 form.elements.namedItem('windEnvelopeEnabled').checked = DEFAULT_PARAMETERS.windEnvelopeEnabled
 
@@ -55,18 +92,30 @@ function syncWindFields() {
   form.elements.namedItem('windEnvelopeStepDeg').disabled = !envelope
 }
 
+function syncFabricationFields() {
+  const stockLength = Number(form.elements.namedItem('stockBarLengthMm').value)
+  const pieces = Number(form.elements.namedItem('stockBarPieces').value)
+  const cutLength = theoreticalCutLengthMm(stockLength, pieces)
+  form.elements.namedItem('ribCutLengthMm').value = cutLength.toFixed(2)
+
+  const material = getReinforcementClass(form.elements.namedItem('reinforcementClass').value)
+  materialInfoBox.textContent = `${material.label}, ${material.standard}: Rp/Ry = ${material.yieldStrengthMPa} МПа, Rm = ${material.tensileStrengthMPa} МПа, E = ${material.youngModulusGPa} ГПа. Для выбранных классов предусмотрена гарантия свариваемости.`
+}
+
 function readParameters() {
   const parameters = { ...DEFAULT_PARAMETERS }
-  for (const name of fieldNames) {
+  for (const name of numericFieldNames) {
     const element = form.elements.namedItem(name)
     const value = Number(element.value)
     if (!Number.isFinite(value)) throw new Error(`Поле «${element.labels?.[0]?.textContent ?? name}» заполнено неверно`)
     parameters[name] = value
   }
   parameters.moduleCount = Math.floor(parameters.moduleCount)
+  parameters.stockBarPieces = Math.floor(parameters.stockBarPieces)
+  parameters.reinforcementClass = form.elements.namedItem('reinforcementClass').value
   parameters.closeTopRing = form.elements.namedItem('closeTopRing').checked
   parameters.windEnvelopeEnabled = form.elements.namedItem('windEnvelopeEnabled').checked
-  return parameters
+  return resolveCalculationParameters(parameters)
 }
 
 function downloadText(filename, content, type) {
@@ -83,8 +132,8 @@ function downloadText(filename, content, type) {
 
 function exportFilename(extension) {
   const modules = lastParameters?.moduleCount ?? 'mast'
-  const height = lastParameters?.moduleHeightMm ?? ''
-  return `mast-calculation-${modules}x${height}.${extension}`
+  const cutLength = lastParameters?.ribCutLengthMm ? Math.round(lastParameters.ribCutLengthMm) : ''
+  return `mast-calculation-${modules}m-${cutLength}mm.${extension}`
 }
 
 function renderMemberReport(result) {
@@ -120,9 +169,11 @@ function renderMemberReport(result) {
   materialSummaryBox.textContent = `Всего ${material.totalCount} стержней, ${format(material.totalLengthM, 2)} м и ${format(material.totalMassKg, 1)} кг стали. ${groupDescription}`
 }
 
-function renderResult(result, parameters) {
+function renderResult(result) {
+  const parameters = result.parameters
   lastResult = result
   lastParameters = { ...parameters }
+  exportNoteButton.disabled = false
   exportCsvButton.disabled = false
   exportJsonButton.disabled = false
   viewer.setResult(result)
@@ -169,7 +220,7 @@ function runCalculation() {
   try {
     const parameters = readParameters()
     const result = calculateMast(parameters)
-    renderResult(result, parameters)
+    renderResult(result)
   } catch (error) {
     errorBox.textContent = error instanceof Error ? error.message : String(error)
     errorBox.hidden = false
@@ -193,7 +244,7 @@ function runOptimization() {
     }
 
     form.elements.namedItem('barDiameterMm').value = recommended.diameter
-    renderResult(recommended.result, { ...parameters, barDiameterMm: recommended.diameter })
+    renderResult(recommended.result)
     optimizationBox.textContent = `Минимальный найденный единый диаметр: ${recommended.diameter} мм. Использование ${format(recommended.result.envelope.maxUtilization, 3)}, прогиб ${format(recommended.result.envelope.maxTopDisplacementM * 1000, 2)} мм, множитель общей устойчивости ${formatFactor(recommended.result.envelope.minimumBucklingFactor)}.`
   } catch (error) {
     errorBox.textContent = error instanceof Error ? error.message : String(error)
@@ -205,15 +256,31 @@ function runOptimization() {
 
 calculateButton.addEventListener('click', runCalculation)
 optimizeButton.addEventListener('click', runOptimization)
+exportNoteButton.addEventListener('click', () => {
+  if (!lastResult || !lastParameters) return
+  const generatedAt = new Date().toISOString()
+  downloadText(
+    exportFilename('html'),
+    createCalculationNoteHtml(lastResult, lastParameters, generatedAt, buildInfo),
+    'text/html;charset=utf-8',
+  )
+})
 exportCsvButton.addEventListener('click', () => {
   if (!lastResult) return
   downloadText(exportFilename('csv'), createCalculationCsv(lastResult), 'text/csv;charset=utf-8')
 })
 exportJsonButton.addEventListener('click', () => {
   if (!lastResult || !lastParameters) return
-  downloadText(exportFilename('json'), createCalculationJson(lastResult, lastParameters), 'application/json;charset=utf-8')
+  downloadText(
+    exportFilename('json'),
+    createCalculationJson(lastResult, lastParameters, undefined, buildInfo),
+    'application/json;charset=utf-8',
+  )
 })
 form.elements.namedItem('windEnvelopeEnabled').addEventListener('change', syncWindFields)
+form.elements.namedItem('stockBarLengthMm').addEventListener('change', syncFabricationFields)
+form.elements.namedItem('stockBarPieces').addEventListener('change', syncFabricationFields)
+form.elements.namedItem('reinforcementClass').addEventListener('change', syncFabricationFields)
 showBucklingMode.addEventListener('change', () => viewer.setBucklingMode(showBucklingMode.checked))
 form.addEventListener('submit', (event) => {
   event.preventDefault()
@@ -221,4 +288,5 @@ form.addEventListener('submit', (event) => {
 })
 
 syncWindFields()
+syncFabricationFields()
 runCalculation()

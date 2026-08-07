@@ -1,6 +1,8 @@
-import { calculateCompleteMastWithConfiguredJoint } from '../../packages/application/index.js'
-import { augmentVerificationWithModuleChecks } from '../../packages/structural-analysis/index.js'
-import { selectUniformDiameter, STANDARD_DIAMETERS_MM } from '../../packages/application/index.js'
+import {
+  calculateProject,
+  selectUniformDiameter,
+  STANDARD_DIAMETERS_MM,
+} from '../../packages/application/index.js'
 
 const clamp01 = (value) => Math.min(1, Math.max(0, Number(value) || 0))
 
@@ -24,12 +26,6 @@ function calculationProgress(jobId, progress, start = 0, span = 1, prefix = '') 
   })
 }
 
-function addModuleVerification(result) {
-  result.verification = augmentVerificationWithModuleChecks(result.verification, result)
-  if (result.performance) result.performance.verificationInternalCheckCount = result.verification.counts.internal
-  return result
-}
-
 function summarizeOptimization(optimization) {
   return {
     recommendedDiameter: optimization.recommended?.diameter ?? null,
@@ -51,9 +47,9 @@ function summarizeOptimization(optimization) {
 }
 
 function runCalculation(jobId, parameters) {
-  const result = addModuleVerification(calculateCompleteMastWithConfiguredJoint(parameters, {
+  const result = calculateProject(parameters, {
     onProgress: (progress) => calculationProgress(jobId, progress),
-  }))
+  })
   self.postMessage({ type: 'result', jobId, result, optimization: null })
 }
 
@@ -89,7 +85,7 @@ function runOptimization(jobId, parameters) {
     label: `Минимальный проходящий комплект найден после ${optimization.evaluatedCount} вариантов: арматура Ø${diameter} мм`,
     fraction: optimizationShare,
   })
-  const result = addModuleVerification(calculateCompleteMastWithConfiguredJoint({
+  const result = calculateProject({
     ...automaticParameters,
     barDiameterMm: diameter,
   }, {
@@ -100,7 +96,7 @@ function runOptimization(jobId, parameters) {
       1 - optimizationShare,
       `Итоговый расчёт Ø${diameter} мм`,
     ),
-  }))
+  })
   const joint = result.connections?.configurator
   const jointLabel = joint?.geometry
     ? `; болт M${joint.geometry.bolt.diameterMm}×${joint.geometry.bolt.lengthMm} ${joint.selected.boltClass}`

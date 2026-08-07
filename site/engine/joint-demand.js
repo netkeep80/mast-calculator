@@ -51,8 +51,14 @@ export function splitJointDemandForBolt(forceGlobalN, momentGlobalNm, options = 
     throw new Error('Эффективный радиус межмодульного узла должен быть положительным')
   }
   const leverArmM = leverArmMm / 1000
+
+  // localEndForces — силы, действующие на отсечённую верхнюю часть member.
+  // Для upward member положительная проекция на +boltAxis соответствует
+  // сжатию стыка: верхняя часть получает вверх реакцию нижней. Она не
+  // растягивает болт. Отрицательная проекция означает разделяющее усилие.
   const signedAxialForceN = dot3(forceGlobalN, unitAxis)
-  const directTensionN = Math.abs(signedAxialForceN)
+  const directTensionN = Math.max(0, -signedAxialForceN)
+  const contactCompressionN = Math.max(0, signedAxialForceN)
   const directShearVectorN = sub3(forceGlobalN, scale3(unitAxis, signedAxialForceN))
   const directShearN = norm3(directShearVectorN)
   const torsionNm = Math.abs(dot3(momentGlobalNm, unitAxis))
@@ -61,6 +67,11 @@ export function splitJointDemandForBolt(forceGlobalN, momentGlobalNm, options = 
   const momentEquivalentTensionN = bendingMomentNm / leverArmM
   const torsionEquivalentShearN = torsionNm / leverArmM
 
+  // Compression is not converted into fictitious bolt tension. To remain
+  // conservative without an exact contact-pressure model, however, it also
+  // is not credited as relief against the prying component M/r_eff.
+  const tensionN = directTensionN + momentEquivalentTensionN
+
   return {
     boltAxis: [...unitAxis],
     jointEffectiveRadiusMm: leverArmMm,
@@ -68,12 +79,13 @@ export function splitJointDemandForBolt(forceGlobalN, momentGlobalNm, options = 
     momentGlobalNm: [...momentGlobalNm],
     signedAxialForceN,
     directTensionN,
+    contactCompressionN,
     directShearN,
     bendingMomentNm,
     torsionNm,
     momentEquivalentTensionN,
     torsionEquivalentShearN,
-    tensionN: directTensionN + momentEquivalentTensionN,
+    tensionN,
     shearN: directShearN + torsionEquivalentShearN,
   }
 }

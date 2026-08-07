@@ -1,5 +1,4 @@
 import './procurement-ui.js'
-import './navigation.js'
 
 const existing = document.querySelector('link[data-usage-scenarios-style]')
 if (!existing) {

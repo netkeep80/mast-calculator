@@ -1,3 +1,4 @@
+import { resolveModuleDiameters } from './diameter-profile.js'
 import { calculateEquivalentMemberWeldZoneStiffness } from './weld-zone-stiffness.js'
 
 const levelNodeId = (level, corner) => level * 3 + corner
@@ -8,13 +9,13 @@ export function generateMastModel(parameters) {
   const moduleCount = Math.max(1, Math.floor(parameters.moduleCount))
   const sideM = parameters.triangleSideMm / 1000
   const heightM = parameters.moduleHeightMm / 1000
-  const diameterM = parameters.barDiameterMm / 1000
+  const moduleDiametersMm = resolveModuleDiameters({ ...parameters, moduleCount })
   const nominalYoungModulusPa = parameters.youngModulusGPa * 1e9
   const yieldStrengthPa = parameters.yieldStrengthMPa * 1e6
   const tensileStrengthPa = parameters.tensileStrengthMPa * 1e6
   const poissonRatio = parameters.poissonRatio
 
-  if (![sideM, heightM, diameterM, nominalYoungModulusPa, yieldStrengthPa, tensileStrengthPa].every((value) => Number.isFinite(value) && value > 0)) {
+  if (![sideM, heightM, nominalYoungModulusPa, yieldStrengthPa, tensileStrengthPa].every((value) => Number.isFinite(value) && value > 0)) {
     throw new Error('Геометрические и механические параметры должны быть положительными числами')
   }
   if (!Number.isFinite(poissonRatio) || poissonRatio <= -1 || poissonRatio >= 0.5) {
@@ -43,7 +44,7 @@ export function generateMastModel(parameters) {
 
   const members = []
   const modules = []
-  const addMember = (nodeA, nodeB, moduleIndex, role) => {
+  const addMember = (nodeA, nodeB, moduleIndex, role, diameterM) => {
     const pointA = nodes[nodeA].position
     const pointB = nodes[nodeB].position
     const memberLengthM = Math.hypot(
@@ -53,7 +54,7 @@ export function generateMastModel(parameters) {
     )
     const weldZoneStiffness = calculateEquivalentMemberWeldZoneStiffness({
       memberLengthM,
-      memberDiameterMm: parameters.barDiameterMm,
+      memberDiameterMm: diameterM * 1000,
       weldAffectedZoneLengthFactor: parameters.weldAffectedZoneLengthFactor,
       serviceYears: parameters.weldServiceYears,
       initialStiffnessRetention: parameters.weldInitialStiffnessRetention,
@@ -86,6 +87,8 @@ export function generateMastModel(parameters) {
     const bottomLevel = moduleIndex
     const topLevel = moduleIndex + 1
     const memberIds = []
+    const diameterMm = moduleDiametersMm[moduleIndex]
+    const diameterM = diameterMm / 1000
 
     // Физический модуль устанавливается «ножками вниз»: его собственный
     // горизонтальный треугольник расположен СВЕРХ, а шесть диагональных
@@ -98,6 +101,7 @@ export function generateMastModel(parameters) {
         levelNodeId(topLevel, (corner + 1) % 3),
         moduleIndex,
         'top-ring',
+        diameterM,
       ))
     }
 
@@ -111,18 +115,21 @@ export function generateMastModel(parameters) {
         levelNodeId(topLevel, corner),
         moduleIndex,
         'leg',
+        diameterM,
       ))
       memberIds.push(addMember(
         levelNodeId(bottomLevel, corner),
         levelNodeId(topLevel, (corner + adjacentCornerOffset) % 3),
         moduleIndex,
         'leg',
+        diameterM,
       ))
     }
 
     modules.push({
       index: moduleIndex,
       number: moduleIndex + 1,
+      diameterMm,
       bottomLevel,
       topLevel,
       bottomNodeIds: levelNodeIds(bottomLevel),
@@ -136,6 +143,7 @@ export function generateMastModel(parameters) {
     members,
     modules,
     moduleCount,
+    moduleDiametersMm,
     baseNodeIds: levelNodeIds(0),
     topNodeIds: levelNodeIds(moduleCount),
     stiffnessModel: {

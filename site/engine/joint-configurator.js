@@ -6,6 +6,7 @@ import {
   calculateBoltCapacity,
   evaluateBoltAcrossDemands,
 } from './bolt-check.js'
+import { maximumModuleDiameterMm } from './diameter-profile.js'
 import {
   buildJointHardwareGeometry,
   DEFAULT_THREAD_ENGAGEMENT_FACTOR,
@@ -101,7 +102,8 @@ function evaluateCandidate(
     boltClass,
     tighteningTorqueNm,
   )
-  const nutSections = checkJointNutSections(geometry, parameters.barDiameterMm, {
+  const referenceBarDiameterMm = maximumModuleDiameterMm(parameters)
+  const nutSections = checkJointNutSections(geometry, referenceBarDiameterMm, {
     requiredRatio: strength.jointNutSectionAreaRatio,
   })
   const demands = demandsForGeometry(resultants, geometry)
@@ -119,6 +121,7 @@ function evaluateCandidate(
     boltClass,
     diameterMm: geometry.bolt.diameterMm,
     pitchMm: geometry.bolt.pitchMm,
+    referenceBarDiameterMm,
     tighteningTorqueNm,
     requestedTighteningTorqueNm: strength.jointTighteningTorqueNm,
     automaticTorque: candidateOptions.automaticTorque !== false,
@@ -214,7 +217,7 @@ function weldConfiguration(parameters, mode, baseMetalRunMPa) {
   const electrode = recommendWeldConsumable({ process: 'electrode', baseMetalRunMPa }).recommended
   return {
     consumableId: electrode?.id ?? parameters.weldConsumableId,
-    weldLegMm: suggestedWeldLegMm(parameters.barDiameterMm),
+    weldLegMm: suggestedWeldLegMm(maximumModuleDiameterMm(parameters)),
     segmentsPerEnd: 3,
     automatic: true,
   }
@@ -253,6 +256,7 @@ export function configureIntermoduleJoint(resultants, parameters, options = {}) 
     geometry,
     nutSections: selected.nutSections,
     strengthParameters: strength,
+    referenceBarDiameterMm: maximumModuleDiameterMm(effectiveParameters),
     weld,
     recommendationsByClass,
     resolvedParameters,
@@ -261,8 +265,8 @@ export function configureIntermoduleJoint(resultants, parameters, options = {}) 
     passesBolt: selected.evaluation.passes,
     passes: geometry.passes && selected.nutSections.passes && selected.evaluation.passes,
     explanation: mode === 'auto'
-      ? `Программа выбрала болт, обе гайки, длину, сварку и безопасный момент затяжки. Запрошено ${strength.jointTighteningTorqueNm.toFixed(0)} Н·м, для выбранного кандидата принято ${selected.tighteningTorqueNm.toFixed(0)} Н·м; максимальный преднатяг ограничен ${Math.round(AUTO_MAX_PRELOAD_UTILIZATION * 100)}% расчётной растягивающей способности до учёта внешнего усилия.`
-      : 'Проверяется выбранная пользователем сборка и заданный момент затяжки без автоматического уменьшения. Соединительная гайка верхнего узла имеет ту же резьбу, что и болт; гайка ножки должна иметь большую резьбу, свободный проход болта и достаточное нетто-сечение.',
+      ? `Программа выбрала болт, обе гайки, длину, сварку и безопасный момент затяжки. Для смешанного профиля геометрический запас гаек и базовый катет проверяются по максимальному диаметру ребра. Запрошено ${strength.jointTighteningTorqueNm.toFixed(0)} Н·м, для выбранного кандидата принято ${selected.tighteningTorqueNm.toFixed(0)} Н·м; максимальный преднатяг ограничен ${Math.round(AUTO_MAX_PRELOAD_UTILIZATION * 100)}% расчётной растягивающей способности до учёта внешнего усилия.`
+      : 'Проверяется выбранная пользователем сборка и заданный момент затяжки без автоматического уменьшения. Соединительная гайка верхнего узла имеет ту же резьбу, что и болт; гайка ножки должна иметь большую резьбу, свободный проход болта и достаточное нетто-сечение относительно максимального диаметра ребра мачты.',
   }
 }
 

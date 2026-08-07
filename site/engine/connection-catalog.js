@@ -1,7 +1,9 @@
 export const CONNECTION_STANDARD = 'СП 16.13330.2017 (ред. 09.12.2024)'
 export const FASTENER_STANDARD = 'ГОСТ ISO 898-1-2014'
+export const FASTENER_GEOMETRY_STANDARD = 'ISO 4014 / ISO 4017, справочная геометрия шестигранной головки'
 export const THREAD_STANDARD = 'ГОСТ 24705-2004 / ISO metric coarse thread'
 export const WELD_ELECTRODE_STANDARD = 'ГОСТ 9467-75'
+export const WELD_WIRE_STANDARD = 'ГОСТ 2246-70'
 
 // Расчетные сопротивления Rbs/Rbt и нормативное Rbun взяты из таблицы Г.5
 // СП 16.13330.2017 с действующими изменениями на 09.12.2024.
@@ -15,6 +17,7 @@ export const BOLT_PROPERTY_CLASSES = Object.freeze({
     rbsMPa: 210,
     rbtMPa: 225,
     nutClassForTension: '5',
+    standard: CONNECTION_STANDARD,
   }),
   '5.8': Object.freeze({
     id: '5.8',
@@ -23,6 +26,7 @@ export const BOLT_PROPERTY_CLASSES = Object.freeze({
     rbsMPa: 210,
     rbtMPa: null,
     nutClassForTension: '5',
+    standard: CONNECTION_STANDARD,
     note: 'В таблице Г.5 СП 16.13330.2017 отсутствует Rbt для класса 5.8.',
   }),
   '8.8': Object.freeze({
@@ -32,6 +36,7 @@ export const BOLT_PROPERTY_CLASSES = Object.freeze({
     rbsMPa: 332,
     rbtMPa: 451,
     nutClassForTension: '8',
+    standard: CONNECTION_STANDARD,
   }),
   '10.9': Object.freeze({
     id: '10.9',
@@ -40,6 +45,7 @@ export const BOLT_PROPERTY_CLASSES = Object.freeze({
     rbsMPa: 416,
     rbtMPa: 728,
     nutClassForTension: '10',
+    standard: CONNECTION_STANDARD,
   }),
   '12.9': Object.freeze({
     id: '12.9',
@@ -48,6 +54,7 @@ export const BOLT_PROPERTY_CLASSES = Object.freeze({
     rbsMPa: 427,
     rbtMPa: 854,
     nutClassForTension: '12',
+    standard: CONNECTION_STANDARD,
   }),
 })
 
@@ -56,14 +63,18 @@ export const BOLT_PROPERTY_CLASS_IDS = Object.freeze(Object.keys(BOLT_PROPERTY_C
 // Ab и Abn — таблица Г.9 СП 16.13330.2017. Размеры в скобках этой
 // таблицы (18, 22, 27 мм) предназначены для опор ВЛ и ОРУ, поэтому в
 // автоматический общий подбор здесь не включены.
+//
+// headAcrossFlatsMm/headHeightMm нужны только для прозрачной оценки массы
+// физической сборки и справочника. Прочностной расчёт по-прежнему использует
+// нормативные Ab/Abn и не зависит от приближённой геометрии головки.
 export const BOLT_SIZES = Object.freeze([
-  Object.freeze({ diameterMm: 16, pitchMm: 2.0, grossAreaMm2: 201, netAreaMm2: 157 }),
-  Object.freeze({ diameterMm: 20, pitchMm: 2.5, grossAreaMm2: 314, netAreaMm2: 245 }),
-  Object.freeze({ diameterMm: 24, pitchMm: 3.0, grossAreaMm2: 452, netAreaMm2: 353 }),
-  Object.freeze({ diameterMm: 30, pitchMm: 3.5, grossAreaMm2: 706, netAreaMm2: 561 }),
-  Object.freeze({ diameterMm: 36, pitchMm: 4.0, grossAreaMm2: 1017, netAreaMm2: 816 }),
-  Object.freeze({ diameterMm: 42, pitchMm: 4.5, grossAreaMm2: 1385, netAreaMm2: 1120 }),
-  Object.freeze({ diameterMm: 48, pitchMm: 5.0, grossAreaMm2: 1809, netAreaMm2: 1472 }),
+  Object.freeze({ diameterMm: 16, pitchMm: 2.0, grossAreaMm2: 201, netAreaMm2: 157, headAcrossFlatsMm: 24, headHeightMm: 10 }),
+  Object.freeze({ diameterMm: 20, pitchMm: 2.5, grossAreaMm2: 314, netAreaMm2: 245, headAcrossFlatsMm: 30, headHeightMm: 12.5 }),
+  Object.freeze({ diameterMm: 24, pitchMm: 3.0, grossAreaMm2: 452, netAreaMm2: 353, headAcrossFlatsMm: 36, headHeightMm: 15 }),
+  Object.freeze({ diameterMm: 30, pitchMm: 3.5, grossAreaMm2: 706, netAreaMm2: 561, headAcrossFlatsMm: 46, headHeightMm: 18.7 }),
+  Object.freeze({ diameterMm: 36, pitchMm: 4.0, grossAreaMm2: 1017, netAreaMm2: 816, headAcrossFlatsMm: 55, headHeightMm: 22.5 }),
+  Object.freeze({ diameterMm: 42, pitchMm: 4.5, grossAreaMm2: 1385, netAreaMm2: 1120, headAcrossFlatsMm: 65, headHeightMm: 26 }),
+  Object.freeze({ diameterMm: 48, pitchMm: 5.0, grossAreaMm2: 1809, netAreaMm2: 1472, headAcrossFlatsMm: 75, headHeightMm: 30 }),
 ])
 
 export const BOLT_DIAMETERS_MM = Object.freeze(BOLT_SIZES.map((item) => item.diameterMm))
@@ -78,6 +89,7 @@ export const WELD_CONSUMABLES = Object.freeze([
     label: 'Э42А (РДС)',
     rwunMPa: 410,
     rwfMPa: 180,
+    standard: WELD_ELECTRODE_STANDARD,
   }),
   Object.freeze({
     id: 'electrode-e46a',
@@ -85,6 +97,7 @@ export const WELD_CONSUMABLES = Object.freeze([
     label: 'Э46А (РДС)',
     rwunMPa: 450,
     rwfMPa: 200,
+    standard: WELD_ELECTRODE_STANDARD,
   }),
   Object.freeze({
     id: 'electrode-e50a-uoni-13-55',
@@ -92,6 +105,7 @@ export const WELD_CONSUMABLES = Object.freeze([
     label: 'Э50А / УОНИ-13/55 (РДС)',
     rwunMPa: 490,
     rwfMPa: 215,
+    standard: WELD_ELECTRODE_STANDARD,
   }),
   Object.freeze({
     id: 'wire-sv08g2s',
@@ -99,6 +113,7 @@ export const WELD_CONSUMABLES = Object.freeze([
     label: 'Св-08Г2С (механизированная, базовый уровень Э50)',
     rwunMPa: 490,
     rwfMPa: 215,
+    standard: WELD_WIRE_STANDARD,
   }),
   Object.freeze({
     id: 'electrode-e60',
@@ -106,6 +121,7 @@ export const WELD_CONSUMABLES = Object.freeze([
     label: 'Э60 (РДС)',
     rwunMPa: 590,
     rwfMPa: 240,
+    standard: WELD_ELECTRODE_STANDARD,
   }),
   Object.freeze({
     id: 'electrode-e70',
@@ -113,6 +129,7 @@ export const WELD_CONSUMABLES = Object.freeze([
     label: 'Э70 (РДС)',
     rwunMPa: 685,
     rwfMPa: 280,
+    standard: WELD_ELECTRODE_STANDARD,
   }),
   Object.freeze({
     id: 'electrode-e85',
@@ -120,6 +137,7 @@ export const WELD_CONSUMABLES = Object.freeze([
     label: 'Э85 (РДС)',
     rwunMPa: 835,
     rwfMPa: 340,
+    standard: WELD_ELECTRODE_STANDARD,
   }),
 ])
 

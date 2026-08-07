@@ -11,6 +11,10 @@ import {
   WELD_SEGMENT_COUNTS,
 } from './engine/joint-hardware-catalog.js'
 import { JointViewer } from './joint-viewer.js'
+import {
+  enrichAndRenderUsageResult,
+  initializeUsageExperience,
+} from './usage-scenarios.js'
 
 const $ = (selector) => document.querySelector(selector)
 const form = $('#parameters-form')
@@ -162,7 +166,10 @@ class JointAwareWorker extends NativeWorker {
   constructor(url, options) {
     super(url, options)
     this.addEventListener('message', (event) => {
-      if (event.data?.type === 'result' && event.data?.result) synchronizeFromResult(event.data.result)
+      if (event.data?.type === 'result' && event.data?.result) {
+        synchronizeFromResult(event.data.result)
+        enrichAndRenderUsageResult(event.data.result)
+      }
     })
   }
 
@@ -196,8 +203,10 @@ optimizeButton.addEventListener('click', () => {
   syncMode()
 }, { capture: true })
 
-// app.js остаётся владельцем основной формы/визуализации; этот bootstrap
-// добавляет физический конфигуратор и обогащает сообщение расчётному Worker.
+// app.js остаётся владельцем основной формы/визуализации. Bootstrap добавляет
+// физический конфигуратор, сценарный UX, справочники и сборочную массу, не
+// создавая второй расчётный путь для FEM.
 await import('./app.js')
 rebuildClearanceNutOptions(30)
 syncMode()
+initializeUsageExperience()

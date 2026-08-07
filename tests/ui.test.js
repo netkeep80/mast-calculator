@@ -5,6 +5,7 @@ import test from 'node:test'
 const html = fs.readFileSync(new URL('../site/index.html', import.meta.url), 'utf8')
 const app = fs.readFileSync(new URL('../site/app.js', import.meta.url), 'utf8')
 const bootstrap = fs.readFileSync(new URL('../site/app-bootstrap.js', import.meta.url), 'utf8')
+const usage = fs.readFileSync(new URL('../site/usage-scenarios.js', import.meta.url), 'utf8')
 const viewer = fs.readFileSync(new URL('../site/viewer.js', import.meta.url), 'utf8')
 const moduleViewer = fs.readFileSync(new URL('../site/module-viewer.js', import.meta.url), 'utf8')
 const jointViewer = fs.readFileSync(new URL('../site/joint-viewer.js', import.meta.url), 'utf8')
@@ -17,8 +18,8 @@ test('UI не позволяет вручную вводить геометри�
 })
 
 test('модуль зафиксирован ножками вниз и отдельного closeTopRing в UI больше нет', () => {
-  assert.match(html, /каждый модуль устанавливается ножками вниз/i)
-  assert.match(html, /верхний треугольник/i)
+  assert.match(html, /правильный октаэдр ножками вниз/i)
+  assert.match(html, /верхн(?:ий|его) треугольник/i)
   assert.doesNotMatch(html, /name="closeTopRing"/)
   assert.doesNotMatch(app, /closeTopRing/)
 })
@@ -35,9 +36,10 @@ test('конфигуратор узла использует выпадающи�
     'jointClearanceNutThreadMm', 'jointBoltLengthMm', 'jointThreadEngagementFactor',
     'weldConsumableId', 'weldLegMm', 'weldSegmentsPerEnd',
   ]) assert.match(html, new RegExp(`<select name="${name}">`))
-  assert.match(html, /Автоподбор/i)
+  assert.match(html, /подбирается автоматически/i)
   assert.match(html, /Гайка ножки с проходом болта/i)
   assert.match(html, /длинн(?:ая|ой) соединительн(?:ая|ой) гайк/i)
+  assert.match(bootstrap, /modeSelect\.value = 'auto'/)
   assert.match(bootstrap, /jointConfiguratorMode/)
   assert.match(bootstrap, /message\.action === 'optimize' \? 'auto'/)
 })
@@ -51,7 +53,7 @@ test('эффективный радиус и длинная гайка явля�
 
 test('отдельное 3D-окно показывает соединительный узел из двух гаек и болта', () => {
   assert.match(html, /id="joint-canvas"/)
-  assert.match(html, /две гайки и болт/i)
+  assert.match(html, /двух гаек и болта|две гайки и болт/i)
   assert.match(jointViewer, /class JointViewer/)
   assert.match(jointViewer, /topCouplingNut/)
   assert.match(jointViewer, /bottomClearanceNut/)
@@ -110,7 +112,8 @@ test('погодные явления выбираются из выпадающ
   assert.match(html, /<select name="windPresetId"><\/select>/)
   assert.match(app, /WEATHER_PRESETS/)
   assert.match(app, /getWeatherPreset/)
-  assert.match(html, /Скорость сценария, м\/с/)
+  assert.match(html, /Скорость:/)
+  assert.match(html, /name="windSpeedMs"[^>]*readonly/)
 })
 
 test('ручное ветровое давление сохраняется как отдельный пользовательский режим', () => {
@@ -153,6 +156,7 @@ test('тяжёлый расчёт остаётся в модульном Web Wor
   assert.match(worker, /calculateCompleteMastWithConfiguredJoint/)
   assert.match(worker, /selectUniformDiameter/)
   assert.doesNotMatch(app, /\bcalculateMast\(/)
+  assert.doesNotMatch(usage, /\bcalculateMast\(/)
 })
 
 test('progress показывает отдельный этап поиска максимальной высоты', () => {
@@ -166,7 +170,7 @@ test('progress показывает отдельный этап поиска м�
 })
 
 test('бумажный проект доступен, пользовательского JSON-экспорта нет', () => {
-  assert.match(html, /id="export-note-button"[^>]*>Скачать расчётный проект</)
+  assert.match(html, /id="export-note-button"[^>]*>Скачать бумажный расчётный проект</)
   assert.doesNotMatch(html, /export-json-button/)
   assert.doesNotMatch(app, /createCalculationJson/)
 })
@@ -178,8 +182,8 @@ test('результирующие таблицы показывают N, V, M �
   assert.match(html, /<th>σэкв, МПа<\/th>/)
 })
 
-test('пользовательский прототип обновлён до 1.2 и название страницы русское', () => {
-  assert.match(html, /прототип 1\.2/)
+test('пользовательский прототип обновлён до 1.3 и название страницы русское', () => {
+  assert.match(html, /прототип 1\.3/)
   assert.match(html, /<title>Калькулятор мачты<\/title>/)
   assert.doesNotMatch(html, /Mast Calculator/)
 })

@@ -99,16 +99,31 @@ test('PR CI имеет отдельный gate аналитической ста
   assert.match(ci, /analytical three-support reaction oracles/i)
 })
 
-test('static-site smoke загружает интерфейс, логотип и все новые модули узла', () => {
+test('PR CI отдельно проверяет сценарии, справочники и сборочную массу', () => {
+  const ci = workflows.get('ci.yml')
+  assert.ok(ci)
+  assert.match(ci, /usage-ux:/)
+  assert.match(ci, /name:\s*Usage scenarios and reference catalogs/)
+  assert.match(ci, /npm run test:ux/)
+  assert.match(ci, /assembly mass and single-source catalogs/i)
+})
+
+test('static-site smoke загружает интерфейс, сценарный UX и расчётные модули', () => {
   const ci = workflows.get('ci.yml')
   assert.ok(ci)
   for (const modulePath of [
     'logo.jpg',
     'app-bootstrap.js',
+    'usage-scenarios.js',
+    'usage-style.js',
+    'usage.css',
+    'reference-catalog.js',
     'calculation-worker.js',
     'module-viewer.js',
     'joint-viewer.js',
     'engine/complete-calculation.js',
+    'engine/assembly-mass.js',
+    'engine/reference-data.js',
     'engine/reference-frame.js',
     'engine/module-stack.js',
     'engine/module-verification.js',
@@ -128,6 +143,7 @@ test('static-site smoke загружает интерфейс, логотип и
     'engine/calculation-project.js',
   ]) assert.ok(ci.includes(modulePath), `ci.yml smoke не проверяет ${modulePath}`)
   assert.match(ci, /<title>Калькулятор мачты<\/title>/)
+  assert.match(ci, /Проверить конкретную мачту/)
 })
 
 test('Pages deploy использует официальные актуальные actions, не отменяет публикацию и упаковывает логотип', () => {

@@ -2,14 +2,15 @@ import { getBoltSize } from './connection-catalog.js'
 
 export const REGULAR_NUT_STANDARD = 'ISO 4032, справочная геометрия'
 export const COUPLING_NUT_STANDARD = 'DIN 6334, соединительная гайка высотой 3d'
+export const HARDWARE_STEEL_DENSITY_KG_M3 = 7850
 export const MIN_CLEARANCE_DIAMETER_MM = 0.5
 export const DEFAULT_THREAD_ENGAGEMENT_FACTOR = 2
 export const DEFAULT_ASSEMBLY_ALLOWANCE_MM = 2
 
 // Геометрия обычных шестигранных гаек нужна здесь не для расчёта их
-// прочности, а для компоновки реального узла и проверки свободного прохода
-// болта через гайку с резьбой большего диаметра.
-const REGULAR_NUTS = Object.freeze([
+// прочности, а для компоновки реального узла, проверки свободного прохода
+// болта и прозрачной оценки массы физической сборки.
+export const REGULAR_NUTS = Object.freeze([
   { threadDiameterMm: 16, pitchMm: 2, heightMm: 14.8, acrossFlatsMm: 24 },
   { threadDiameterMm: 20, pitchMm: 2.5, heightMm: 18, acrossFlatsMm: 30 },
   { threadDiameterMm: 24, pitchMm: 3, heightMm: 21.5, acrossFlatsMm: 36 },
@@ -24,7 +25,7 @@ const REGULAR_NUTS = Object.freeze([
 // DIN 6334 задаёт для M16..M36 длину 3d. Для M42/M48 сохраняется та же
 // расчётная 3d-компоновка, но конкретное покупное изделие должно быть
 // подтверждено по каталогу поставщика: эти размеры не выдаются за DIN 6334.
-const COUPLING_NUTS = Object.freeze([
+export const COUPLING_NUTS = Object.freeze([
   { threadDiameterMm: 16, pitchMm: 2, lengthMm: 48, acrossFlatsMm: 24, standard: COUPLING_NUT_STANDARD },
   { threadDiameterMm: 20, pitchMm: 2.5, lengthMm: 60, acrossFlatsMm: 30, standard: COUPLING_NUT_STANDARD },
   { threadDiameterMm: 24, pitchMm: 3, lengthMm: 72, acrossFlatsMm: 36, standard: COUPLING_NUT_STANDARD },
@@ -137,6 +138,8 @@ export function buildJointHardwareGeometry(options = {}) {
       lengthMm: boltLengthMm,
       automaticLengthMm: automaticBoltLengthMm,
       minimumRequiredLengthMm: minimumRequiredBoltLengthMm,
+      headAcrossFlatsMm: bolt.headAcrossFlatsMm,
+      headHeightMm: bolt.headHeightMm,
       fullThreadAssumed: true,
     },
     topCouplingNut: {

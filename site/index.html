@@ -10,9 +10,9 @@
 <body>
   <header class="page-header">
     <div>
-      <p class="eyebrow">Mast Calculator · прототип 0.3</p>
+      <p class="eyebrow">Mast Calculator · прототип 0.4</p>
       <h1>Расчёт модульной мачты</h1>
-      <p class="subtitle">Пространственная ферма, огибающая ветровых направлений, обледенение и линейная общая устойчивость.</p>
+      <p class="subtitle">Практический ввод по закупке и раскрою арматуры, расчёт каркаса и воспроизводимая расчётная записка.</p>
     </div>
   </header>
 
@@ -20,18 +20,19 @@
     <section class="panel parameters">
       <h2>Исходные данные</h2>
       <form id="parameters-form">
-        <h3 class="form-section-title">Геометрия и материал</h3>
+        <h3 class="form-section-title">Изготовление модуля</h3>
         <div class="form-grid">
           <label>Число модулей<input name="moduleCount" type="number" min="1" max="80" step="1"></label>
-          <label>Сторона треугольника, мм<input name="triangleSideMm" type="number" min="100" step="10"></label>
-          <label>Высота модуля, мм<input name="moduleHeightMm" type="number" min="100" step="10"></label>
-          <label>Диаметр арматуры, мм<input name="barDiameterMm" type="number" min="4" max="40" step="1"></label>
-          <label>Модуль упругости, ГПа<input name="youngModulusGPa" type="number" min="1" step="1"></label>
-          <label>Предел текучести, МПа<input name="yieldStrengthMPa" type="number" min="10" step="10"></label>
-          <label>Плотность, кг/м³<input name="densityKgM3" type="number" min="1" step="10"></label>
-          <label>Коэфф. расчётной длины<input name="effectiveLengthFactor" type="number" min="0.3" max="3" step="0.05"></label>
+          <label>Высота модуля, мм<input name="moduleHeightMm" type="number" min="100" step="1"></label>
+          <label>Закупочная длина прутка, мм<select name="stockBarLengthMm"></select></label>
+          <label>Разрезать пруток на частей<select name="stockBarPieces"></select></label>
+          <label>Длина заготовки ребра, мм<input name="ribCutLengthMm" type="number" readonly></label>
+          <label>Диаметр арматуры, мм<select name="barDiameterMm"></select></label>
+          <label>Класс арматуры<select name="reinforcementClass"></select></label>
           <label class="checkbox"><input name="closeTopRing" type="checkbox"> Замкнуть верхний треугольник</label>
         </div>
+        <p id="material-info" class="hint practical-note"></p>
+        <p class="hint practical-note">На текущем этапе длина заготовки используется как сторона горизонтального треугольника. Высота модуля задаётся по фактическому размеру. Ширина реза и геометрические припуски узла будут учитываться отдельным модулем изготовления/узлов.</p>
 
         <h3 class="form-section-title">Нагрузки</h3>
         <div class="form-grid">
@@ -49,15 +50,18 @@
           <label>Доп. вертикальная сила вниз, Н<input name="extraVerticalLoadN" type="number" min="0" step="10"></label>
         </div>
 
-        <h3 class="form-section-title">Коэффициенты и ограничения</h3>
-        <div class="form-grid">
-          <label>Коэфф. материала<input name="materialSafetyFactor" type="number" min="1" max="3" step="0.05"></label>
-          <label>Коэфф. постоянной нагрузки<input name="deadLoadFactor" type="number" min="1" max="3" step="0.05"></label>
-          <label>Коэфф. ветровой нагрузки<input name="windLoadFactor" type="number" min="1" max="3" step="0.05"></label>
-          <label>Коэфф. веса оборудования<input name="equipmentLoadFactor" type="number" min="1" max="3" step="0.05"></label>
-          <label>Допустимое отклонение, мм<input name="displacementLimitMm" type="number" min="1" step="1"></label>
-          <label>Мин. множитель общей устойчивости<input name="minimumBucklingFactor" type="number" min="1" step="0.1"></label>
-        </div>
+        <details class="advanced-inputs">
+          <summary>Расчётные коэффициенты и ограничения</summary>
+          <div class="form-grid advanced-grid">
+            <label>Коэфф. расчётной длины<input name="effectiveLengthFactor" type="number" min="0.3" max="3" step="0.05"></label>
+            <label>Коэфф. материала<input name="materialSafetyFactor" type="number" min="1" max="3" step="0.05"></label>
+            <label>Коэфф. постоянной нагрузки<input name="deadLoadFactor" type="number" min="1" max="3" step="0.05"></label>
+            <label>Коэфф. ветровой нагрузки<input name="windLoadFactor" type="number" min="1" max="3" step="0.05"></label>
+            <label>Коэфф. веса оборудования<input name="equipmentLoadFactor" type="number" min="1" max="3" step="0.05"></label>
+            <label>Допустимое отклонение, мм<input name="displacementLimitMm" type="number" min="1" step="1"></label>
+            <label>Мин. множитель общей устойчивости<input name="minimumBucklingFactor" type="number" min="1" step="0.1"></label>
+          </div>
+        </details>
 
         <div class="button-row">
           <button id="calculate-button" class="primary" type="button">Выполнить расчёт</button>
@@ -98,8 +102,9 @@
       <p id="load-summary" class="load-summary"></p>
 
       <div class="export-row">
-        <button id="export-csv-button" class="secondary" type="button" disabled>Скачать CSV стержней</button>
-        <button id="export-json-button" class="secondary" type="button" disabled>Скачать JSON расчёта</button>
+        <button id="export-note-button" class="secondary" type="button" disabled>Расчётная записка HTML</button>
+        <button id="export-csv-button" class="secondary" type="button" disabled>CSV стержней</button>
+        <button id="export-json-button" class="secondary" type="button" disabled>JSON расчёта</button>
       </div>
 
       <details open>

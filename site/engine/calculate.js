@@ -1,15 +1,28 @@
+import { applyReinforcementClass, theoreticalCutLengthMm } from './catalog.js'
 import { generateMastModel } from './geometry.js'
 import { buildLoadCase } from './loads.js'
 import { analyzeTruss } from './solver.js'
 
+export const CALCULATION_METHOD = Object.freeze({
+  id: 'linear-truss-v0.4',
+  description: 'Линейная пространственная стержневая модель; временный этап до перехода на 3D frame-модель с жёсткими сварными узлами.',
+})
+
 export const DEFAULT_PARAMETERS = Object.freeze({
   moduleCount: 12,
+  stockBarLengthMm: 12000,
+  stockBarPieces: 16,
+  ribCutLengthMm: 750,
   triangleSideMm: 750,
   moduleHeightMm: 540,
+  reinforcementClass: 'A400C',
   barDiameterMm: 12,
   youngModulusGPa: 200,
-  yieldStrengthMPa: 400,
+  yieldStrengthMPa: 390,
+  tensileStrengthMPa: 590,
   densityKgM3: 7850,
+  reinforcementStandard: 'ГОСТ 34028-2016',
+  reinforcementWeldabilityGuaranteed: true,
   effectiveLengthFactor: 1,
   materialSafetyFactor: 1.1,
   deadLoadFactor: 1.1,
@@ -32,6 +45,22 @@ export const DEFAULT_PARAMETERS = Object.freeze({
   minimumBucklingFactor: 2,
 })
 
+export function resolveCalculationParameters(parameters = {}) {
+  const merged = { ...DEFAULT_PARAMETERS, ...parameters }
+  const withMaterial = applyReinforcementClass(merged)
+  const ribCutLengthMm = theoreticalCutLengthMm(withMaterial.stockBarLengthMm, withMaterial.stockBarPieces)
+
+  return {
+    ...withMaterial,
+    ribCutLengthMm,
+    // На текущем этапе номинальная длина отрезка задаёт сторону горизонтального
+    // треугольника. Высота модуля остаётся отдельным фактическим размером.
+    // После ввода геометрии реального узла это соответствие будет заменено
+    // преобразованием «длина заготовки -> осевая геометрия между центрами узлов».
+    triangleSideMm: ribCutLengthMm,
+  }
+}
+
 function windDirections(parameters) {
   if (!parameters.windEnvelopeEnabled) return [parameters.windDirectionDeg]
   const step = Number(parameters.windEnvelopeStepDeg)
@@ -46,7 +75,8 @@ function windDirections(parameters) {
 const maxBy = (items, selector) => items.reduce((best, item) => selector(item) > selector(best) ? item : best, items[0])
 const minBy = (items, selector) => items.reduce((best, item) => selector(item) < selector(best) ? item : best, items[0])
 
-export function calculateMast(parameters) {
+export function calculateMast(inputParameters) {
+  const parameters = resolveCalculationParameters(inputParameters)
   const model = generateMastModel(parameters)
   const cases = windDirections(parameters).map((direction) => {
     const caseParameters = { ...parameters, windDirectionDeg: direction }
@@ -68,11 +98,11 @@ export function calculateMast(parameters) {
   const governing = maxBy(cases, score)
 
   const warnings = [
-    'Расчёт использует идеальную шарнирно-стержневую 3D-модель. Изгибная жёсткость сварных и болтовых узлов пока не учитывается.',
+    'Глобальная модель пока является идеальной шарнирно-стержневой 3D-фермой. По требованиям следующего этапа она должна быть заменена пространственной frame-моделью с жёсткими идеальными узлами; прочность реальных узлов будет проверяться отдельно.',
+    'Номинальная длина отрезка арматуры сейчас используется как сторона горизонтального треугольника. Ширина реза, припуски на сварку и смещение осей внутри реального узла пока не учитываются.',
     'Локальная устойчивость стержней проверяется по упругой формуле Эйлера с ограничением по текучести; это ещё не нормативная проверка по СП 16.',
     'Общая устойчивость вычисляется линейным собственным расчётом по геометрической матрице жёсткости. Геометрическая нелинейность и начальные несовершенства пока не учтены.',
     'Проверки болтов, резьбы, гаек, сварных швов, фундамента и усталости ещё не реализованы.',
-    'Топология модуля принята как горизонтальный треугольник и шесть диагоналей к уровню, повёрнутому на 60°.',
   ]
 
   if (governing.analysis.diagnostics.relativeResidual > 1e-8) {
@@ -89,6 +119,8 @@ export function calculateMast(parameters) {
   }
 
   return {
+    parameters,
+    method: CALCULATION_METHOD,
     model,
     cases,
     loads: governing.loads,

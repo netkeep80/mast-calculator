@@ -1,6 +1,7 @@
 import { calculateMast } from './calculate.js'
+import { STANDARD_DIAMETERS_MM } from './catalog.js'
 
-export const STANDARD_DIAMETERS_MM = Object.freeze([6, 8, 10, 12, 14, 16, 18, 20, 22, 25, 28, 32, 36, 40])
+export { STANDARD_DIAMETERS_MM }
 
 export function selectUniformDiameter(parameters, diameters = STANDARD_DIAMETERS_MM) {
   const variants = []

@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { DEFAULT_PARAMETERS, calculateMast } from '../site/engine/calculate.js'
+import { createCalculationNoteHtml } from '../site/engine/calculation-note.js'
 import {
   buildMaterialSummary,
   buildMemberEnvelope,
   createCalculationCsv,
+  createCalculationExport,
   createCalculationJson,
 } from '../site/engine/report.js'
 
@@ -46,13 +48,34 @@ test('CSV формируется в совместимом с русским Exc
   assert.equal(csv.trim().split('\r\n').length, result.model.members.length + 1)
 })
 
-test('JSON содержит параметры, сводку и воспроизводимую дату', () => {
+test('JSON v2 содержит полную модель, нагрузки, результаты и идентификатор сборки', () => {
   const generatedAt = '2026-08-06T19:30:00.000Z'
-  const report = JSON.parse(createCalculationJson(result, parameters, generatedAt))
-  assert.equal(report.schema, 'mast-calculator/calculation-report/v1')
+  const buildInfo = { repository: 'netkeep80/mast-calculator', ref: 'main', sha: 'abc123', runId: '42' }
+  const report = JSON.parse(createCalculationJson(result, result.parameters, generatedAt, buildInfo))
+  assert.equal(report.schema, 'mast-calculator/calculation-report/v2')
   assert.equal(report.generatedAt, generatedAt)
+  assert.equal(report.software.sha, 'abc123')
   assert.equal(report.parameters.moduleCount, 2)
   assert.equal(report.summary.loadCaseCount, 4)
   assert.equal(report.members.length, result.model.members.length)
   assert.equal(report.material.totalCount, result.model.members.length)
+  assert.equal(report.model.nodes.length, result.model.nodes.length)
+  assert.equal(report.model.members.length, result.model.members.length)
+  assert.equal(report.loadCases.length, result.cases.length)
+  assert.equal(report.loadCases[0].loads.nodalLoadsN.length, result.model.nodes.length)
+  assert.equal(report.loadCases[0].analysis.memberResults.length, result.model.members.length)
+})
+
+test('createCalculationExport и HTML-записка используют один и тот же канонический снимок', () => {
+  const generatedAt = '2026-08-07T08:00:00.000Z'
+  const buildInfo = { repository: 'netkeep80/mast-calculator', ref: 'main', sha: 'abc123', runId: '42' }
+  const snapshot = createCalculationExport(result, result.parameters, generatedAt, buildInfo)
+  const html = createCalculationNoteHtml(result, result.parameters, generatedAt, buildInfo)
+
+  assert.equal(snapshot.software.sha, 'abc123')
+  assert.match(html, /Расчётная записка/)
+  assert.match(html, /mast-calculator\/calculation-report\/v2/)
+  assert.match(html, /abc123/)
+  assert.match(html, /Полный JSON/)
+  assert.match(html, new RegExp(String(snapshot.model.nodes.length)))
 })

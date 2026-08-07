@@ -10,9 +10,9 @@
 <body>
   <header class="page-header">
     <div>
-      <p class="eyebrow">Mast Calculator · прототип 0.4</p>
+      <p class="eyebrow">Mast Calculator · прототип 0.5</p>
       <h1>Расчёт модульной мачты</h1>
-      <p class="subtitle">Практический ввод по закупке и раскрою арматуры, расчёт каркаса и воспроизводимая расчётная записка.</p>
+      <p class="subtitle">Правильные октаэдры, жёстко сваренный арматурный frame-каркас и проверяемый расчётный проект.</p>
     </div>
   </header>
 
@@ -23,16 +23,16 @@
         <h3 class="form-section-title">Изготовление модуля</h3>
         <div class="form-grid">
           <label>Число модулей<input name="moduleCount" type="number" min="1" max="80" step="1"></label>
-          <label>Высота модуля, мм<input name="moduleHeightMm" type="number" min="100" step="1"></label>
-          <label>Закупочная длина прутка, мм<select name="stockBarLengthMm"></select></label>
+          <label>Закупочная длина прутка<select name="stockBarLengthMm"></select></label>
           <label>Разрезать пруток на частей<select name="stockBarPieces"></select></label>
-          <label>Длина заготовки ребра, мм<input name="ribCutLengthMm" type="number" readonly></label>
+          <label>Длина ребра октаэдра, мм<input name="ribCutLengthMm" type="number" readonly></label>
+          <label>Высота октаэдра, мм<input name="moduleHeightMm" type="number" readonly></label>
           <label>Диаметр арматуры, мм<select name="barDiameterMm"></select></label>
           <label>Класс арматуры<select name="reinforcementClass"></select></label>
           <label class="checkbox"><input name="closeTopRing" type="checkbox"> Замкнуть верхний треугольник</label>
         </div>
         <p id="material-info" class="hint practical-note"></p>
-        <p class="hint practical-note">На текущем этапе длина заготовки используется как сторона горизонтального треугольника. Высота модуля задаётся по фактическому размеру. Ширина реза и геометрические припуски узла будут учитываться отдельным модулем изготовления/узлов.</p>
+        <p class="hint practical-note">Модуль считается правильным октаэдром: все девять его рёбер имеют одну длину <em>a</em>, а высота между треугольными гранями вычисляется как <em>h = a·√(2/3)</em>. Высота соединительного узла, ширина реза и нахлёст арматуры на гайку/болт пока не учитываются.</p>
 
         <h3 class="form-section-title">Нагрузки</h3>
         <div class="form-grid">
@@ -53,7 +53,6 @@
         <details class="advanced-inputs">
           <summary>Расчётные коэффициенты и ограничения</summary>
           <div class="form-grid advanced-grid">
-            <label>Коэфф. расчётной длины<input name="effectiveLengthFactor" type="number" min="0.3" max="3" step="0.05"></label>
             <label>Коэфф. материала<input name="materialSafetyFactor" type="number" min="1" max="3" step="0.05"></label>
             <label>Коэфф. постоянной нагрузки<input name="deadLoadFactor" type="number" min="1" max="3" step="0.05"></label>
             <label>Коэфф. ветровой нагрузки<input name="windLoadFactor" type="number" min="1" max="3" step="0.05"></label>
@@ -61,6 +60,7 @@
             <label>Допустимое отклонение, мм<input name="displacementLimitMm" type="number" min="1" step="1"></label>
             <label>Мин. множитель общей устойчивости<input name="minimumBucklingFactor" type="number" min="1" step="0.1"></label>
           </div>
+          <p class="hint practical-note">Для локальной проверки ребра по Эйлеру коэффициент расчётной длины фиксирован: μ = 0,5, поскольку концы ребра в глобальной модели считаются идеально жёстко сваренными.</p>
         </details>
 
         <div class="button-row">
@@ -76,7 +76,7 @@
       <div class="visual-title-row">
         <div>
           <h2>Расчётная схема</h2>
-          <p class="hint">В обычном режиме цвет показывает использование стержня.</p>
+          <p class="hint">Цвет показывает максимальный коэффициент использования ребра по прочности/локальной устойчивости.</p>
         </div>
         <label class="viewer-control"><input id="show-buckling-mode" type="checkbox"> Форма общей потери устойчивости</label>
       </div>
@@ -89,11 +89,11 @@
         <article><span>Высота</span><strong id="metric-height"></strong></article>
         <article><span>Масса стержней</span><strong id="metric-mass"></strong></article>
         <article><span>Макс. отклонение вершины</span><strong id="metric-displacement"></strong></article>
-        <article><span>Макс. использование стержня</span><strong id="metric-utilization"></strong></article>
+        <article><span>Макс. использование ребра</span><strong id="metric-utilization"></strong></article>
         <article><span>Множитель общей устойчивости</span><strong id="metric-buckling"></strong></article>
         <article><span>Определяющее направление ветра</span><strong id="metric-wind-direction"></strong></article>
-        <article><span>Критический стержень</span><strong id="metric-critical"></strong></article>
-        <article><span>Макс. невязка узла</span><strong id="metric-residual"></strong></article>
+        <article><span>Критическое ребро</span><strong id="metric-critical"></strong></article>
+        <article><span>Макс. невязка свободной DOF</span><strong id="metric-residual"></strong></article>
       </div>
       <div class="critical-card">
         <h3>Определяющие проверки</h3>
@@ -102,13 +102,12 @@
       <p id="load-summary" class="load-summary"></p>
 
       <div class="export-row">
-        <button id="export-note-button" class="secondary" type="button" disabled>Расчётная записка HTML</button>
-        <button id="export-csv-button" class="secondary" type="button" disabled>CSV стержней</button>
-        <button id="export-json-button" class="secondary" type="button" disabled>JSON расчёта</button>
+        <button id="export-note-button" class="secondary" type="button" disabled>Скачать расчётный проект</button>
+        <button id="export-csv-button" class="secondary" type="button" disabled>CSV рёбер</button>
       </div>
 
       <details open>
-        <summary>Ведомость стержней по огибающей</summary>
+        <summary>Ведомость рёбер по огибающей</summary>
         <p id="material-summary" class="material-summary"></p>
         <div class="table-scroll">
           <table class="member-table">
@@ -118,11 +117,11 @@
                 <th>Тип</th>
                 <th>Узлы</th>
                 <th>Длина, мм</th>
-                <th>Режим</th>
-                <th>Усилие, кН</th>
+                <th>N, кН</th>
+                <th>V, кН</th>
+                <th>M, Н·м</th>
+                <th>σэкв, МПа</th>
                 <th>Ветер</th>
-                <th>Несущая, кН</th>
-                <th>Гибкость</th>
                 <th>Использование</th>
               </tr>
             </thead>

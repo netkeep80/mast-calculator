@@ -130,49 +130,30 @@ test('PR CI отдельно проверяет сценарии, справоч
   assert.match(ci, /assembly mass and single-source catalogs/i)
 })
 
-test('static-site smoke загружает интерфейс, сценарный UX и все browser-модули issue #33', () => {
+test('static-site smoke собирает Web adapter вместе с публичными package API', () => {
   const ci = workflows.get('ci.yml')
   assert.ok(ci)
+  assert.match(ci, /npm run build:web/)
   for (const modulePath of [
-    'logo.jpg',
-    'app-bootstrap.js',
-    'usage-scenarios.js',
-    'usage-style.js',
-    'usage.css',
-    'reference-catalog.js',
-    'calculation-worker.js',
-    'module-viewer.js',
-    'joint-viewer.js',
-    'engine/complete-calculation.js',
-    'engine/assembly-mass.js',
-    'engine/reference-data.js',
-    'engine/reference-frame.js',
-    'engine/module-stack.js',
-    'engine/module-verification.js',
-    'engine/banded.js',
-    'engine/buckling.js',
-    'engine/weather.js',
-    'engine/connection-catalog.js',
-    'engine/joint-hardware-catalog.js',
-    'engine/joint-configurator.js',
-    'engine/joint-section-check.js',
-    'engine/joint-strength-parameters.js',
-    'engine/joint-visual-geometry.js',
-    'engine/bolt-preload.js',
-    'engine/bolt-check.js',
-    'engine/weld-check.js',
-    'engine/joint-demand.js',
-    'engine/connection-check.js',
-    'engine/lateral-capacity.js',
-    'engine/static-payload-capacity.js',
-    'engine/verification.js',
-    'engine/calculation-project.js',
+    'apps/web/app.js',
+    'apps/web/calculation-worker.js',
+    'apps/web/viewer.js',
+    'apps/web/design-app.js',
+    'apps/web/design-storage.js',
+    'packages/domain/index.js',
+    'packages/numerics/index.js',
+    'packages/structural-analysis/index.js',
+    'packages/engineering/index.js',
+    'packages/application/index.js',
+    'packages/design/index.js',
+    'packages/reporting/index.js',
   ]) assert.ok(ci.includes(modulePath), `ci.yml smoke не проверяет ${modulePath}`)
   assert.match(ci, /<title>Калькулятор мачты<\/title>/)
   assert.match(ci, /Проверить конкретную мачту/)
+  assert.doesNotMatch(ci, /--directory site\b/)
 })
 
-test('Pages deploy использует официальные актуальные actions, не отменяет публикацию и упаковывает логотип', () => {
+test('Pages deploy собирает apps/web + packages через canonical build:web', () => {
   const pages = workflows.get('pages.yml')
   assert.ok(pages)
   assert.match(pages, /actions\/configure-pages@v6/)
@@ -182,7 +163,9 @@ test('Pages deploy использует официальные актуальн�
   assert.match(pages, /cancel-in-progress:\s*false/)
   assert.match(pages, /pages:\s*write/)
   assert.match(pages, /id-token:\s*write/)
-  assert.match(pages, /cp logo\.jpg _site\/logo\.jpg/)
+  assert.match(pages, /npm run build:web/)
+  assert.match(pages, /_site\/apps\/web\/build-info\.json/)
+  assert.doesNotMatch(pages, /cp -R site|cp logo\.jpg _site\/logo\.jpg/)
 })
 
 test('каждый workflow сохраняет явную Git default branch конфигурацию', () => {

@@ -93,5 +93,6 @@ test('issue #36: UI оставляет одну массу и удаляет п�
   assert.match(usage, /removeLegacyForceControl\('extraVerticalLoadN'\)/)
   assert.match(usage, /Уже установленная масса на вершине, кг/)
   assert.match(usage, /unit-load/i)
-  assert.match(usage, /идеализированн.*консольн.*стрел/i)
+  assert.match(usage, /горизонтальн.*стрел/i)
+  assert.match(usage, /boomSelfMassEquivalentKg/)
 })

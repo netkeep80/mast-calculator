@@ -8,6 +8,7 @@ export {
   DEFAULT_PARAMETERS,
   DEFAULT_PROJECT_INPUT,
   PROJECT_PACKAGE_SCHEMA,
+  ProjectSchemaError,
   assertProjectInput,
   assertProjectPackage,
   createProjectInput,

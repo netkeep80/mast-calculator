@@ -1,29 +1,24 @@
 import { buildLoadCase } from './loads.js'
-import { analyzeFrame } from './solver.js'
+import { analyzeFrame, compileFrameSystem } from './solver.js'
 
 export const STANDARD_GRAVITY_M_S2 = 9.80665
 export const DEFAULT_LATERAL_CAPACITY_STEP_DEG = 15
 const ROTATIONAL_SYMMETRY_DEG = 120
 const MIN_COMPRESSION_FOR_GLOBAL_BUCKLING_N = 1e-9
 
-function lateralDirections(stepDeg) {
+export function lateralDirections(stepDeg) {
   const step = Number(stepDeg)
   if (!Number.isFinite(step) || step <= 0 || step > 60) {
     throw new Error('Шаг расчёта боковой нагрузки должен быть от 0 до 60°')
   }
   const values = []
-  for (let angle = 0; angle < ROTATIONAL_SYMMETRY_DEG - step / 1000; angle += step) {
-    values.push(angle)
-  }
+  for (let angle = 0; angle < ROTATIONAL_SYMMETRY_DEG - step / 1000; angle += step) values.push(angle)
   return values
 }
 
 function pureUnitLateralParameters(parameters, directionDeg) {
   return {
     ...parameters,
-    // Отдельный проверяемый испытательный случай: только горизонтальная сила
-    // 1 Н в геометрической вершине. Нормирование позволяет сразу получить
-    // предельную силу из линейного расчёта без итерационного наращивания.
     deadLoadFactor: 0,
     windPressurePa: 0,
     windPresetId: 'custom',
@@ -67,19 +62,12 @@ function meaningfulCompressionN(analysis) {
   )
 }
 
-function evaluateDirection(model, parameters, directionDeg) {
+function evaluateDirection(model, parameters, directionDeg, frameSystem) {
   const unitParameters = pureUnitLateralParameters(parameters, directionDeg)
   const loads = buildLoadCase(model, unitParameters)
-  const analysis = analyzeFrame(model, loads, unitParameters)
+  const analysis = analyzeFrame(model, loads, unitParameters, frameSystem)
   const memberLimit = governingMemberLimit(analysis)
   const unitCompressionN = meaningfulCompressionN(analysis)
-
-  // K_G имеет физический смысл для потери устойчивости от предварительного
-  // сжатия. У чистой поперечно нагруженной консоли осевое сжатие теоретически
-  // равно нулю, но машинное округление может создать ~1e-15 Н и затем ложное
-  // конечное собственное значение. В таком случае глобальный buckling здесь
-  // неприменим и считается бесконечным; для решётчатой мачты боковая сила
-  // создаёт реальные растянутые/сжатые раскосы, поэтому eigen-check остаётся.
   const globalBucklingForceN = unitCompressionN > MIN_COMPRESSION_FOR_GLOBAL_BUCKLING_N
     ? analysis.buckling.criticalLoadFactor
     : Number.POSITIVE_INFINITY
@@ -120,11 +108,19 @@ export function calculateLateralCapacity(model, parameters, options = {}) {
   const stepDeg = options.stepDeg ?? parameters.lateralCapacityStepDeg
     ?? DEFAULT_LATERAL_CAPACITY_STEP_DEG
   const directions = lateralDirections(stepDeg)
-  const cases = directions.map((direction) => evaluateDirection(model, parameters, direction))
+  const frameSystem = options.frameSystem ?? compileFrameSystem(model, parameters)
+  const cases = []
+  for (let index = 0; index < directions.length; index += 1) {
+    const direction = directions[index]
+    cases.push(evaluateDirection(model, parameters, direction, frameSystem))
+    options.onProgress?.({
+      stage: 'lateral',
+      completed: index + 1,
+      total: directions.length,
+      directionDeg: direction,
+    })
+  }
 
-  // Это три разные огибающие. Худшее направление по первому отказу может не
-  // совпасть с направлением минимального eigen-buckling, поэтому нельзя брать
-  // Fglobal из общего governing case.
   const governing = minimumCaseBy(cases, (item) => item.criticalForceN)
   const memberGoverning = minimumCaseBy(cases, (item) => item.memberLimitForceN)
   const globalBucklingGoverning = minimumCaseBy(cases, (item) => item.globalBucklingForceN)
@@ -139,22 +135,16 @@ export function calculateLateralCapacity(model, parameters, options = {}) {
     governing,
     memberGoverning,
     globalBucklingGoverning,
-
-    // Первый из всех рассматриваемых пределов, независимо от механизма.
     criticalForceN: governing.criticalForceN,
     criticalForceKgf: governing.criticalForceKgf,
     governingMode: governing.governingMode,
     directionDeg: governing.directionDeg,
     criticalMemberId: governing.criticalMemberId,
-
-    // Отдельная огибающая по прочности/локальной устойчивости ребра.
     memberLimitForceN: memberGoverning.memberLimitForceN,
     memberLimitForceKgf: memberGoverning.memberLimitForceKgf,
     memberLimitMode: memberGoverning.memberLimitMode,
     memberLimitDirectionDeg: memberGoverning.directionDeg,
     memberLimitCriticalMemberId: memberGoverning.criticalMemberId,
-
-    // Отдельная огибающая именно по общей линейной потере устойчивости.
     globalBucklingForceN: globalBucklingGoverning.globalBucklingForceN,
     globalBucklingForceKgf: globalBucklingGoverning.globalBucklingForceKgf,
     globalBucklingDirectionDeg: globalBucklingGoverning.directionDeg,

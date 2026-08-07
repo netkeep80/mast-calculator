@@ -84,6 +84,8 @@ function createConnectionAppendix(result) {
   const p = result.parameters
   const connections = result.connections
   if (!connections) throw new Error('Для бумажного проекта отсутствует расчёт соединений')
+  const configurator = connections.configurator
+  const geometry = configurator?.geometry
   const selected = connections.bolt.selected
   const demand = selected?.governingDemand
   const check = selected?.governingCheck
@@ -93,11 +95,30 @@ function createConnectionAppendix(result) {
     const governing = candidate?.evaluation?.governingDemand
     return `<tr><td>${escapeHtml(item.boltClass)}</td><td>${candidate ? `M${candidate.diameterMm}×${candidate.pitchMm}` : 'не найден'}</td><td>${candidate ? number(candidate.evaluation.utilization, 4) : '—'}</td><td>${governing ? `ур. ${governing.level}, узел ${governing.nodeId}` : '—'}</td></tr>`
   }).join('')
+  const bottom = geometry?.bottomClearanceNut
+  const top = geometry?.topCouplingNut
+  const bolt = geometry?.bolt
 
   return `
 <section class="page-break">
-<h2>11. Межмодульный болт и сварные концы</h2>
-<p>Physical joint layer получает совпадающие frame end-actions одного load case. Внутренних стыков: ${connections.jointCount}. Ось болта вертикальна; effective contact radius reff = ${number(p.jointEffectiveRadiusMm, 1)} мм.</p>
+<h2>11. Межмодульный узел: две гайки, болт и сварные концы</h2>
+<h3>11.1. Фактически выбранная физическая компоновка</h3>
+<p>Режим конфигуратора: <strong>${escapeHtml(configurator?.modeLabel ?? 'не указан')}</strong>. Внутренних стыков: ${connections.jointCount}. К проходной гайке ножки приварены два ребра; к длинной соединительной гайке верхнего узла — четыре ребра. Болт свободно проходит через первую гайку и ввинчивается только во вторую.</p>
+<table>
+<thead><tr><th>Деталь/параметр</th><th>Выбранное значение</th><th>Проверяемый смысл</th></tr></thead>
+<tbody>
+<tr><td>Болт</td><td>${bolt ? `M${bolt.diameterMm} × ${number(bolt.lengthMm, 0)} мм, класс ${escapeHtml(configurator.selected.boltClass)}` : '—'}</td><td>длина болта не меньше требуемой компоновочной длины</td></tr>
+<tr><td>Проходная гайка ножки</td><td>${bottom ? `M${bottom.threadDiameterMm}; 2 ребра; D1≈${number(bottom.basicMinorDiameterMm, 2)} мм` : '—'}</td><td>${bottom ? `диаметральный зазор относительно болта ≈ ${number(bottom.diametralClearanceMm, 2)} мм` : '—'}</td></tr>
+<tr><td>Длинная соединительная гайка</td><td>${top ? `M${top.threadDiameterMm} × ${number(top.lengthMm, 0)} мм; 4 ребра` : '—'}</td><td>резьба совпадает с болтом</td></tr>
+<tr><td>Длина зацепления</td><td>${geometry ? `${number(geometry.threadEngagementMm, 1)} мм = ${number(geometry.threadEngagementFactor, 2)}d` : '—'}</td><td>${geometry ? `≈ ${number(geometry.engagedThreadTurns, 1)} витков` : '—'}</td></tr>
+<tr><td>Минимальная длина болта</td><td>${bolt ? `${number(bolt.minimumRequiredLengthMm, 1)} мм` : '—'}</td><td>${bolt ? `принята стандартная длина ${number(bolt.lengthMm, 0)} мм` : '—'}</td></tr>
+<tr><td>Эффективный радиус reff</td><td>${number(p.jointEffectiveRadiusMm, 1)} мм</td><td>половина размера под ключ длинной гайки</td></tr>
+</tbody>
+</table>
+<p class="equation-note">Правило зацепления ${geometry ? number(geometry.threadEngagementFactor, 2) : '—'}d является правилом компоновки. Срыв внутренней/наружной резьбы по фактическому материалу гайки пока не рассчитан. Геометрию конкретных купленных гаек следует сверять с каталогом поставщика.</p>
+
+<h3>11.2. Расчёт соединительного болта</h3>
+<p>Physical joint layer получает совпадающие frame end-actions одного load case. Ось болта вертикальна; reff выводится из геометрии длинной соединительной гайки, а не задаётся произвольно.</p>
 <div class="formula">
   <div class="formula-symbolic">Nt = max(0, −Faxis) + |Mb|/reff</div>
   <div class="formula-symbolic">Ns = |F⊥| + |T|/reff</div>
@@ -115,7 +136,7 @@ function createConnectionAppendix(result) {
 </div>
 <table><thead><tr><th>Класс</th><th>Минимальный размер</th><th>U</th><th>Определяющий узел</th></tr></thead><tbody>${recommendationRows}</tbody></table>
 
-<h3>11.1. Сварной конец ребра</h3>
+<h3>11.3. Сварной конец ребра</h3>
 <p>До задания точных координат валиков используется явно обозначенная circular-group surrogate:</p>
 <div class="formula">
   <div class="formula-symbolic">Qaxial = |N| + 2|M|/rw</div>

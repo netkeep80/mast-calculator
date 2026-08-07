@@ -89,6 +89,32 @@ jobs:
       - name: Compare global, Schur and independent dense FEM
         run: npm run test:triple
 
+  joint-configurator:
+    name: Joint configurator
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: check-${{ github.workflow }}-${{ github.ref }}-joint-configurator
+      cancel-in-progress: true
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Simulate fresh merge with latest base
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/simulate-fresh-merge.sh
+      - name: Use Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+      - name: Check two-nut physical joint and automatic configuration
+        run: npm run test:joint
+
   test:
     name: Tests (${{ matrix.os }})
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
@@ -142,6 +168,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cp logo.jpg site/logo.jpg
           python3 -m http.server 4173 --directory site >/tmp/mast-calculator-http.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid"' EXIT
@@ -159,12 +186,16 @@ jobs:
             exit 1
           fi
 
-          grep --quiet '<title>Mast Calculator</title>' /tmp/mast-calculator-index.html
+          grep --quiet '<title>Калькулятор мачты</title>' /tmp/mast-calculator-index.html
+          curl --fail --silent http://127.0.0.1:4173/logo.jpg >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/app-bootstrap.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/app.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/calculation-worker.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/viewer.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/module-viewer.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/joint-viewer.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/calculate.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/complete-calculation.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/solver.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/reference-frame.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/module-stack.js >/dev/null
@@ -173,6 +204,8 @@ jobs:
           curl --fail --silent http://127.0.0.1:4173/engine/buckling.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/weather.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/connection-catalog.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/joint-hardware-catalog.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/joint-configurator.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/bolt-check.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/weld-check.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/joint-demand.js >/dev/null

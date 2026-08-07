@@ -1,6 +1,6 @@
 import {
   calculateProject,
-  selectUniformDiameter,
+  optimizeProject,
   STANDARD_DIAMETERS_MM,
 } from '../../packages/application/index.js'
 
@@ -62,7 +62,8 @@ function runOptimization(jobId, parameters) {
     label: `Подбор арматуры и соединительного узла: до ${STANDARD_DIAMETERS_MM.length} стандартных вариантов`,
     fraction: 0,
   })
-  const optimization = selectUniformDiameter(automaticParameters, STANDARD_DIAMETERS_MM, {
+  const optimization = optimizeProject(automaticParameters, {
+    diameters: STANDARD_DIAMETERS_MM,
     stopAtFirstPassing: true,
     onProgress: (event) => {
       postProgress(jobId, {

@@ -113,7 +113,7 @@ test('машинный JSON v8 остаётся внутренним средс�
   assert.equal(report.verification.counts.failed, 0)
 })
 
-test('бумажный проект сохраняет формулы frame, болта, сварки и паспорт верификации', () => {
+test('бумажный проект содержит global, modular, height, bolt, weld и verification formulas', () => {
   const html = createCalculationProjectHtml(
     result,
     result.parameters,
@@ -130,6 +130,11 @@ test('бумажный проект сохраняет формулы frame, б�
   assert.match(html, /Nt = max\(0, −Faxis\) \+ \|Mb\|\/reff/)
   assert.match(html, /Ubolt = √\[\(Ns\/Nbs\)² \+ \(Nt\/Nbt\)²\]/)
   assert.match(html, /lw = max\(lw,f, lw,z, 4kf, 40 мм\)/)
+  assert.match(html, /Помодульный расчёт и максимальная высота/)
+  assert.match(html, /A = Ktt \+ Supper/)
+  assert.match(html, /S = Kbb − Kbt·A⁻¹·Ktb/)
+  assert.match(html, /H\(N\) = N·h/)
+  assert.match(html, /tensile rupture по Rm\/γM/i)
   assert.match(html, /Паспорт верификации: как неспециалисту проверять расчёт/)
   assert.match(html, /Независимый КЭ-комплекс/)
   assert.match(html, /НЕ ПРОВЕРЕНО/)

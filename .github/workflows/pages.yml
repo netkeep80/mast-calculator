@@ -7,33 +7,37 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
-concurrency:
-  group: github-pages
-  cancel-in-progress: true
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: init.defaultBranch
+  GIT_CONFIG_VALUE_0: main
 
 jobs:
   build:
     name: Test and package site
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-
+    timeout-minutes: 15
+    concurrency:
+      group: check-${{ github.workflow }}-${{ github.ref }}-build
+      cancel-in-progress: true
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Use Node.js 22
-        uses: actions/setup-node@v4
+      - name: Use Node.js 24
+        uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: '24.x'
 
-      - name: Run unit tests
+      - name: Run complete test suite
         run: npm test
 
       - name: Check JavaScript syntax
         run: npm run check
+
+      - name: Check file line limits
+        run: node scripts/check-file-line-limits.mjs
 
       - name: Prepare Pages artifact
         shell: bash
@@ -52,10 +56,10 @@ jobs:
           EOF
 
       - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: _site
 
@@ -64,11 +68,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: build
+    concurrency:
+      # Publication is a writer operation: never cancel a deployment that has
+      # already started. New pushes wait instead of leaving Pages half-updated.
+      group: main-writer-${{ github.repository }}-pages
+      cancel-in-progress: false
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

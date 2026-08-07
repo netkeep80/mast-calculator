@@ -81,7 +81,7 @@ test('восстановленный design result строит тот же ти
 test('отдельная страница содержит 3D, OBJ, JSON и КД, а основной UX явно ведёт в неё', () => {
   const designHtml = fs.readFileSync(new URL('../apps/web/design.html', import.meta.url), 'utf8')
   const designApp = fs.readFileSync(new URL('../apps/web/design-app.js', import.meta.url), 'utf8')
-  const mainHtml = fs.readFileSync(new URL('../apps/web/index.html', import.meta.url), 'utf8')
+  const navigation = fs.readFileSync(new URL('../apps/web/navigation.js', import.meta.url), 'utf8')
   assert.match(designHtml, /<title>3D и конструкторская документация мачты<\/title>/)
   assert.match(designHtml, /id="export-obj"/)
   assert.match(designHtml, /id="export-package"/)
@@ -90,5 +90,6 @@ test('отдельная страница содержит 3D, OBJ, JSON и КД
   assert.match(designApp, /buildDesignPackage|serializeDesignPackage|parseDesignPackage|designResultFromPackage/)
   assert.match(designApp, /createMastObj/)
   assert.match(designApp, /createEskdConstructionDocumentationHtml/)
-  assert.match(mainHtml, /href="\.\/design\.html"/)
+  assert.match(navigation, /href = '\.\/design\.html'/)
+  assert.match(navigation, /dataDesignWorkspaceLink|designWorkspaceLink/)
 })

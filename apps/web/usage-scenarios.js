@@ -6,7 +6,8 @@ import {
   getReinforcementClass,
   theoreticalCutLengthMm,
 } from '../../packages/domain/index.js'
-import { saveDesignResult } from '../../packages/design/index.js'
+import { saveDesignResult } from './design-storage.js'
+import './navigation.js'
 import { renderReferenceCatalogs } from './reference-catalog.js'
 
 const $ = (selector) => document.querySelector(selector)

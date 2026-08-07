@@ -10,9 +10,9 @@
 <body>
   <header class="page-header">
     <div>
-      <p class="eyebrow">Mast Calculator · прототип 0.5</p>
+      <p class="eyebrow">Mast Calculator · прототип 0.6</p>
       <h1>Расчёт модульной мачты</h1>
-      <p class="subtitle">Правильные октаэдры, жёстко сваренный арматурный frame-каркас и проверяемый расчётный проект.</p>
+      <p class="subtitle">Правильные октаэдры, жёстко сваренный арматурный frame-каркас, погодные сценарии и проверяемая боковая нагрузка вершины.</p>
     </div>
   </header>
 
@@ -34,9 +34,11 @@
         <p id="material-info" class="hint practical-note"></p>
         <p class="hint practical-note">Модуль считается правильным октаэдром: все девять его рёбер имеют одну длину <em>a</em>, а высота между треугольными гранями вычисляется как <em>h = a·√(2/3)</em>. Высота соединительного узла, ширина реза и нахлёст арматуры на гайку/болт пока не учитываются.</p>
 
-        <h3 class="form-section-title">Нагрузки</h3>
+        <h3 class="form-section-title">Нагрузки и погода</h3>
         <div class="form-grid">
-          <label>Ветровое давление, Па<input name="windPressurePa" type="number" min="0" step="10"></label>
+          <label>Погодный сценарий<select name="windPresetId"></select></label>
+          <label>Скорость сценария, м/с<input name="windSpeedMs" type="number" readonly></label>
+          <label>Ветровое давление, Па<input name="windPressurePa" type="number" min="0" step="1"></label>
           <label>Аэродин. коэфф. стержней<input name="dragCoefficient" type="number" min="0" step="0.05"></label>
           <label>Направление ветра, °<input name="windDirectionDeg" type="number" step="5"></label>
           <label>Шаг огибающей, °<input name="windEnvelopeStepDeg" type="number" min="5" max="180" step="5"></label>
@@ -49,6 +51,7 @@
           <label>Доп. горизонтальная сила, Н<input name="extraHorizontalLoadN" type="number" min="0" step="10"></label>
           <label>Доп. вертикальная сила вниз, Н<input name="extraVerticalLoadN" type="number" min="0" step="10"></label>
         </div>
+        <p class="hint practical-note">Сценарии Бофорта используют характерные скорости ветра и переводят их в динамическое давление <em>q = ρv²/2</em> при ρ = 1,225 кг/м³. Это удобная сравнительная шкала, а не замена нормативному ветровому району, порывам и коэффициентам высоты.</p>
 
         <details class="advanced-inputs">
           <summary>Расчётные коэффициенты и ограничения</summary>
@@ -59,8 +62,9 @@
             <label>Коэфф. веса оборудования<input name="equipmentLoadFactor" type="number" min="1" max="3" step="0.05"></label>
             <label>Допустимое отклонение, мм<input name="displacementLimitMm" type="number" min="1" step="1"></label>
             <label>Мин. множитель общей устойчивости<input name="minimumBucklingFactor" type="number" min="1" step="0.1"></label>
+            <label>Шаг боковой проверки, °<input name="lateralCapacityStepDeg" type="number" min="5" max="60" step="5"></label>
           </div>
-          <p class="hint practical-note">Для локальной проверки ребра по Эйлеру коэффициент расчётной длины фиксирован: μ = 0,5, поскольку концы ребра в глобальной модели считаются идеально жёстко сваренными.</p>
+          <p class="hint practical-note">Для локальной проверки ребра по Эйлеру коэффициент расчётной длины фиксирован: μ = 0,5, поскольку концы ребра в глобальной модели считаются идеально жёстко сваренными. Боковая проверка использует 120° сектор симметрии и чистую горизонтальную силу в вершине.</p>
         </details>
 
         <div class="button-row">
@@ -94,10 +98,16 @@
         <article><span>Определяющее направление ветра</span><strong id="metric-wind-direction"></strong></article>
         <article><span>Критическое ребро</span><strong id="metric-critical"></strong></article>
         <article><span>Макс. невязка свободной DOF</span><strong id="metric-residual"></strong></article>
+        <article><span>Предельная боковая нагрузка вершины</span><strong id="metric-lateral-capacity"></strong></article>
+        <article><span>Механизм бокового предела</span><strong id="metric-lateral-mode"></strong></article>
       </div>
       <div class="critical-card">
         <h3>Определяющие проверки</h3>
         <p id="critical-description"></p>
+      </div>
+      <div class="critical-card lateral-card">
+        <h3>Проверочная боковая нагрузка вершины</h3>
+        <p id="lateral-capacity-description"></p>
       </div>
       <p id="load-summary" class="load-summary"></p>
 

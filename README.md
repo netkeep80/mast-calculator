@@ -6,77 +6,49 @@
 
 Документация:
 
-- [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md) — требования и расчётные допущения;
-- [`docs/CALCULATION_ARCHITECTURE.md`](docs/CALCULATION_ARCHITECTURE.md) — FEM, solver и поток данных;
-- [`docs/CONNECTIONS.md`](docs/CONNECTIONS.md) — межмодульный болт, минимальный диаметр, сварка и нормативные формулы;
-- [`docs/VERIFICATION_FOR_NON_SPECIALISTS.md`](docs/VERIFICATION_FOR_NON_SPECIALISTS.md) — как проверять результат по шагам;
-- [`docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md`](docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md) — боковая нагрузка, Бофорт и solid-rod sanity-check;
-- [`docs/STATIC_PAYLOAD_CAPACITY.md`](docs/STATIC_PAYLOAD_CAPACITY.md) — максимальная статическая масса на вершине;
-- [`docs/PERFORMANCE_AND_PROGRESS.md`](docs/PERFORMANCE_AND_PROGRESS.md) — banded solver, Worker, progress/ETA и performance regression;
+- [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md) — требования и допущения;
+- [`docs/CALCULATION_ARCHITECTURE.md`](docs/CALCULATION_ARCHITECTURE.md) — FEM, solver и data flow;
+- [`docs/CONNECTIONS.md`](docs/CONNECTIONS.md) — межмодульный болт и сварные концы;
+- [`docs/VERIFICATION_FOR_NON_SPECIALISTS.md`](docs/VERIFICATION_FOR_NON_SPECIALISTS.md) — пошаговая верификация;
+- [`docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md`](docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md) — lateral/weather/sanity-check;
+- [`docs/STATIC_PAYLOAD_CAPACITY.md`](docs/STATIC_PAYLOAD_CAPACITY.md) — максимальная масса на вершине;
+- [`docs/PERFORMANCE_AND_PROGRESS.md`](docs/PERFORMANCE_AND_PROGRESS.md) — Worker/performance;
 - [`docs/CI_CD_REVIEW.md`](docs/CI_CD_REVIEW.md) — CI/CD.
 
 ## Прототип 1.0
 
-Версия 1.0 добавляет расчёт физического межмодульного соединения поверх уже проверенной 3D frame-модели. Теперь программа не только сообщает усилия в идеальном жёстком каркасе, но и отвечает на практические вопросы:
+Версия 1.0 добавляет physical connection post-processing поверх 3D frame FEM:
 
-- выдерживает ли выбранный межмодульный болт;
-- какой минимальный стандартный диаметр нужен при классах 5.6 / 5.8 / 8.8 / 10.9 / 12.9;
-- какова расчётная и характеристическая разрывная нагрузка болта;
-- какая минимальная суммарная длина угловых швов нужна на каждом конце каждого ребра;
-- какой уровень электрода или проволоки совместим с основным металлом;
-- становится ли болт первым пределом при боковой нагрузке или статической массе на вершине.
-
-Текущие возможности:
-
-1. правильная геометрия одинаковых октаэдров из закупочной длины прутка;
-2. пространственная Euler–Bernoulli frame FEM, 6 DOF/узел;
-3. symmetric band Cholesky и одна факторизация `K` для load cases одной геометрии;
-4. matrix-free generalized Lanczos для global eigen-buckling;
-5. собственный вес, лёд, оборудование, ветер и огибающая направлений;
-6. погодные сценарии Бофорта 0–12;
-7. отдельная проверочная боковая сила вершины;
-8. отдельная gravity-only максимальная масса на вершине;
-9. расчёт межмодульного болта по совпадающим `F/M` одного load case;
-10. подбор минимального диаметра болта отдельно для каждого класса прочности;
-11. расчёт сварных концов по совпадающим `N/V/T/M` одного load case;
-12. Web Worker, progress, elapsed time, ETA и отмена;
-13. printable расчётный проект с формулами и численными подстановками;
-14. многоуровневый verification passport;
-15. regression tests на Linux/macOS/Windows, включая 40-модульную модель.
+- выбранный межмодульный bolt — tension/shear/combined action;
+- characteristic rupture reference `Rbun*Abn` отдельно от design capacity;
+- minimum standard bolt diameter для классов 5.6 / 5.8 / 8.8 / 10.9 / 12.9;
+- minimum total fillet-weld length на каждом physical member end;
+- electrode/wire recommendation;
+- bolt как возможный governing mode lateral/static capacity;
+- `CalculationSnapshot v7` с полным `connections` object.
 
 ## Геометрия
 
-Пользователь задаёт закупочную длину прутка, число равных частей, диаметр и класс арматуры. До учёта kerf/trim/joint overlap:
+Из закупочной длины и числа частей:
 
 ```text
-a = Lstock / nparts
-R = a / sqrt(3)
-h = a * sqrt(2/3)
-H = Nmodules * h
+a = Lstock/nparts
+R = a/sqrt(3)
+h = a*sqrt(2/3)
+H = Nmodules*h
 ```
 
-Один правильный октаэдр содержит 3 горизонтальных и 6 диагональных рёбер. Все девять рёбер имеют длину `a`; это regression invariant.
+Один regular octahedron: `3 horizontal + 6 diagonal = 9 members`.
 
 ## 3D frame FEM
 
-Каждый узел имеет:
+Node DOF:
 
 ```text
-[ux, uy, uz, rx, ry, rz]
+[ux,uy,uz,rx,ry,rz]
 ```
 
-Круглый Euler–Bernoulli frame-element учитывает `EA`, `EIy`, `EIz`, `GJ`. Solver восстанавливает:
-
-```text
-N
-Vy, Vz
-T
-My, Mz
-```
-
-а также перемещения, повороты, реакции и реактивные моменты.
-
-Для круглого сечения:
+Circular member:
 
 ```text
 A = pi*d²/4
@@ -85,87 +57,91 @@ J = pi*d⁴/32
 W = pi*d³/32
 ```
 
-Проверка member объединяет осевое напряжение, изгиб, срез и кручение по фон Мизесу. Сжатый member дополнительно проверяется по Эйлеру с `mu=0.5` для текущей идеализации идеально жёстких концов.
+Euler–Bernoulli element returns coincident end actions:
 
-Нижние три узла пока полностью заделаны; реальный фундамент остаётся отдельным будущим слоем.
+```text
+N
+Vy,Vz
+T
+My,Mz
+```
 
-## Нагрузки и погода
+Global solver uses symmetric band Cholesky; geometric stiffness and matrix-free generalized Lanczos solve:
 
-Эксплуатационные cases поддерживают:
+```text
+(K + lambda*KG)*phi = 0
+```
 
-- собственный вес;
-- цилиндрический слой льда;
-- ветер на каждое пространственно ориентированное ребро;
-- массу и парусность оборудования;
-- дополнительные горизонтальную и вертикальную силы;
-- огибающую по направлениям ветра.
+For one geometry `K` is assembled/factorized once and reused by operational, lateral and static-payload cases.
 
-Для погодного preset:
+## Нагрузки
+
+Operational calculation supports:
+
+- self weight;
+- cylindrical ice;
+- wind on spatial round members;
+- equipment mass/wind area;
+- extra horizontal/vertical load;
+- wind-direction envelope;
+- Beaufort 0–12 or custom pressure.
+
+Preset pressure:
 
 ```text
 q = rho_air*v²/2
 rho_air = 1.225 kg/m³
 ```
 
-Шкала Бофорта используется только как удобный сравнительный набор сценариев и не заменяет расчёт по СП 20.
-
-## Общая устойчивость
-
-После статического расчёта решается:
-
-```text
-(K + lambda*KG)*phi = 0
-```
-
-Рабочий путь применяет matrix-free operator:
-
-```text
-v -> -KG*v -> solve(K, ...) -> K^-1(-KG)v
-```
-
-Lanczos подтверждает найденную собственную пару фактической невязкой исходной generalized eigen-задачи.
-
-## Compile once, solve many
-
-`compileFrameSystem()` один раз вычисляет геометрию элементов, free-DOF map, banded `K` и `Cholesky(K)`. Ветровые, боковые и статические cases одной геометрии используют ту же факторизацию.
-
-Для 40 модулей:
-
-```text
-free DOF = 720
-half-bandwidth = 35
-stiffnessFactorizationCount = 1
-```
+Beaufort presets are comparative scenarios, not a replacement for СП 20 load design.
 
 ## Межмодульный болт
 
-На каждом внутреннем FEM-узле сходятся шесть рёбер. В принятой физической сборке четыре принадлежат нижнему модулю, а два диагональных ребра следующей ножки — верхнему. Эти две верхние диагонали соединяются с нижней частью **одним вертикальным болтом**.
-
-Для `N` модулей:
+At each interior FEM node six members meet. Physical stacking interpretation:
 
 ```text
-Njoints = 3*(N - 1)
+4 members remain with lower module
+2 upward diagonals form next module foot
+1 vertical bolt connects the two parts
 ```
 
-Фундаментные узлы сюда не входят.
+For `N>1`:
 
-Из двух верхних member одного и того же load case собираются совпадающие результирующие:
+```text
+Njoints = 3*(N-1)
+```
+
+The two upward members from the **same load case** are transformed to global coordinates and summed:
 
 ```text
 Fjoint = F1 + F2
 Mjoint = M1 + M2
 ```
 
-Прямые и моментные составляющие приводятся к одному болту:
+Bolt axis is vertical. Solver end-force sign is interpreted physically:
 
 ```text
-Nt = |Faxis| + |Mb|/reff
+Faxis > 0 -> joint contact is compressed
+Faxis < 0 -> joint tends to open
+```
+
+Therefore compression is not turned into fictitious bolt tension:
+
+```text
+Nt,direct = max(0,-Faxis)
+Ncontact = max(0,Faxis)
+```
+
+Rigid frame moment is transferred through explicit effective contact radius `reff`:
+
+```text
+Nt = max(0,-Faxis) + |Mb|/reff
 Ns = |Fperp| + |T|/reff
 ```
 
-`reff` — явный параметр эффективного радиуса реальной контактной зоны. Это чувствительная геометрическая величина: её надо уточнять по фактической шайбе, гайке, торцу и упору.
+Compression is deliberately **not credited** against `|Mb|/reff` until an exact contact-pressure model exists. `reff` is visible/editable and must match the real washer/nut/stop geometry.
 
-Расчётные сопротивления и площади берутся из СП 16.13330.2017:
+СП 16 design capacities:
 
 ```text
 Nbs = Rbs*Ab*ns*gamma_b*gamma_c
@@ -174,29 +150,23 @@ Ubolt = sqrt((Ns/Nbs)^2 + (Nt/Nbt)^2)
 PASS: Ubolt <= 1
 ```
 
-Для текущего одноболтового узла `gamma_b=1`. `gamma_c` остаётся явным входным параметром.
+For current single-bolt joint `gamma_b=1`.
 
-Дополнительно выводится понятная характеристическая оценка разрыва резьбового сечения:
+Characteristic rupture reference:
 
 ```text
 Nu,characteristic = Rbun*Abn
 ```
 
-Она **не является допустимой рабочей нагрузкой** и не заменяет расчётную проверку через `Rbt/Rbs`.
+is shown separately and is **not** an allowable working load.
 
-Автоматический подбор перебирает:
+Auto-selection checks `M16/M20/M24/M30/M36/M42/M48` for each supported property class. Class 5.8 is not accepted for tension because the used СП 16 table does not provide `Rbt` for it.
 
-```text
-M16, M20, M24, M30, M36, M42, M48
-```
+Full details: [`docs/CONNECTIONS.md`](docs/CONNECTIONS.md).
 
-отдельно для классов `5.6`, `5.8`, `8.8`, `10.9`, `12.9`. Класс 5.8 не объявляется пригодным при растяжении, поскольку в таблице Г.5 СП 16 для него отсутствует `Rbt`.
+## Сварка
 
-Подробности: [`docs/CONNECTIONS.md`](docs/CONNECTIONS.md).
-
-## Сварка каждого конца ребра
-
-Для каждого физического конца каждого member берётся один совпадающий набор:
+Each physical member end keeps one coincident vector from one load case:
 
 ```text
 N
@@ -205,9 +175,7 @@ T
 M = hypot(My,Mz)
 ```
 
-Проверка выполняется отдельно для каждого load case; в огибающую конца попадает случай, требующий максимальной длины шва. Независимые максимумы разных ветровых cases не смешиваются.
-
-Пока точные координаты отдельных сварных валиков вокруг гайки не заданы, используется явно обозначенная консервативная круговая surrogate-модель:
+Because exact coordinates of the actual beads around the nut are not yet inputs, the current model explicitly uses a conservative circular-group surrogate:
 
 ```text
 Qaxial = |N| + 2*|M|/rw
@@ -215,41 +183,47 @@ Qshear = |V| + |T|/rw
 Qw = sqrt(Qaxial² + Qshear²)
 ```
 
-Две обязательные проверки углового шва:
+Required effective length:
 
 ```text
+Rwz = 0.45*Run
 lw,f = Qw/(beta_f*kf*Rwf*gamma_c)
 lw,z = Qw/(beta_z*kf*Rwz*gamma_c)
-Rwz = 0.45*Run
-lw = max(lw,f, lw,z, 4*kf, 40 mm)
+lw = max(lw,f,lw,z,4*kf,40 mm)
 ```
 
-Расчётная длина `lw` — эффективная. Физическая суммарная длина учитывает вычет 10 мм на каждый непрерывный участок:
+Physical total length for `nsegments` continuous welds:
 
 ```text
-Lphysical,total = lw + 10 mm*nsegments
+Lphysical = lw + 10 mm*nsegments
 ```
 
-Каталог содержит Э42А, Э46А, Э50А/УОНИ-13/55, Св-08Г2С базового уровня Э50, Э60, Э70 и Э85 и выбирает первый вариант с `Rwun >= Run` более слабого основного металла.
+Catalog contains Э42А, Э46А, Э50А/УОНИ-13/55, Св-08Г2С baseline Э50, Э60, Э70, Э85 and selects the first consumable with `Rwun >= Run` of the weaker parent metal.
 
-## Боковая нагрузка вершины
+## Lateral capacity
 
-Нормированный специальный case прикладывает чистую горизонтальную силу `1 N` к верхней грани, отключая ветер, лёд, собственный вес и оборудование.
+Special unit case:
 
-Теперь вычисляются три независимых предела:
+```text
+F0 = 1 N horizontal at top
+```
+
+with gravity/weather/equipment disabled.
 
 ```text
 Fmember = 1/Umember(1 N)
 Fglobal = lambda_cr(1 N)*1 N
 Fbolt   = 1/Ubolt(1 N)
-Flim = min(Fmember, Fglobal, Fbolt)
+Flim = min(Fmember,Fglobal,Fbolt)
 ```
 
-Поэтому слабый межмодульный болт может корректно стать первым механизмом отказа. Solid-rod sanity-check при этом специально сравнивает `memberLimitForceN`, а не общий `Flim`, потому что его назначение — проверять масштаб глобального frame/member solver, а не конкретный M24.
+A weak intermodule bolt can become `governingMode=bolt-connection`.
+
+Solid-rod sanity-check intentionally compares **memberLimitForceN**, not overall `Flim`, because its job is to validate frame/member scale rather than a concrete M24 in an artificial `d_rib=a/2` model.
 
 ## Максимальная статическая масса на вершине
 
-Gravity-only сценарий оставляет собственный вес и прикладывает искомую суммарную массу вертикально вниз. Для каждого пробного `m` проверяются:
+Gravity-only binary search keeps self weight. Every trial mass checks:
 
 ```text
 U_member(m) <= 1
@@ -257,111 +231,81 @@ U_bolt(m) <= 1
 lambda_cr(m) >= 1
 ```
 
-Предел уточняется двоичным поиском с собственным весом. UI показывает общую массу, остаток после заданного оборудования и эквивалентный объём воды при `rho_water = 1000 kg/m³`.
+Pure vertical compression does not create direct bolt tension merely because its magnitude grows. Bolt demand appears only from actual separating/shear/moment components of the calculated state.
 
-Подробности: [`docs/STATIC_PAYLOAD_CAPACITY.md`](docs/STATIC_PAYLOAD_CAPACITY.md).
+UI also reports remaining mass and equivalent water volume at `rho_water=1000 kg/m³`.
 
-## Паспорт верификации
+## Verification passport
 
-`calculateCompleteMast()` строит `result.verification` и разделяет доверие к расчёту на шесть уровней:
+`calculateCompleteMast()` builds six evidence levels:
 
-1. формулы, которые можно повторить обычным калькулятором;
-2. равновесие сил/моментов и residuals;
-3. классические задачи `FL/EA`, `PL³/3EI`, `PL²/2EI`;
-4. перекрёстная проверка banded solver отдельным dense reference;
-5. независимый FEM и инженерная рецензия — `NOT VERIFIED`;
-6. натурная validation — `NOT VERIFIED`.
+1. simple formulas;
+2. force/moment equilibrium and residuals;
+3. known-answer `FL/EA`, `PL³/3EI`, `PL²/2EI` tasks using production solver;
+4. dense/reference algorithm cross-checks;
+5. external FEM and engineering review — `NOT VERIFIED`;
+6. physical validation — `NOT VERIFIED`.
 
-Зелёные внутренние уровни подтверждают реализацию сформулированной модели, а не безопасность реальной конструкции.
+Green levels 1–4 verify implementation of the stated model; they do not prove safety of the fabricated structure.
 
-Подробности: [`docs/VERIFICATION_FOR_NON_SPECIALISTS.md`](docs/VERIFICATION_FOR_NON_SPECIALISTS.md).
+## Paper report / snapshot
 
-## Solid-rod sanity-check
+The printable HTML includes:
 
-Для специального предельного случая:
+- inputs, Git SHA, geometry, loads;
+- frame actions/stresses/buckling;
+- lateral/static capacity;
+- physical joint split and `reff`;
+- `Nt/Ns/Nbt/Nbs/Ubolt/Rbun*Abn`;
+- minimum bolt by class;
+- critical weld ends and required lengths;
+- consumable recommendation;
+- verification passport and explicit limits.
+
+Internal reproducibility format:
 
 ```text
-d_rib = a/2
-D_solid = 2a/sqrt(3)
-A6/Asolid = 9/8 = 1.125
+mast-calculator/calculation-snapshot/v7
 ```
 
-решётчатая frame-модель сравнивается со сплошной круглой консолью по **member capacity** и линейной жёсткости. Цель — ловить ошибки масштаба, единиц и topology; реальный болт в эту проверку намеренно не входит.
+No user JSON button is exposed.
 
-## Web Worker и progress
+## Что ещё не считается
 
-FEM, eigen-buckling, специальные предельные расчёты и подбор диаметра выполняются в `site/calculation-worker.js`. Main thread обслуживает форму, progress UI, viewer и экспорт. Расчёт можно остановить через `worker.terminate()`.
+Version 1.0 calculates the bolt itself and minimum weld length, but does not invent missing geometry for:
 
-## Бумажный расчётный проект
+- thread stripping / actual engagement length;
+- bearing of nut/washer/member material;
+- prying and washer/contact bending;
+- preload/friction/slip;
+- exact weld-group `W/Ix/Iy`;
+- finite joint stiffness;
+- fatigue;
+- foundation;
+- P-Delta/initial imperfections/plasticity.
 
-Кнопка **«Скачать расчётный проект»** формирует автономный HTML для печати/PDF. Генератор читает готовый result object и не решает FEM повторно.
-
-Документ содержит:
-
-- исходные параметры и Git SHA;
-- геометрию и section properties;
-- нагрузки и погоду;
-- frame equations и `N/V/T/M`;
-- stress/Euler/global buckling;
-- боковую и статическую нагрузки вершины;
-- выбранный болт, `Nt/Ns`, `Nbt/Nbs`, `Ubolt`, `Rbun*Abn`;
-- минимальный размер болта для каждого класса прочности;
-- критические сварные концы и требуемые длины;
-- рекомендацию электрода/проволоки;
-- verification passport;
-- ограничения модели.
-
-В бумажном проекте нет JSON. Internal `CalculationSnapshot v7` хранит полный reproducibility state, включая connection demands и verification evidence.
-
-## Что пока не считается
-
-Версия 1.0 уже считает сам болт на срез/растяжение/совместное действие и требуемую суммарную длину угловых швов. Но следующие механизмы требуют дополнительных реальных размеров узла и поэтому не подменяются выдуманными числами:
-
-- смятие детали под болтом;
-- срез/вырыв внутренней резьбы гайки или удлинённой муфты;
-- prying и изгиб шайбы/контактной детали;
-- затяжка, трение и проскальзывание;
-- точное распределение напряжений между отдельными сварными валиками;
-- конечная поступательная/вращательная жёсткость соединения;
-- усталость;
-- P-Delta, initial imperfections и пластичность;
-- фундамент.
-
-Эти ограничения отделяют **verification математической модели** от **validation конкретного изготовленного узла**.
+These require actual manufactured joint dimensions and external validation.
 
 ## CI/CD
 
-PR CI включает:
+PR checks:
 
 ```text
 Syntax, policy and maintainability
 Secrets scan
-Tests — Ubuntu
-Tests — macOS
-Tests — Windows
-Static site smoke test
+Tests: Ubuntu/macOS/Windows
+Static site smoke
 ```
 
-Smoke загружает Worker и все browser modules, включая connection catalog/checks и verification.
+The 40-module regression checks one `K` factorization, 720 free DOF, bounded bandwidth, `117` internal bolt joints, one weld-envelope item per physical member end, finite bolt limits and green internal verification.
 
 ## Локальный запуск
 
 ```bash
 python3 -m http.server 8080 --directory site
-```
-
-Открыть `http://localhost:8080/`.
-
-Проверки:
-
-```bash
 npm test
 npm run check
 node scripts/check-file-line-limits.mjs
 ```
 
-Runtime npm-зависимостей нет. Node.js используется для tests и CI utilities.
-
-## Единицы
-
-Внутри ядра — SI: метры, ньютоны, паскали, радианы и килограммы. Каталожные сопротивления соединений хранятся в МПа и площади в мм², поэтому произведение `MPa*mm²` сразу даёт N. UI и бумажный проект преобразуют единицы на границе системы.
+Runtime npm dependencies: none.

@@ -21,6 +21,29 @@ function rows(items, values) {
   })
 }
 
+function ensureJointDesignReference(root, data) {
+  const details = root.querySelector('#reference-details')
+  if (!details || details.querySelector('#reference-joint-design')) return
+  const section = document.createElement('section')
+  section.id = 'reference-joint-design'
+  section.className = 'reference-joint-design'
+  const preload = data.jointDesign.boltPreload
+  const nut = data.jointDesign.nutNetSection
+  const weld = data.jointDesign.weldEffectiveArea
+  section.innerHTML = `
+    <h3>Проектные критерии соединительного узла</h3>
+    <div class="table-scroll"><table class="member-table reference-table">
+      <thead><tr><th>Проверка</th><th>Принято</th><th>Формула / источник</th></tr></thead>
+      <tbody>
+        <tr><td>Преднатяг болта от момента</td><td>T=${format(preload.defaultTighteningTorqueNm, 0)} Н·м; K=${format(preload.defaultNutFactor, 2)}; разброс ±${format(preload.defaultPreloadVariation * 100, 0)}%</td><td>${preload.relation}. ${preload.source}</td></tr>
+        <tr><td>Нетто-сечение гайки</td><td>не менее ${format(nut.minimumAreaRatioToSingleRib, 1)}× площади одного ребра</td><td>${nut.relation}. ${nut.source}</td></tr>
+        <tr><td>Эффективная площадь шва</td><td>${format(weld.minimumAreaRatioToRib, 1)}…${format(weld.maximumSelectableAreaRatioToRib, 1)}× Arib; по умолчанию ${format(weld.defaultAreaRatioToRib, 1)}×</td><td>${weld.relation}. ${weld.source}</td></tr>
+      </tbody>
+    </table></div>
+    <p class="hint practical-note"><strong>Важно:</strong> коэффициенты 2× для гайки и 2–3× для шва — дополнительные консервативные критерии этого проекта. Они не подменяют проверки резьбы, смятия, prying и силовой расчёт шва.</p>`
+  details.append(section)
+}
+
 export function renderReferenceCatalogs(root = document) {
   const data = buildReferenceData()
 
@@ -108,5 +131,6 @@ export function renderReferenceCatalogs(root = document) {
 
   const schema = root.querySelector('#reference-schema')
   if (schema) schema.textContent = data.schema
+  ensureJointDesignReference(root, data)
   return data
 }

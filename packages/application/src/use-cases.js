@@ -1,34 +1,57 @@
-import { resolveCalculationParameters } from '../../domain/index.js'
+import { resolveProjectInput } from '../../domain/index.js'
 import { augmentVerificationWithModuleChecks } from '../../structural-analysis/index.js'
 import { calculateGuyedMast } from '../../engineering/index.js'
 import { calculateCompleteMastWithConfiguredJoint } from './complete-calculation.js'
 import { selectUniformDiameter, STANDARD_DIAMETERS_MM } from './optimize.js'
+import { immutablePublicResult } from './immutability.js'
+import { toApplicationError } from './errors.js'
 
-function finalizeVerification(result) {
+function finalizedVerification(result) {
   if (!result?.verification) return result
-  result.verification = augmentVerificationWithModuleChecks(result.verification, result)
-  if (result.performance) {
-    result.performance.verificationInternalCheckCount = result.verification.counts.internal
+  const verification = augmentVerificationWithModuleChecks(result.verification, result)
+  return {
+    ...result,
+    verification,
+    performance: result.performance
+      ? {
+        ...result.performance,
+        verificationInternalCheckCount: verification.counts.internal,
+      }
+      : result.performance,
   }
-  return result
 }
 
 /**
  * Canonical headless project calculation entrypoint.
- * Environment adapters may provide progress callbacks but do not own result enrichment.
+ * ProjectInput is resolved exactly once at the application boundary.
  */
 export function calculateProject(input, options = {}) {
-  return finalizeVerification(calculateCompleteMastWithConfiguredJoint(input, options))
+  try {
+    const parameters = resolveProjectInput(input)
+    const calculated = calculateCompleteMastWithConfiguredJoint(parameters, {
+      ...options,
+      resolvedProject: parameters,
+    })
+    return immutablePublicResult(finalizedVerification(calculated), options)
+  } catch (error) {
+    throw toApplicationError(error)
+  }
 }
 
 /**
- * Headless uniform-diameter optimization. The returned candidate results use the
- * same engineering core; a consumer may call calculateProject for the chosen project.
+ * Headless uniform-diameter optimization over the same resolved project contract.
  */
 export function optimizeProject(input, options = {}) {
-  const parameters = resolveCalculationParameters(input)
-  const diameters = options.diameters ?? STANDARD_DIAMETERS_MM
-  return selectUniformDiameter(parameters, diameters, options)
+  try {
+    const parameters = resolveProjectInput(input)
+    const diameters = options.diameters ?? STANDARD_DIAMETERS_MM
+    return immutablePublicResult(selectUniformDiameter(parameters, diameters, {
+      ...options,
+      resolvedProject: parameters,
+    }), options)
+  } catch (error) {
+    throw toApplicationError(error)
+  }
 }
 
 /**
@@ -36,14 +59,19 @@ export function optimizeProject(input, options = {}) {
  * remain outside this use case.
  */
 export function calculateGuyedProject(input, tiers = [], options = {}) {
-  return calculateGuyedMast(input, tiers, options)
+  try {
+    const parameters = resolveProjectInput(input)
+    return immutablePublicResult(calculateGuyedMast(parameters, tiers, {
+      ...options,
+      resolvedProject: parameters,
+    }), options)
+  } catch (error) {
+    throw toApplicationError(error)
+  }
 }
 
-/**
- * Build the complete verification passport expected by application consumers
- * from an already calculated result without depending on a browser transport.
- */
+/** Build a verification passport from an already complete immutable result. */
 export function createVerification(result) {
-  if (!result?.verification) throw new Error('Для верификации требуется полный результат расчёта')
-  return augmentVerificationWithModuleChecks(result.verification, result)
+  if (!result?.verification) throw toApplicationError(new Error('Для верификации требуется полный результат расчёта'))
+  return immutablePublicResult(augmentVerificationWithModuleChecks(result.verification, result))
 }

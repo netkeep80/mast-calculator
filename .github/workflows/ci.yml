@@ -30,22 +30,18 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
       - name: Simulate fresh merge with latest base
         if: github.event_name == 'pull_request'
         shell: bash
         env:
           BASE_REF: ${{ github.base_ref }}
         run: bash scripts/simulate-fresh-merge.sh
-
       - name: Use Node.js 24
         uses: actions/setup-node@v6
         with:
           node-version: '24.x'
-
       - name: Check JavaScript syntax
         run: npm run check
-
       - name: Check file line limits
         run: node scripts/check-file-line-limits.mjs
 
@@ -60,12 +56,10 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
-
       - name: Use Node.js 24
         uses: actions/setup-node@v6
         with:
           node-version: '24.x'
-
       - name: Run secretlint
         run: npx --yes -p secretlint -p @secretlint/secretlint-rule-preset-recommend secretlint --secretlintignore .gitignore "**/*"
 
@@ -86,19 +80,16 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
       - name: Simulate fresh merge with latest base
         if: github.event_name == 'pull_request'
         shell: bash
         env:
           BASE_REF: ${{ github.base_ref }}
         run: bash scripts/simulate-fresh-merge.sh
-
       - name: Use Node.js 24
         uses: actions/setup-node@v6
         with:
           node-version: '24.x'
-
       - name: Run complete test suite
         run: npm test
 
@@ -115,14 +106,12 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
       - name: Simulate fresh merge with latest base
         if: github.event_name == 'pull_request'
         shell: bash
         env:
           BASE_REF: ${{ github.base_ref }}
         run: bash scripts/simulate-fresh-merge.sh
-
       - name: Smoke-test browser entry points
         shell: bash
         run: |
@@ -148,8 +137,11 @@ jobs:
           curl --fail --silent http://127.0.0.1:4173/app.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/calculation-worker.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/viewer.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/module-viewer.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/calculate.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/solver.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/module-stack.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/module-verification.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/banded.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/buckling.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/weather.js >/dev/null

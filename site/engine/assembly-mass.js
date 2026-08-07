@@ -1,4 +1,5 @@
 import { getBoltSize } from './connection-catalog.js'
+import { resolveModuleDiameters } from './diameter-profile.js'
 import {
   HARDWARE_STEEL_DENSITY_KG_M3,
   metricInternalThreadMinorDiameterMm,
@@ -115,10 +116,22 @@ export function calculateAssemblyMass(result) {
   const parameters = result.parameters
   const geometry = selectedGeometry(result)
   const densityKgM3 = Number(parameters.densityKgM3 ?? HARDWARE_STEEL_DENSITY_KG_M3)
-  const ribMassPerMeterKg = reinforcementMassPerMeterKg(parameters.barDiameterMm, densityKgM3)
   const ribLengthM = Number(parameters.ribCutLengthMm) / 1000
-  const ribMassKg = ribMassPerMeterKg * ribLengthM
-  const ribWeightN = ribMassKg * 9.80665
+  const moduleDiametersMm = resolveModuleDiameters(parameters)
+  const ribProfiles = moduleDiametersMm.map((diameterMm, moduleIndex) => {
+    const massPerMeterKg = reinforcementMassPerMeterKg(diameterMm, densityKgM3)
+    const massKg = massPerMeterKg * ribLengthM
+    return {
+      moduleIndex,
+      moduleNumber: moduleIndex + 1,
+      diameterMm,
+      massPerMeterKg,
+      massKg,
+      weightN: massKg * 9.80665,
+    }
+  })
+  const minimumRib = ribProfiles.reduce((best, item) => item.massKg < best.massKg ? item : best, ribProfiles[0])
+  const maximumRib = ribProfiles.reduce((best, item) => item.massKg > best.massKg ? item : best, ribProfiles[0])
 
   const bolt = estimateBoltMassKg(geometry.bolt, densityKgM3)
   const clearanceNut = estimateNutMassKg(geometry.bottomClearanceNut, densityKgM3)
@@ -134,11 +147,26 @@ export function calculateAssemblyMass(result) {
   const jointWeldMassKg = weldPerEnd.massKg * RIB_ENDS_PER_INTERMODULE_JOINT
   const jointHardwareMassKg = bolt.massKg + clearanceNut.massKg + couplingNut.massKg
   const jointMassKg = jointHardwareMassKg + jointWeldMassKg
-
-  const moduleRibsMassKg = ribMassKg * PHYSICAL_MODULE_RIB_COUNT
   const moduleHardwareMassKg = jointHardwareMassKg * PHYSICAL_MODULE_JOINT_COUNT
   const moduleWeldMassKg = weldPerEnd.massKg * RIB_ENDS_PER_MODULE
-  const moduleMassKg = moduleRibsMassKg + moduleHardwareMassKg + moduleWeldMassKg
+  const moduleProfiles = ribProfiles.map((rib) => {
+    const ribsMassKg = rib.massKg * PHYSICAL_MODULE_RIB_COUNT
+    const totalMassKg = ribsMassKg + moduleHardwareMassKg + moduleWeldMassKg
+    return {
+      moduleIndex: rib.moduleIndex,
+      moduleNumber: rib.moduleNumber,
+      diameterMm: rib.diameterMm,
+      ribsMassKg,
+      hardwareMassKg: moduleHardwareMassKg,
+      weldMassKg: moduleWeldMassKg,
+      totalMassKg,
+      weightN: totalMassKg * 9.80665,
+    }
+  })
+  const minimumModule = moduleProfiles.reduce((best, item) => item.totalMassKg < best.totalMassKg ? item : best, moduleProfiles[0])
+  const maximumModule = moduleProfiles.reduce((best, item) => item.totalMassKg > best.totalMassKg ? item : best, moduleProfiles[0])
+  const profiledModulesMassKg = moduleProfiles.reduce((sum, item) => sum + item.totalMassKg, 0)
+  const uniformMaximumDiameterMassKg = maximumModule.totalMassKg * result.model.moduleCount
 
   const optimizedWeldLengthTotalMm = optimizedWeldLengthMm(result)
   const optimizedWeldMassKg = estimateFilletWeldMassKg({
@@ -150,24 +178,26 @@ export function calculateAssemblyMass(result) {
   return {
     method: ASSEMBLY_MASS_METHOD,
     densityKgM3,
+    moduleDiametersMm,
     includesInGlobalFemSelfWeight: false,
     reasonNotInFem: 'Длина сварки получается из усилий после FEM. Чтобы не вводить скрытую обратную связь «усилия → длина шва → масса → усилия», производственная сборочная масса пока показывается отдельно от собственного веса расчётной frame-модели.',
     rib: {
-      diameterMm: parameters.barDiameterMm,
+      diameterMm: maximumRib.diameterMm,
       lengthMm: parameters.ribCutLengthMm,
-      massPerMeterKg: ribMassPerMeterKg,
-      massKg: ribMassKg,
-      weightN: ribWeightN,
+      massPerMeterKg: maximumRib.massPerMeterKg,
+      massKg: maximumRib.massKg,
+      weightN: maximumRib.weightN,
+      minimumDiameterMm: minimumRib.diameterMm,
+      maximumDiameterMm: maximumRib.diameterMm,
+      minimumMassKg: minimumRib.massKg,
+      maximumMassKg: maximumRib.massKg,
+      profiles: ribProfiles,
+      note: 'Основные поля rib относятся к самому тяжёлому ребру; profiles содержит фактический диаметр и массу каждого яруса.',
     },
     hardware: {
       bolt: { ...geometry.bolt, ...bolt },
       clearanceNut: { ...geometry.bottomClearanceNut, ...clearanceNut },
-      couplingNut: {
-        ...geometry.topCouplingNut,
-        threadEngagementMm: geometry.threadEngagementMm,
-        engagedThreadTurns: geometry.engagedThreadTurns,
-        ...couplingNut,
-      },
+      couplingNut: { ...geometry.topCouplingNut, ...couplingNut },
     },
     weld: {
       legMm: weldLegMm,
@@ -176,7 +206,7 @@ export function calculateAssemblyMass(result) {
       areaMm2: weldPerEnd.areaMm2,
       optimizedEnvelopeTotalLengthMm: optimizedWeldLengthTotalMm,
       optimizedEnvelopeMassKg: optimizedWeldMassKg,
-      uniformDesignRule: 'Для массы унифицированного изделия критическая требуемая физическая длина шва применяется ко всем концам рёбер.',
+      uniformDesignRule: 'Для массы производственного изделия критическая требуемая физическая длина шва применяется ко всем концам; масса рёбер при этом считается по фактическому диаметру каждого модуля.',
     },
     intermoduleJoint: {
       ribEndCount: RIB_ENDS_PER_INTERMODULE_JOINT,
@@ -190,17 +220,24 @@ export function calculateAssemblyMass(result) {
       ribCount: PHYSICAL_MODULE_RIB_COUNT,
       jointCount: PHYSICAL_MODULE_JOINT_COUNT,
       ribEndCount: RIB_ENDS_PER_MODULE,
-      ribsMassKg: moduleRibsMassKg,
-      hardwareMassKg: moduleHardwareMassKg,
-      weldMassKg: moduleWeldMassKg,
-      totalMassKg: moduleMassKg,
-      weightN: moduleMassKg * 9.80665,
+      diameterMm: maximumModule.diameterMm,
+      ribsMassKg: maximumModule.ribsMassKg,
+      hardwareMassKg: maximumModule.hardwareMassKg,
+      weldMassKg: maximumModule.weldMassKg,
+      totalMassKg: maximumModule.totalMassKg,
+      weightN: maximumModule.weightN,
+      minimumTotalMassKg: minimumModule.totalMassKg,
+      maximumTotalMassKg: maximumModule.totalMassKg,
+      profiles: moduleProfiles,
       composition: '9 рёбер + 3 длинные гайки + 3 проходные гайки + 3 болта + 18 сваренных концов',
     },
     mastFabricationEstimate: {
       moduleCount: result.model.moduleCount,
       ribsOnlyFemMassKg: result.analysis?.totalMassKg ?? null,
-      uniformModulesMassKg: moduleMassKg * result.model.moduleCount,
+      profiledModulesMassKg,
+      uniformModulesMassKg: profiledModulesMassKg,
+      uniformMaximumDiameterMassKg,
+      savingsVsUniformMaximumDiameterKg: Math.max(0, uniformMaximumDiameterMassKg - profiledModulesMassKg),
     },
   }
 }

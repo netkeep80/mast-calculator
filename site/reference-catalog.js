@@ -1,4 +1,5 @@
 import './usage-style.js'
+import './diameter-profile-ui.js'
 import { buildReferenceData } from './engine/reference-data.js'
 
 const format = (value, digits = 3) => Number.isFinite(Number(value))

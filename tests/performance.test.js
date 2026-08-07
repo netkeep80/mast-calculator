@@ -9,6 +9,26 @@ import {
 } from '../site/engine/calculate.js'
 import { STATIC_PAYLOAD_PROGRESS_STEPS } from '../site/engine/static-payload-capacity.js'
 
+let benchmark40Cache = null
+
+function benchmark40Modules() {
+  if (benchmark40Cache) return benchmark40Cache
+  const events = []
+  const started = performance.now()
+  const result = calculateCompleteMast({
+    ...DEFAULT_PARAMETERS,
+    moduleCount: 40,
+  }, {
+    onProgress: (event) => events.push({ ...event }),
+  })
+  benchmark40Cache = {
+    result,
+    events,
+    elapsedMs: performance.now() - started,
+  }
+  return benchmark40Cache
+}
+
 test('120° симметрия удаляет только эквивалентные направления полной ветровой сетки', () => {
   const directions30 = windDirections({
     ...DEFAULT_PARAMETERS,
@@ -25,16 +45,8 @@ test('120° симметрия удаляет только эквивалент�
   assert.deepEqual(directions45, [0, 15, 30, 45, 60, 75, 90, 105])
 })
 
-test('40 модулей считают global+modular paths, height search, соединения и verification в bounded time', { timeout: 30_000 }, () => {
-  const events = []
-  const started = performance.now()
-  const result = calculateCompleteMast({
-    ...DEFAULT_PARAMETERS,
-    moduleCount: 40,
-  }, {
-    onProgress: (event) => events.push({ ...event }),
-  })
-  const elapsedMs = performance.now() - started
+test('40 модулей сохраняют корректность global+modular paths, height search, соединений и verification', { timeout: 30_000 }, () => {
+  const { result, events } = benchmark40Modules()
 
   assert.equal(result.performance.linearSystemSolver, 'symmetric-band-cholesky')
   assert.equal(result.performance.stiffnessFactorizationCount, 1)
@@ -68,7 +80,7 @@ test('40 модулей считают global+modular paths, height search, со
   assert.equal(result.heightCapacity.method, 'integer-module-height-search-v1')
   assert.ok(result.heightCapacity.design.maximumModules >= 0)
   assert.ok(result.heightCapacity.ultimateResistance.maximumModules >= result.heightCapacity.design.maximumModules)
-  assert.ok(result.heightCapacity.evaluationCount === result.performance.heightSearchEvaluationCount)
+  assert.equal(result.heightCapacity.evaluationCount, result.performance.heightSearchEvaluationCount)
 
   assert.equal(result.connections.jointCount, 3 * (40 - 1))
   assert.equal(result.connections.bolt.selected.applicable, true)
@@ -105,7 +117,10 @@ test('40 модулей считают global+modular paths, height search, со
   const final = events.at(-1)
   assert.equal(final.phase, 'done')
   assert.equal(final.completed, final.total)
+})
 
+test('40-модульный benchmark остаётся в отдельном wall-clock бюджете', { timeout: 30_000 }, () => {
+  const { result, elapsedMs } = benchmark40Modules()
   console.info(`40-module benchmark: ${elapsedMs.toFixed(1)} ms; DOF=${result.performance.freeDofCount}; bandwidth=${result.performance.stiffnessBandwidth}; moduleFactors=${result.performance.modularInterfaceFactorizationCount}; cases=${result.performance.operationalCaseCount}+${result.performance.lateralCaseCount}+${result.performance.staticPayloadEvaluationCount}; height=${result.performance.heightSearchEvaluationCount}; joints=${result.connections.jointCount}; weldEnds=${result.connections.weld.envelope.length}; verification=${result.verification.counts.internal}`)
   assert.ok(elapsedMs < 20_000, `40-модульный расчёт занял ${elapsedMs.toFixed(0)} мс`)
 })

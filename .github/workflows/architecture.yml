@@ -17,9 +17,9 @@ permissions:
 
 jobs:
   architecture:
-    name: Architecture audit and regression
+    name: Architecture audit
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     concurrency:
       group: architecture-${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: true
@@ -44,8 +44,6 @@ jobs:
         run: npm run test:architecture
       - name: Enforce current architecture baseline
         run: npm run audit:architecture
-      - name: Run complete regression suite
-        run: npm test
       - name: Publish human-readable snapshot to job summary
         if: always()
         shell: bash

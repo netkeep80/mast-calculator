@@ -73,6 +73,18 @@ test('PR CI содержит fresh-merge simulation и три ОС', () => {
   assert.match(ci, /fail-fast:\s*false/)
 })
 
+test('полный regression suite имеет одного владельца, а OS matrix проверяет canonical equivalence', () => {
+  const ci = workflows.get('ci.yml')
+  const architecture = workflows.get('architecture.yml')
+  assert.ok(ci)
+  assert.ok(architecture)
+  assert.equal((ci.match(/run:\s*npm test\s*$/gm) ?? []).length, 1, 'ci.yml должен запускать полный npm test ровно один раз')
+  assert.doesNotMatch(architecture, /run:\s*npm test\s*$/m, 'architecture.yml не должен дублировать полный engineering suite')
+  assert.match(ci, /platform-equivalence:/)
+  assert.match(ci, /name:\s*Canonical equivalence \(\$\{\{ matrix\.os \}\}\)/)
+  assert.match(ci, /npm run test:platform/)
+})
+
 test('PR CI имеет отдельный gate сравнения трёх независимых FEM путей', () => {
   const ci = workflows.get('ci.yml')
   assert.ok(ci)

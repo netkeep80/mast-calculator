@@ -1,4 +1,7 @@
-import { selectedBoltUtilizationForAnalysis } from './connection-check.js'
+import {
+  evaluateBoltSystemForAnalysis,
+  selectedBoltUtilizationForAnalysis,
+} from './connection-check.js'
 import { buildLoadCase } from './loads.js'
 import { STANDARD_GRAVITY_M_S2 } from './lateral-capacity.js'
 import { analyzeFrame, compileFrameSystem } from './solver.js'
@@ -56,6 +59,13 @@ function stateRatios(model, parameters, analysis) {
   }
 }
 
+function selectedBoltExternalLoadFactor(model, analysis, parameters) {
+  const evaluation = evaluateBoltSystemForAnalysis(model, analysis, parameters)
+  if (!evaluation.applicable) return Number.POSITIVE_INFINITY
+  if (evaluation.geometry?.passes === false || evaluation.nutSections?.passes === false) return 0
+  return Math.min(...evaluation.checks.map(({ check }) => check.loadFactorToDesignLimit))
+}
+
 function purePayloadUpperBoundKg(model, unit) {
   const unitRatios = stateRatios(model, unit.parameters, unit.analysis)
   const memberLimitKg = unitRatios.memberRatio > Number.EPSILON
@@ -64,9 +74,7 @@ function purePayloadUpperBoundKg(model, unit) {
   const globalLimitKg = unitRatios.globalRatio > Number.EPSILON
     ? 1 / unitRatios.globalRatio
     : Number.POSITIVE_INFINITY
-  const boltLimitKg = unitRatios.boltRatio > Number.EPSILON
-    ? 1 / unitRatios.boltRatio
-    : Number.POSITIVE_INFINITY
+  const boltLimitKg = selectedBoltExternalLoadFactor(model, unit.analysis, unit.parameters)
   return {
     memberLimitKg,
     globalLimitKg,
@@ -103,7 +111,7 @@ function resultFromLimit(model, parameters, base, limit, ratios, reference, boun
   const baseRatios = stateRatios(model, base.parameters, base.analysis)
 
   return {
-    method: 'gravity-only-top-equipment-mass-with-self-weight-v3-with-bolt',
+    method: 'gravity-only-top-equipment-mass-with-self-weight-v4-fixed-preload-scaling',
     forceApplication: 'масса оборудования/груза вертикально вниз, поровну между тремя узлами верхней треугольной грани',
     includedLoads: 'собственный вес мачты с коэффициентом постоянной нагрузки, искомая масса на вершине с коэффициентом веса оборудования и выбранный межмодульный болт',
     excludedLoads: 'ветер и лёд; это отдельный gravity-only предел массы вершины',
@@ -113,15 +121,10 @@ function resultFromLimit(model, parameters, base, limit, ratios, reference, boun
     maximumNominalTopForceN: maximumTopEquipmentMassKg * STANDARD_GRAVITY_M_S2,
     maximumDesignTopForceN: maximumTopEquipmentMassKg * STANDARD_GRAVITY_M_S2 * gammaPayload,
     additionalTopEquipmentNominalForceN: additionalTopEquipmentMassKg * STANDARD_GRAVITY_M_S2,
-
-    // Compatibility aliases для внутреннего snapshot/UI предыдущих версий.
-    // Они имеют тот же однозначный смысл массы и больше не включают пересчёт
-    // произвольной дополнительной вертикальной силы.
     maximumTotalTopMassKg: maximumTopEquipmentMassKg,
     configuredEquivalentTopMassKg: configuredTopEquipmentMassKg,
     remainingAdditionalMassKg: additionalTopEquipmentMassKg,
     remainingAdditionalNominalForceN: additionalTopEquipmentMassKg * STANDARD_GRAVITY_M_S2,
-
     governingMode: ratios.governingMode,
     criticalMemberId: limit.analysis.criticalMemberId,
     utilizationAtLimit: limit.analysis.maxUtilization,

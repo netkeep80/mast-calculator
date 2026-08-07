@@ -21,9 +21,11 @@ export function selectUniformDiameter(parameters, diameters = STANDARD_DIAMETERS
 
   for (let index = 0; index < orderedDiameters.length; index += 1) {
     const diameter = orderedDiameters[index]
+    const variantParameters = { ...uniformParameters, barDiameterMm: diameter }
     const result = calculateMast(
-      { ...uniformParameters, barDiameterMm: diameter },
+      variantParameters,
       {
+        resolvedProject: variantParameters,
         onProgress: (event) => options.onProgress?.({
           phase: 'variant',
           diameter,
@@ -57,10 +59,6 @@ export function selectUniformDiameter(parameters, diameters = STANDARD_DIAMETERS
       passesConnection,
     })
 
-    // Диаметры проверяются по возрастанию. В режиме auto каждый вариант уже
-    // содержит собственную минимальную согласованную конфигурацию болта/гаек.
-    // Первый вариант, проходящий каркас И соединение, является минимальным
-    // пригодным комплектом и позволяет не считать более крупную арматуру.
     if (stopAtFirstPassing && variantPasses(variant)) break
   }
 

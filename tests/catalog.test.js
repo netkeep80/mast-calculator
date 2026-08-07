@@ -4,14 +4,22 @@ import {
   getReinforcementClass,
   regularOctahedronHeightMm,
   STANDARD_DIAMETERS_MM,
+  STOCK_BAR_DIVISIONS,
   theoreticalCutLengthMm,
 } from '../site/engine/catalog.js'
 import { resolveCalculationParameters } from '../site/engine/calculate.js'
 
 test('закупочный пруток делится на заданное число равных заготовок', () => {
+  assert.equal(theoreticalCutLengthMm(12000, 1), 12000)
   assert.equal(theoreticalCutLengthMm(12000, 16), 750)
   assert.equal(theoreticalCutLengthMm(11800, 16), 737.5)
   assert.equal(theoreticalCutLengthMm(11800, 12), 11800 / 12)
+  assert.equal(theoreticalCutLengthMm(12000, 48), 250)
+})
+
+test('каталог раскроя содержит каждый целый вариант от 1 до 48', () => {
+  assert.equal(STOCK_BAR_DIVISIONS.length, 48)
+  assert.deepEqual(STOCK_BAR_DIVISIONS, Array.from({ length: 48 }, (_, index) => index + 1))
 })
 
 test('высота правильного октаэдра однозначно определяется длиной ребра', () => {
@@ -22,6 +30,7 @@ test('высота правильного октаэдра однозначно 
 test('некорректный раскрой и длина ребра отвергаются', () => {
   assert.throws(() => theoreticalCutLengthMm(0, 12), /положительным/)
   assert.throws(() => theoreticalCutLengthMm(12000, 12.5), /целым/)
+  assert.throws(() => theoreticalCutLengthMm(12000, 49), /от 1 до 48/)
   assert.throws(() => regularOctahedronHeightMm(-1), /положительным/)
 })
 

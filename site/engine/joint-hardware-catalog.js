@@ -159,6 +159,8 @@ export function buildJointHardwareGeometry(options = {}) {
     },
     topCouplingNut: {
       ...couplingNut,
+      threadEngagementMm,
+      engagedThreadTurns: threadEngagementMm / bolt.pitchMm,
       ribCount: 4,
       purpose: 'Верхний узел модуля: к длинной соединительной гайке приварены четыре ребра; болт ввинчивается в её резьбу.',
     },

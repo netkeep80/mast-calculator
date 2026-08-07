@@ -1,4 +1,5 @@
 import { calculateAssemblyMass } from './assembly-mass.js'
+import { createEskdConstructionDocumentation } from './eskd-construction-documentation.js'
 import { buildReferenceData } from './reference-data.js'
 
 const escapeHtml = (value) => String(value ?? '')
@@ -133,5 +134,6 @@ export function createFabricationAndReferenceAppendix(result) {
 <p>Полный справочник диаметров, Ab/Abn, обычных и длинных гаек доступен в браузерном интерфейсе и формируется тем же <code>buildReferenceData()</code>.</p>
 ${jointStrengthAppendix(result, data)}
 ${craneBoomAppendix(result)}
-</section>`
+</section>
+${createEskdConstructionDocumentation(result)}`
 }

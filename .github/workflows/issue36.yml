@@ -16,7 +16,7 @@ env:
 
 jobs:
   static-load-simplification:
-    name: Static load simplification and cut range
+    name: Static loads, crane boom and cut range
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
@@ -36,7 +36,14 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24.x'
-      - name: Check issue #36 static-load model and 1-48 cut range
+      - name: Check issue #36 static-load model, horizontal boom and 1-48 cut range
         run: npm run test:issue36
       - name: Check JavaScript syntax
         run: npm run check
+      - name: Check browser module is deployable
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s site/engine/crane-boom-capacity.js
+          grep --quiet 'crane-boom-capacity.js' site/engine/complete-calculation.js
+          grep --quiet 'craneBoomCapacity' site/usage-scenarios.js

@@ -249,7 +249,7 @@ test('расчёт мачты использует frame solver и жёстки�
     windEnvelopeEnabled: false,
     effectiveLengthFactor: 1.7,
   })
-  assert.equal(result.method.id, 'linear-frame-v0.5')
+  assert.equal(result.method.id, 'linear-frame-v0.6')
   assert.equal(result.analysis.solver, 'linear-3d-frame-euler-bernoulli')
   assert.equal(result.parameters.effectiveLengthFactor, 0.5)
   assert.ok(result.analysis.memberResults.every((member) => Number.isFinite(member.equivalentStressPa)))

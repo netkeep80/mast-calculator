@@ -10,9 +10,9 @@
 <body>
   <header class="page-header">
     <div>
-      <p class="eyebrow">Mast Calculator · прототип 0.6</p>
+      <p class="eyebrow">Mast Calculator · прототип 0.7</p>
       <h1>Расчёт модульной мачты</h1>
-      <p class="subtitle">Правильные октаэдры, жёстко сваренный арматурный frame-каркас, погодные сценарии и проверяемая боковая нагрузка вершины.</p>
+      <p class="subtitle">Правильные октаэдры, жёстко сваренный арматурный frame-каркас, быстрый ленточный solver, погодные сценарии и проверяемая боковая нагрузка вершины.</p>
     </div>
   </header>
 
@@ -71,6 +71,20 @@
           <button id="calculate-button" class="primary" type="button">Выполнить расчёт</button>
           <button id="optimize-button" class="secondary" type="button">Подобрать диаметр</button>
         </div>
+
+        <section id="calculation-progress" class="calculation-progress" hidden aria-live="polite" aria-atomic="true">
+          <div class="progress-title-row">
+            <strong id="progress-stage">Подготовка расчёта</strong>
+            <span id="progress-percent">0%</span>
+          </div>
+          <progress id="progress-bar" max="100" value="0">0%</progress>
+          <p id="progress-detail" class="progress-detail">Ожидание запуска…</p>
+          <div class="progress-meta">
+            <span id="progress-elapsed">Прошло: 0 с</span>
+            <span id="progress-eta">Осталось: оценивается…</span>
+          </div>
+          <button id="cancel-calculation-button" class="secondary cancel-button" type="button">Отменить расчёт</button>
+        </section>
       </form>
       <p id="error" class="error" hidden></p>
       <p id="optimization-result" class="optimization" hidden></p>

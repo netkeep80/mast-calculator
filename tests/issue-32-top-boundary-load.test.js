@@ -18,8 +18,6 @@ function quietParameters(overrides = {}) {
     windEnvelopeEnabled: false,
     windPressurePa: 0,
     equipmentWindAreaM2: 0,
-    extraHorizontalLoadN: 0,
-    extraVerticalLoadN: 0,
     iceThicknessMm: 0,
     ...overrides,
   }
@@ -61,7 +59,7 @@ test('issue #32: верхняя масса передаётся через ст�
   assert.ok(result.analysis.modular.interfaceEquilibriumResidual < 1e-8)
 })
 
-test('масса оборудования и дополнительная вертикальная сила не дублируются по смыслу', () => {
+test('issue #36: масса оборудования остаётся единственной пользовательской вертикальной нагрузкой', () => {
   const model = {
     nodes: [0, 1, 2].map((id) => ({ id, position: [id, 0, 1], restrained: new Array(6).fill(false) })),
     members: [],
@@ -70,28 +68,36 @@ test('масса оборудования и дополнительная вер
   const parameters = quietParameters({
     equipmentMassKg: 100,
     equipmentLoadFactor: 1.25,
+    // Старое поле может встретиться в сохранённом snapshot, но больше не является
+    // пользовательской нагрузкой и не должно менять физический load case.
     extraVerticalLoadN: 500,
   })
   const loads = buildLoadCase(model, parameters)
   const expectedEquipmentWeightN = 100 * GRAVITY * 1.25
-  const expectedTotalVerticalN = expectedEquipmentWeightN + 500
 
   approximately(loads.equipmentWeightN, expectedEquipmentWeightN)
-  approximately(loads.extraVerticalLoadN, 500)
-  approximately(loads.topVerticalLoadN, expectedTotalVerticalN)
-  approximately(loads.nodalResultant[2], -expectedTotalVerticalN)
+  approximately(loads.topVerticalLoadN, expectedEquipmentWeightN)
+  approximately(loads.nodalResultant[2], -expectedEquipmentWeightN)
+  assert.equal('extraVerticalLoadN' in loads, false)
 
-  // extraVerticalLoadN уже задан в Н и не должен повторно умножаться на γ оборудования.
-  approximately(loads.topVerticalLoadN - loads.equipmentWeightN, 500)
+  // Если независимой проверке всё-таки нужна известная сила, она передаётся не
+  // через пользовательские параметры, а через отдельный внутренний fixture API.
+  const fixture = buildLoadCase(model, {
+    ...parameters,
+    equipmentMassKg: 0,
+  }, { topPointLoadN: [0, 0, -500] })
+  approximately(fixture.topVerticalLoadN, 500)
+  approximately(fixture.nodalResultant[2], -500)
 })
 
-test('UI объясняет суммарную нагрузку верхней грани и различие массы и силы', () => {
-  const html = fs.readFileSync(new URL('../site/index.html', import.meta.url), 'utf8')
+test('issue #36: UI оставляет одну массу и удаляет произвольные силы из пользовательской формы', () => {
   const viewer = fs.readFileSync(new URL('../site/module-viewer.js', import.meta.url), 'utf8')
+  const usage = fs.readFileSync(new URL('../site/usage-scenarios.js', import.meta.url), 'utf8')
 
   assert.match(viewer, /нагрузка на верхнюю грань/i)
   assert.doesNotMatch(viewer, /нагрузка от стека сверху/i)
-  assert.match(html, /не задавайте одну и ту же нагрузку/i)
-  assert.match(html, /m·g·γ/i)
-  assert.match(html, /уже как сила/i)
+  assert.match(usage, /removeLegacyForceControl\('extraHorizontalLoadN'\)/)
+  assert.match(usage, /removeLegacyForceControl\('extraVerticalLoadN'\)/)
+  assert.match(usage, /Уже установленная масса на вершине, кг/)
+  assert.match(usage, /внутренн.*point-load|внутренн.*unit-load/i)
 })

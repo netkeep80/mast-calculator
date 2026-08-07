@@ -17,9 +17,21 @@ const workflows = new Map(workflowFiles.map((name) => [
 function jobBlocks(workflow) {
   const jobsIndex = workflow.indexOf('\njobs:')
   assert.notEqual(jobsIndex, -1, 'workflow должен содержать jobs')
-  const jobs = workflow.slice(jobsIndex + 1)
-  const matches = [...jobs.matchAll(/^  ([A-Za-z0-9_-]+):\s*\n([\s\S]*?)(?=^  [A-Za-z0-9_-]+:\s*\n|\z)/gm)]
-  return matches.map((match) => ({ name: match[1], block: match[2] }))
+  const lines = workflow.slice(jobsIndex + '\njobs:'.length).split(/\r?\n/)
+  const jobs = []
+  let current = null
+
+  for (const line of lines) {
+    const match = line.match(/^  ([A-Za-z0-9_-]+):\s*$/)
+    if (match) {
+      if (current) jobs.push(current)
+      current = { name: match[1], block: '' }
+      continue
+    }
+    if (current) current.block += `${line}\n`
+  }
+  if (current) jobs.push(current)
+  return jobs
 }
 
 test('CI/CD workflows используют least-privilege contents: read по умолчанию', () => {

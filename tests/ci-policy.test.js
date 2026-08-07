@@ -79,15 +79,27 @@ test('PR CI имеет отдельный gate сравнения трёх не�
   assert.match(ci, /triple-fem:/)
   assert.match(ci, /name:\s*Triple FEM equivalence/)
   assert.match(ci, /npm run test:triple/)
-  assert.match(ci, /Compare global, Schur and independent dense FEM/)
 })
 
-test('static-site smoke загружает worker, module viewer и все browser-модули расчёта', () => {
+test('PR CI имеет отдельный gate физического конфигуратора соединительного узла', () => {
+  const ci = workflows.get('ci.yml')
+  assert.ok(ci)
+  assert.match(ci, /joint-configurator:/)
+  assert.match(ci, /name:\s*Joint configurator/)
+  assert.match(ci, /npm run test:joint/)
+  assert.match(ci, /two-nut physical joint/i)
+})
+
+test('static-site smoke загружает интерфейс, логотип и все новые модули узла', () => {
   const ci = workflows.get('ci.yml')
   assert.ok(ci)
   for (const modulePath of [
+    'logo.jpg',
+    'app-bootstrap.js',
     'calculation-worker.js',
     'module-viewer.js',
+    'joint-viewer.js',
+    'engine/complete-calculation.js',
     'engine/reference-frame.js',
     'engine/module-stack.js',
     'engine/module-verification.js',
@@ -95,6 +107,8 @@ test('static-site smoke загружает worker, module viewer и все brows
     'engine/buckling.js',
     'engine/weather.js',
     'engine/connection-catalog.js',
+    'engine/joint-hardware-catalog.js',
+    'engine/joint-configurator.js',
     'engine/bolt-check.js',
     'engine/weld-check.js',
     'engine/joint-demand.js',
@@ -104,9 +118,10 @@ test('static-site smoke загружает worker, module viewer и все brows
     'engine/verification.js',
     'engine/calculation-project.js',
   ]) assert.ok(ci.includes(modulePath), `ci.yml smoke не проверяет ${modulePath}`)
+  assert.match(ci, /<title>Калькулятор мачты<\/title>/)
 })
 
-test('Pages deploy использует официальные актуальные actions и не отменяет начатую публикацию', () => {
+test('Pages deploy использует официальные актуальные actions, не отменяет публикацию и упаковывает логотип', () => {
   const pages = workflows.get('pages.yml')
   assert.ok(pages)
   assert.match(pages, /actions\/configure-pages@v6/)
@@ -116,6 +131,7 @@ test('Pages deploy использует официальные актуальн�
   assert.match(pages, /cancel-in-progress:\s*false/)
   assert.match(pages, /pages:\s*write/)
   assert.match(pages, /id-token:\s*write/)
+  assert.match(pages, /cp logo\.jpg _site\/logo\.jpg/)
 })
 
 test('каждый workflow сохраняет явную Git default branch конфигурацию', () => {

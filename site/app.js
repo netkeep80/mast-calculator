@@ -15,11 +15,7 @@ import {
   WELD_CONSUMABLES,
 } from './engine/connection-catalog.js'
 import { createCalculationProjectHtml } from './engine/calculation-project.js'
-import {
-  buildMaterialSummary,
-  buildMemberEnvelope,
-  createCalculationCsv,
-} from './engine/report.js'
+import { buildMaterialSummary, buildMemberEnvelope, createCalculationCsv } from './engine/report.js'
 import {
   CUSTOM_WIND_PRESET_ID,
   getWeatherPreset,
@@ -27,40 +23,50 @@ import {
   windPressureFromSpeedMs,
   windSpeedFromPressurePa,
 } from './engine/weather.js'
+import { ModuleViewer } from './module-viewer.js'
 import { MastViewer } from './viewer.js'
 
-const form = document.querySelector('#parameters-form')
-const calculateButton = document.querySelector('#calculate-button')
-const optimizeButton = document.querySelector('#optimize-button')
-const exportNoteButton = document.querySelector('#export-note-button')
-const exportCsvButton = document.querySelector('#export-csv-button')
-const cancelCalculationButton = document.querySelector('#cancel-calculation-button')
-const errorBox = document.querySelector('#error')
-const resultsSection = document.querySelector('#results')
-const warningsList = document.querySelector('#warnings')
-const optimizationBox = document.querySelector('#optimization-result')
-const showBucklingMode = document.querySelector('#show-buckling-mode')
-const memberResultsBody = document.querySelector('#member-results-body')
-const materialSummaryBox = document.querySelector('#material-summary')
-const materialInfoBox = document.querySelector('#material-info')
-const boltRecommendationsBody = document.querySelector('#bolt-recommendations-body')
-const weldResultsBody = document.querySelector('#weld-results-body')
-const weldRecommendationBox = document.querySelector('#weld-recommendation')
-const connectionSummaryBox = document.querySelector('#connection-summary')
-const connectionSummaryCard = document.querySelector('#connection-summary-card')
-const verificationSummaryBox = document.querySelector('#verification-summary')
-const verificationSummaryCard = document.querySelector('#verification-summary-card')
-const verificationLevelsBox = document.querySelector('#verification-levels')
-const verificationChecksBox = document.querySelector('#verification-checks')
-const progressPanel = document.querySelector('#calculation-progress')
-const progressBar = document.querySelector('#progress-bar')
-const progressStage = document.querySelector('#progress-stage')
-const progressPercent = document.querySelector('#progress-percent')
-const progressDetail = document.querySelector('#progress-detail')
-const progressElapsed = document.querySelector('#progress-elapsed')
-const progressEta = document.querySelector('#progress-eta')
-const viewer = new MastViewer(document.querySelector('#mast-canvas'))
+const $ = (selector) => document.querySelector(selector)
+const form = $('#parameters-form')
+const calculateButton = $('#calculate-button')
+const optimizeButton = $('#optimize-button')
+const exportNoteButton = $('#export-note-button')
+const exportCsvButton = $('#export-csv-button')
+const cancelCalculationButton = $('#cancel-calculation-button')
+const errorBox = $('#error')
+const resultsSection = $('#results')
+const warningsList = $('#warnings')
+const optimizationBox = $('#optimization-result')
+const showBucklingMode = $('#show-buckling-mode')
+const moduleSelector = $('#module-selector')
+const memberGroupMode = $('#member-group-mode')
+const memberSortField = $('#member-sort-field')
+const memberSortDirection = $('#member-sort-direction')
+const memberResultsBody = $('#member-results-body')
+const materialSummaryBox = $('#material-summary')
+const materialInfoBox = $('#material-info')
+const boltRecommendationsBody = $('#bolt-recommendations-body')
+const weldResultsBody = $('#weld-results-body')
+const weldRecommendationBox = $('#weld-recommendation')
+const connectionSummaryBox = $('#connection-summary')
+const connectionSummaryCard = $('#connection-summary-card')
+const verificationSummaryBox = $('#verification-summary')
+const verificationSummaryCard = $('#verification-summary-card')
+const verificationLevelsBox = $('#verification-levels')
+const verificationChecksBox = $('#verification-checks')
+const moduleInterfaceBody = $('#module-interface-body')
+const moduleMemberBody = $('#module-member-body')
+const moduleDetailSummary = $('#module-detail-summary')
+const moduleDetailTitle = $('#module-detail-title')
+const progressPanel = $('#calculation-progress')
+const progressBar = $('#progress-bar')
+const progressStage = $('#progress-stage')
+const progressPercent = $('#progress-percent')
+const progressDetail = $('#progress-detail')
+const progressElapsed = $('#progress-elapsed')
+const progressEta = $('#progress-eta')
 
+let selectedModuleIndex = 0
 let lastResult = null
 let lastParameters = null
 let activeWorker = null
@@ -69,11 +75,13 @@ let activeJobStartedAt = 0
 let progressTimer = null
 let latestProgressFraction = 0
 let buildInfo = {
-  repository: 'netkeep80/mast-calculator',
-  ref: 'local',
-  sha: 'development',
-  runId: 'local',
+  repository: 'netkeep80/mast-calculator', ref: 'local', sha: 'development', runId: 'local',
 }
+
+const moduleViewer = new ModuleViewer($('#module-canvas'))
+const mastViewer = new MastViewer($('#mast-canvas'), {
+  onModuleSelect: (moduleIndex) => selectModule(moduleIndex),
+})
 
 fetch('./build-info.json', { cache: 'no-store' })
   .then((response) => response.ok ? response.json() : null)
@@ -82,15 +90,14 @@ fetch('./build-info.json', { cache: 'no-store' })
 
 const numericFieldNames = [
   'moduleCount', 'stockBarLengthMm', 'stockBarPieces', 'barDiameterMm',
-  'materialSafetyFactor', 'deadLoadFactor', 'windLoadFactor',
-  'equipmentLoadFactor', 'windPressurePa', 'dragCoefficient', 'windDirectionDeg',
-  'windEnvelopeStepDeg', 'lateralCapacityStepDeg', 'equipmentMassKg',
+  'materialSafetyFactor', 'deadLoadFactor', 'windLoadFactor', 'equipmentLoadFactor',
+  'windPressurePa', 'dragCoefficient', 'windDirectionDeg', 'windEnvelopeStepDeg',
+  'lateralCapacityStepDeg', 'heightSearchMaxModules', 'equipmentMassKg',
   'equipmentWindAreaM2', 'equipmentDragCoefficient', 'extraHorizontalLoadN',
   'extraVerticalLoadN', 'iceThicknessMm', 'iceDensityKgM3', 'displacementLimitMm',
   'minimumBucklingFactor', 'jointBoltDiameterMm', 'jointBoltShearPlanes',
-  'jointEffectiveRadiusMm', 'connectionConditionFactor',
-  'jointBaseMetalTensileStrengthMPa', 'weldLegMm', 'weldSegmentsPerEnd',
-  'weldBetaF', 'weldBetaZ',
+  'jointEffectiveRadiusMm', 'connectionConditionFactor', 'jointBaseMetalTensileStrengthMPa',
+  'weldLegMm', 'weldSegmentsPerEnd', 'weldBetaF', 'weldBetaZ',
 ]
 
 function populateSelect(name, values, label = String) {
@@ -104,14 +111,14 @@ function populateSelect(name, values, label = String) {
 }
 
 populateSelect('stockBarLengthMm', STOCK_BAR_LENGTHS_MM, (value) => `${value / 1000} м`)
-populateSelect('stockBarPieces', STOCK_BAR_DIVISIONS, (value) => `${value}`)
+populateSelect('stockBarPieces', STOCK_BAR_DIVISIONS, String)
 populateSelect('barDiameterMm', STANDARD_DIAMETERS_MM, (value) => `Ø${value}`)
 populateSelect('reinforcementClass', REINFORCEMENT_CLASS_IDS, (value) => getReinforcementClass(value).label)
 populateSelect('jointBoltDiameterMm', BOLT_DIAMETERS_MM, (value) => {
   const size = getBoltSize(value)
   return `M${size.diameterMm}×${size.pitchMm}`
 })
-populateSelect('jointBoltClass', BOLT_PROPERTY_CLASS_IDS, (value) => `${value}`)
+populateSelect('jointBoltClass', BOLT_PROPERTY_CLASS_IDS, String)
 populateSelect('weldConsumableId', WELD_CONSUMABLES.map((item) => item.id), (id) => (
   WELD_CONSUMABLES.find((item) => item.id === id)?.label ?? id
 ))
@@ -120,36 +127,34 @@ populateSelect(
   [CUSTOM_WIND_PRESET_ID, ...WEATHER_PRESETS.map((preset) => preset.id)],
   (id) => {
     const preset = getWeatherPreset(id)
-    if (preset.id === CUSTOM_WIND_PRESET_ID) return preset.label
-    return `Бофорт ${preset.beaufort}: ${preset.label} · ${preset.range}`
+    return preset.id === CUSTOM_WIND_PRESET_ID
+      ? preset.label
+      : `Бофорт ${preset.beaufort}: ${preset.label} · ${preset.range}`
   },
 )
 
 for (const name of numericFieldNames) {
   const input = form.elements.namedItem(name)
-  if (input) input.value = DEFAULT_PARAMETERS[name]
+  if (input && DEFAULT_PARAMETERS[name] != null) input.value = DEFAULT_PARAMETERS[name]
 }
 form.elements.namedItem('reinforcementClass').value = DEFAULT_PARAMETERS.reinforcementClass
 form.elements.namedItem('jointBoltClass').value = DEFAULT_PARAMETERS.jointBoltClass
 form.elements.namedItem('weldConsumableId').value = DEFAULT_PARAMETERS.weldConsumableId
 form.elements.namedItem('windPresetId').value = DEFAULT_PARAMETERS.windPresetId
-form.elements.namedItem('closeTopRing').checked = DEFAULT_PARAMETERS.closeTopRing
 form.elements.namedItem('windEnvelopeEnabled').checked = DEFAULT_PARAMETERS.windEnvelopeEnabled
 
-const format = (value, digits = 2) => new Intl.NumberFormat('ru-RU', {
-  minimumFractionDigits: digits,
-  maximumFractionDigits: digits,
-}).format(value)
+const format = (value, digits = 2) => Number.isFinite(Number(value))
+  ? new Intl.NumberFormat('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)
+  : '∞'
 const formatFactor = (value) => Number.isFinite(value) ? format(value, 3) : '∞'
 const formatForce = (value, digits = 1) => Number.isFinite(value) ? format(value, digits) : '∞'
-const angle = (value) => `${format(value, 0)}°`
+const angle = (value) => Number.isFinite(value) ? `${format(value, 0)}°` : '—'
+const norm3 = (value) => Math.hypot(...(value ?? [0, 0, 0]))
 
 function formatDuration(milliseconds) {
   const seconds = Math.max(0, Math.round(milliseconds / 1000))
   if (seconds < 60) return `${seconds} с`
-  const minutes = Math.floor(seconds / 60)
-  const remainder = seconds % 60
-  return `${minutes} мин ${remainder} с`
+  return `${Math.floor(seconds / 60)} мин ${seconds % 60} с`
 }
 
 function syncWindFields() {
@@ -159,13 +164,12 @@ function syncWindFields() {
 }
 
 function syncWindPresetFields() {
-  const presetId = form.elements.namedItem('windPresetId').value
-  const preset = getWeatherPreset(presetId)
+  const preset = getWeatherPreset(form.elements.namedItem('windPresetId').value)
   const pressureInput = form.elements.namedItem('windPressurePa')
   const speedInput = form.elements.namedItem('windSpeedMs')
-  const isCustom = preset.id === CUSTOM_WIND_PRESET_ID
-  pressureInput.readOnly = !isCustom
-  if (isCustom) {
+  const custom = preset.id === CUSTOM_WIND_PRESET_ID
+  pressureInput.readOnly = !custom
+  if (custom) {
     speedInput.value = windSpeedFromPressurePa(Number(pressureInput.value)).toFixed(2)
   } else {
     pressureInput.value = windPressureFromSpeedMs(preset.designSpeedMs).toFixed(1)
@@ -181,26 +185,27 @@ function syncFabricationFields() {
   form.elements.namedItem('ribCutLengthMm').value = cutLength.toFixed(2)
   form.elements.namedItem('moduleHeightMm').value = moduleHeight.toFixed(2)
   const material = getReinforcementClass(form.elements.namedItem('reinforcementClass').value)
-  materialInfoBox.textContent = `${material.label}, ${material.standard}: Rp/Ry = ${material.yieldStrengthMPa} МПа, Rm = ${material.tensileStrengthMPa} МПа, E = ${material.youngModulusGPa} ГПа, ν = ${material.poissonRatio}. Для выбранных классов предусмотрена гарантия свариваемости.`
+  materialInfoBox.textContent = `${material.label}, ${material.standard}: Ry = ${material.yieldStrengthMPa} МПа, Rm = ${material.tensileStrengthMPa} МПа, E = ${material.youngModulusGPa} ГПа, ν = ${material.poissonRatio}.`
 }
 
 function readParameters() {
   const parameters = { ...DEFAULT_PARAMETERS }
   for (const name of numericFieldNames) {
     const element = form.elements.namedItem(name)
+    if (!element) continue
     const value = Number(element.value)
     if (!Number.isFinite(value)) throw new Error(`Поле «${element.labels?.[0]?.textContent ?? name}» заполнено неверно`)
     parameters[name] = value
   }
   parameters.moduleCount = Math.floor(parameters.moduleCount)
   parameters.stockBarPieces = Math.floor(parameters.stockBarPieces)
+  parameters.heightSearchMaxModules = Math.floor(parameters.heightSearchMaxModules)
   parameters.jointBoltShearPlanes = Math.floor(parameters.jointBoltShearPlanes)
   parameters.weldSegmentsPerEnd = Math.floor(parameters.weldSegmentsPerEnd)
   parameters.reinforcementClass = form.elements.namedItem('reinforcementClass').value
   parameters.jointBoltClass = form.elements.namedItem('jointBoltClass').value
   parameters.weldConsumableId = form.elements.namedItem('weldConsumableId').value
   parameters.windPresetId = form.elements.namedItem('windPresetId').value
-  parameters.closeTopRing = form.elements.namedItem('closeTopRing').checked
   parameters.windEnvelopeEnabled = form.elements.namedItem('windEnvelopeEnabled').checked
   return resolveCalculationParameters(parameters)
 }
@@ -225,9 +230,11 @@ function exportFilename(extension) {
 
 function limitModeLabel(mode) {
   if (mode === 'global-buckling') return 'общая потеря устойчивости'
-  if (mode === 'local-member-buckling') return 'локальная устойчивость ребра'
+  if (mode === 'local-member-buckling') return 'потеря устойчивости ребра'
+  if (mode === 'tensile-rupture') return 'растягивающий разрыв ребра'
   if (mode === 'material-strength') return 'прочность материала'
   if (mode === 'bolt-connection') return 'межмодульный болт'
+  if (mode === 'serviceability-displacement') return 'предельный прогиб'
   if (mode === 'self-weight-overlimit') return 'собственный вес уже превышает предел'
   return 'не определён'
 }
@@ -238,22 +245,78 @@ function verificationStatusLabel(status) {
   return 'не проверено'
 }
 
+function memberSortValue(member, field) {
+  const value = member[field]
+  if (field === 'axialForceN') return Math.abs(value ?? 0)
+  return Number(value) || 0
+}
+
+function memberComparator(left, right) {
+  const field = memberSortField.value
+  const direction = memberSortDirection.value === 'asc' ? 1 : -1
+  const delta = memberSortValue(left, field) - memberSortValue(right, field)
+  if (Math.abs(delta) > Number.EPSILON) return direction * delta
+  return left.memberId - right.memberId
+}
+
+function createMemberRow(member) {
+  const row = document.createElement('tr')
+  if (member.utilization > 1) row.classList.add('danger-row')
+  const values = [
+    member.moduleNumber ?? '—', member.memberId, member.familyName,
+    `${member.nodeA}–${member.nodeB}`, format(member.lengthM * 1000, 1),
+    format(member.axialForceN / 1000, 3), format(member.maxShearN / 1000, 3),
+    format(member.maxBendingNm, 2), format(member.equivalentStressPa / 1e6, 2),
+    angle(member.windDirectionDeg), format(member.utilization, 4),
+  ]
+  row.replaceChildren(...values.map((value) => {
+    const cell = document.createElement('td')
+    cell.textContent = value
+    return cell
+  }))
+  return row
+}
+
 function renderMemberReport(result) {
-  const members = buildMemberEnvelope(result).sort((left, right) => right.utilization - left.utilization)
-  memberResultsBody.replaceChildren(...members.map((member) => {
+  const members = buildMemberEnvelope(result)
+  const rows = []
+  if (memberGroupMode.value === 'module') {
+    const groups = new Map()
+    for (const member of members) {
+      const number = member.moduleNumber ?? 0
+      if (!groups.has(number)) groups.set(number, [])
+      groups.get(number).push(member)
+    }
+    for (const number of [...groups.keys()].sort((a, b) => a - b)) {
+      const group = groups.get(number).sort(memberComparator)
+      const header = document.createElement('tr')
+      header.className = 'member-group-row'
+      const cell = document.createElement('td')
+      cell.colSpan = 11
+      const maxU = Math.max(...group.map((member) => member.utilization))
+      cell.textContent = `Модуль ${number} · 9 рёбер · максимальное использование ${format(maxU, 4)}`
+      header.append(cell)
+      rows.push(header, ...group.map(createMemberRow))
+    }
+  } else {
+    rows.push(...members.sort(memberComparator).map(createMemberRow))
+  }
+  memberResultsBody.replaceChildren(...rows)
+
+  const material = buildMaterialSummary(result)
+  const groupDescription = material.groups.map((group) => (
+    `${group.familyName.toLowerCase()} Ø${format(group.diameterMm, 0)} × ${format(group.lengthMm, 0)} мм — ${group.count} шт.`
+  )).join('; ')
+  materialSummaryBox.textContent = `Всего ${material.totalCount} рёбер = ${result.model.moduleCount}×9, ${format(material.totalLengthM, 2)} м и ${format(material.totalMassKg, 1)} кг стали. ${groupDescription}`
+}
+
+function actionRows(actions, side) {
+  return actions.map((action) => {
     const row = document.createElement('tr')
-    if (member.utilization > 1) row.classList.add('danger-row')
     const values = [
-      member.memberId,
-      member.familyName,
-      `${member.nodeA}–${member.nodeB}`,
-      format(member.lengthM * 1000, 1),
-      format(member.axialForceN / 1000, 3),
-      format(member.maxShearN / 1000, 3),
-      format(member.maxBendingNm, 2),
-      format(member.equivalentStressPa / 1e6, 2),
-      angle(member.windDirectionDeg),
-      format(member.utilization, 4),
+      action.nodeId, side,
+      format(action.forceN[0] / 1000, 3), format(action.forceN[1] / 1000, 3), format(action.forceN[2] / 1000, 3),
+      format(action.momentNm[0], 2), format(action.momentNm[1], 2), format(action.momentNm[2], 2),
     ]
     row.replaceChildren(...values.map((value) => {
       const cell = document.createElement('td')
@@ -261,29 +324,85 @@ function renderMemberReport(result) {
       return cell
     }))
     return row
-  }))
+  })
+}
 
-  const material = buildMaterialSummary(result)
-  const groupDescription = material.groups.map((group) => (
-    `${group.familyName.toLowerCase()} Ø${format(group.diameterMm, 0)} × ${format(group.lengthMm, 0)} мм — ${group.count} шт.`
-  )).join('; ')
-  materialSummaryBox.textContent = `Всего ${material.totalCount} рёбер, ${format(material.totalLengthM, 2)} м и ${format(material.totalMassKg, 1)} кг стали. ${groupDescription}`
+function renderSelectedModule() {
+  if (!lastResult?.model?.modules?.length) return
+  const module = lastResult.model.modules[selectedModuleIndex]
+  const loadCase = lastResult.envelope.governing
+  const state = loadCase.analysis.moduleResults?.[selectedModuleIndex]
+  if (!module || !state) return
+
+  moduleDetailTitle.textContent = `Подробно: модуль ${module.number} из ${lastResult.model.moduleCount}`
+  moduleViewer.setModule(selectedModuleIndex)
+  mastViewer.setSelectedModule(selectedModuleIndex)
+  moduleSelector.value = String(selectedModuleIndex)
+
+  moduleInterfaceBody.replaceChildren(
+    ...actionRows(state.topAppliedFromAbove, 'сверху'),
+    ...actionRows(state.bottomReactionFromBelow, 'снизу'),
+  )
+
+  const memberRows = module.memberIds.map((memberId) => {
+    const member = lastResult.model.members[memberId]
+    const result = loadCase.analysis.memberResults[memberId]
+    const row = document.createElement('tr')
+    if (result.utilization > 1) row.classList.add('danger-row')
+    const values = [
+      memberId,
+      member.role === 'top-ring' ? 'верхний треугольник' : 'ножка',
+      format(result.axialForceN / 1000, 3), format(result.maxShearN / 1000, 3),
+      format(result.maxTorsionNm, 2), format(result.maxBendingNm, 2), format(result.utilization, 4),
+    ]
+    row.replaceChildren(...values.map((value) => {
+      const cell = document.createElement('td')
+      cell.textContent = value
+      return cell
+    }))
+    return row
+  })
+  moduleMemberBody.replaceChildren(...memberRows)
+
+  const topF = state.topResultantFromAbove.forceN
+  const bottomF = state.bottomResultantFromBelow.forceN
+  const topM = state.topResultantFromAbove.momentNm
+  moduleDetailSummary.textContent = `Определяющий эксплуатационный случай: ветер ${angle(loadCase.windDirectionDeg)}. От всего стека выше на верхнюю грань приходит |F|=${format(norm3(topF) / 1000, 3)} кН и |M|=${format(norm3(topM), 2)} Н·м; снизу модуль уравновешивается реакцией |F|=${format(norm3(bottomF) / 1000, 3)} кН. Критическое ребро #${state.criticalMemberId}, U=${format(state.maxUtilization, 4)}. Для вертикальной перегрузки этого модуля сравниваются потеря устойчивости ножки U=${format(state.maxBucklingUtilization, 4)} и растягивающий разрыв U=${format(state.maxRuptureUtilization, 4)}; раньше наступает ${limitModeLabel(state.verticalFailureMode)}.`
+}
+
+function selectModule(moduleIndex) {
+  if (!lastResult) return
+  selectedModuleIndex = Math.max(0, Math.min(lastResult.model.moduleCount - 1, Number(moduleIndex) || 0))
+  renderSelectedModule()
+}
+
+function populateModuleSelector(result) {
+  moduleSelector.replaceChildren(...result.model.modules.map((module) => {
+    const option = document.createElement('option')
+    option.value = module.index
+    option.textContent = `Модуль ${module.number}${module.index === 0 ? ' · нижний' : module.index === result.model.moduleCount - 1 ? ' · верхний' : ''}`
+    return option
+  }))
+  const strengthCase = result.envelope.strength
+  const criticalMember = result.model.members[strengthCase.analysis.criticalMemberId]
+  selectedModuleIndex = Number.isInteger(criticalMember?.moduleIndex)
+    ? criticalMember.moduleIndex
+    : Math.min(selectedModuleIndex, result.model.moduleCount - 1)
 }
 
 function renderConnections(result) {
   const connections = result.connections
   const selected = connections?.bolt?.selected
   const weld = connections?.weld
-  const boltMetric = document.querySelector('#metric-bolt-utilization')
-  const jointMetric = document.querySelector('#metric-bolt-joint')
-  const weldMetric = document.querySelector('#metric-weld-length')
+  const boltMetric = $('#metric-bolt-utilization')
+  const jointMetric = $('#metric-bolt-joint')
+  const weldMetric = $('#metric-weld-length')
 
+  connectionSummaryCard.classList.remove('connection-failed')
   if (!connections || !selected?.applicable) {
     boltMetric.textContent = 'нет межмодульных стыков'
     jointMetric.textContent = '—'
-    weldMetric.textContent = weld?.critical
-      ? `${format(weld.critical.check.requiredPhysicalLengthMm, 1)} мм`
-      : '—'
+    weldMetric.textContent = weld?.critical ? `${format(weld.critical.check.requiredPhysicalLengthMm, 1)} мм` : '—'
     connectionSummaryBox.textContent = 'При одном модуле внутренних межмодульных болтов нет. Сварные концы рёбер проверяются отдельно.'
     boltRecommendationsBody.replaceChildren()
   } else {
@@ -294,20 +413,19 @@ function renderConnections(result) {
     jointMetric.textContent = `ур. ${demand.level}, узел ${demand.nodeId}`
     boltMetric.classList.toggle('danger', selected.utilization > 1)
     connectionSummaryCard.classList.toggle('connection-failed', !connections.passesConfiguredBolt)
-    connectionSummaryBox.textContent = `Выбран M${size.diameterMm}×${size.pitchMm}, класс ${result.parameters.jointBoltClass}: определяющий узел ${demand.nodeId} на уровне ${demand.level}, ветер ${angle(demand.windDirectionDeg)}. На болт приведено Nt = ${format(check.tensionN / 1000, 3)} кН и Ns = ${format(check.shearN / 1000, 3)} кН; Nbt = ${formatForce(check.tensionCapacityN / 1000, 3)} кН, Nbs = ${format(check.shearCapacityN / 1000, 3)} кН, нормативная разрывная оценка Rbun·Abn = ${format(check.characteristicRuptureN / 1000, 3)} кН. Взаимодействие = ${format(check.interactionUtilization, 4)}.`
+    connectionSummaryBox.textContent = `Выбран M${size.diameterMm}×${size.pitchMm}, класс ${result.parameters.jointBoltClass}: определяющий узел ${demand.nodeId}, уровень ${demand.level}, ветер ${angle(demand.windDirectionDeg)}. Nt=${format(check.tensionN / 1000, 3)} кН, Ns=${format(check.shearN / 1000, 3)} кН, Ubolt=${format(check.interactionUtilization, 4)}.`
 
     boltRecommendationsBody.replaceChildren(...connections.bolt.recommendationsByClass.map((recommendation) => {
       const row = document.createElement('tr')
       const candidate = recommendation.recommended
       const governing = candidate?.evaluation?.governingDemand
-      const utilization = candidate?.evaluation?.utilization
       const values = [
         recommendation.boltClass,
         candidate ? `M${candidate.diameterMm}` : 'не найден',
         candidate ? `${candidate.pitchMm} мм` : '—',
-        Number.isFinite(utilization) ? format(utilization, 4) : '—',
+        candidate ? format(candidate.evaluation.utilization, 4) : '—',
         governing ? `ур. ${governing.level}, узел ${governing.nodeId}` : '—',
-        governing && Number.isFinite(governing.windDirectionDeg) ? angle(governing.windDirectionDeg) : '—',
+        governing ? angle(governing.windDirectionDeg) : '—',
       ]
       if (!candidate) row.classList.add('danger-row')
       row.replaceChildren(...values.map((value) => {
@@ -325,27 +443,18 @@ function renderConnections(result) {
     weldResultsBody.replaceChildren()
     return
   }
-
   const critical = weld.critical
   weldMetric.textContent = `${format(critical.check.requiredPhysicalLengthMm, 1)} мм`
   const electrode = weld.electrodeRecommendation.recommended
   const wire = weld.wireRecommendation.recommended
-  weldRecommendationBox.textContent = `Выбран ${critical.check.consumableLabel}, катет ${format(weld.configuredLegMm, 1)} мм, ${weld.segmentsPerEnd} непрерывных участка на конец. Критический конец: ребро ${critical.memberId}${critical.end}, узел ${critical.nodeId}, ветер ${angle(critical.windDirectionDeg)}; требуется суммарно ${format(critical.check.requiredEffectiveLengthMm, 1)} мм расчётной и ${format(critical.check.requiredPhysicalLengthMm, 1)} мм физической длины, по ${format(critical.check.requiredPhysicalLengthPerSegmentMm, 1)} мм на участок при равном делении. Минимальный совместимый электродный уровень: ${electrode?.label ?? 'не найден'}; проволока: ${wire?.label ?? 'не найдена'}.`
-  weldMetric.classList.toggle('danger', !weld.selectedConsumableCompatible)
-
+  weldRecommendationBox.textContent = `Выбран ${critical.check.consumableLabel}, катет ${format(weld.configuredLegMm, 1)} мм. Критический конец: ребро ${critical.memberId}${critical.end}, узел ${critical.nodeId}, ветер ${angle(critical.windDirectionDeg)}; требуется ${format(critical.check.requiredPhysicalLengthMm, 1)} мм физической длины. Минимальный совместимый электрод: ${electrode?.label ?? 'не найден'}; проволока: ${wire?.label ?? 'не найдена'}.`
   weldResultsBody.replaceChildren(...weld.envelope.map((item) => {
     const row = document.createElement('tr')
     const values = [
-      item.memberId,
-      item.end,
-      item.nodeId,
-      angle(item.windDirectionDeg),
-      format(item.axialForceN / 1000, 3),
-      format(item.shearForceN / 1000, 3),
-      format(item.torsionNm, 2),
-      format(item.bendingNm, 2),
-      format(item.check.requiredEffectiveLengthMm, 1),
-      format(item.check.requiredPhysicalLengthMm, 1),
+      item.memberId, item.end, item.nodeId, angle(item.windDirectionDeg),
+      format(item.axialForceN / 1000, 3), format(item.shearForceN / 1000, 3),
+      format(item.torsionNm, 2), format(item.bendingNm, 2),
+      format(item.check.requiredEffectiveLengthMm, 1), format(item.check.requiredPhysicalLengthMm, 1),
     ]
     row.replaceChildren(...values.map((value) => {
       const cell = document.createElement('td')
@@ -358,20 +467,13 @@ function renderConnections(result) {
 
 function renderVerification(result) {
   const verification = result.verification
-  if (!verification) {
-    document.querySelector('#metric-verification').textContent = 'нет данных'
-    verificationSummaryBox.textContent = 'Паспорт верификации отсутствует.'
-    verificationLevelsBox.replaceChildren()
-    verificationChecksBox.replaceChildren()
-    return
-  }
-
-  const metric = document.querySelector('#metric-verification')
+  if (!verification) return
+  const metric = $('#metric-verification')
   metric.textContent = verification.counts.failed > 0
     ? `${verification.counts.failed} ошибок`
     : `${verification.counts.passed}/${verification.counts.total - verification.counts.notVerified} внутренних ✓`
   metric.classList.toggle('danger', verification.counts.failed > 0)
-  verificationSummaryBox.textContent = `${verification.headline} Автоматически пройдено ${verification.counts.passed}, ошибок ${verification.counts.failed}; ещё ${verification.counts.notVerified} пункта требуют независимого подтверждения.`
+  verificationSummaryBox.textContent = `${verification.headline} Автоматически пройдено ${verification.counts.passed}, ошибок ${verification.counts.failed}; ${verification.counts.notVerified} пункта требуют независимого подтверждения.`
   verificationSummaryCard.classList.toggle('verification-failed', verification.counts.failed > 0)
 
   verificationLevelsBox.replaceChildren(...verification.levels.map((level) => {
@@ -405,14 +507,8 @@ function renderVerification(result) {
     }
     if (check.substitution) {
       const substitution = document.createElement('p')
-      substitution.className = 'verification-substitution'
       substitution.textContent = `Подстановка: ${check.substitution}`
       details.append(substitution)
-    }
-    if (Number.isFinite(check.expected) && Number.isFinite(check.actual)) {
-      const values = document.createElement('p')
-      values.textContent = `Ожидается ${format(check.expected, 8)}${check.unit ? ` ${check.unit}` : ''}; программа ${format(check.actual, 8)}${check.unit ? ` ${check.unit}` : ''}; относительная ошибка ${check.relativeError.toExponential(2)}.`
-      details.append(values)
     }
     if (check.evidence) {
       const evidence = document.createElement('p')
@@ -427,6 +523,35 @@ function renderVerification(result) {
   }))
 }
 
+function heightBoundText(boundary) {
+  if (!boundary) return 'нет данных'
+  return boundary.bounded
+    ? `${format(boundary.maximumHeightM, 2)} м`
+    : `≥ ${format(boundary.maximumHeightM, 2)} м`
+}
+
+function renderHeightCapacity(result) {
+  const capacity = result.heightCapacity
+  if (!capacity) return
+  $('#metric-height-design').textContent = heightBoundText(capacity.design)
+  $('#metric-height-modules').textContent = capacity.design.bounded
+    ? `${capacity.design.maximumModules}`
+    : `≥ ${capacity.design.maximumModules}`
+  $('#metric-height-ultimate').textContent = heightBoundText(capacity.ultimateResistance)
+  const bottom = capacity.bottomModuleAtFirstDesignOverload ?? capacity.bottomModuleAtDesignLimit
+  $('#metric-bottom-failure').textContent = bottom ? limitModeLabel(bottom.mode) : '—'
+
+  const firstFail = capacity.design.firstFailCase
+  const designMechanism = firstFail?.designMode ?? capacity.design.limitCase?.designMode ?? 'не определён'
+  const ultimateMechanism = capacity.ultimateResistance.firstFailCase?.ultimateMode
+    ?? capacity.ultimateResistance.limitCase?.ultimateMode
+    ?? 'не определён'
+  const bottomText = bottom
+    ? `Нижний модуль: ${bottom.explanation} Определяющее ребро #${bottom.memberId}, ветер ${angle(bottom.windDirectionDeg)}, Uуст=${format(bottom.maxBucklingUtilization, 4)}, Uразрыв=${format(bottom.maxRuptureUtilization, 4)}.`
+    : 'Для нижнего модуля нет отдельного вертикального определяющего случая.'
+  $('#height-capacity-description').textContent = `Для выбранного типа одинаковых модулей выполнен дискретный поиск до ${capacity.searchLimitModules} модулей. Проектный предел (${capacity.design.criteria}) — ${heightBoundText(capacity.design)}, ${capacity.design.maximumModules} модулей; следующий критерий — ${limitModeLabel(designMechanism)}. Отдельный предел по сопротивлению без ограничения эксплуатационного прогиба (${capacity.ultimateResistance.criteria}) — ${heightBoundText(capacity.ultimateResistance)}; механизм — ${limitModeLabel(ultimateMechanism)}. ${bottomText}`
+}
+
 function renderResult(result) {
   const parameters = result.parameters
   const lateral = result.lateralCapacity
@@ -435,63 +560,65 @@ function renderResult(result) {
   lastParameters = { ...parameters }
   exportNoteButton.disabled = false
   exportCsvButton.disabled = false
-  viewer.setResult(result)
+  mastViewer.setResult(result)
+  moduleViewer.setResult(result)
+  populateModuleSelector(result)
   resultsSection.hidden = false
 
   const strengthCase = result.envelope.strength
   const displacementCase = result.envelope.displacement
   const bucklingCase = result.envelope.buckling
   const critical = strengthCase.analysis.memberResults[strengthCase.analysis.criticalMemberId]
+  const criticalModelMember = result.model.members[strengthCase.analysis.criticalMemberId]
   const topDisplacementMm = result.envelope.maxTopDisplacementM * 1000
   const bucklingFactor = result.envelope.minimumBucklingFactor
 
-  document.querySelector('#metric-height').textContent = `${format(parameters.moduleCount * parameters.moduleHeightMm / 1000)} м`
-  document.querySelector('#metric-mass').textContent = `${format(result.analysis.totalMassKg, 1)} кг`
-  document.querySelector('#metric-displacement').textContent = `${format(topDisplacementMm, 2)} мм`
-  document.querySelector('#metric-utilization').textContent = format(result.envelope.maxUtilization, 3)
-  document.querySelector('#metric-buckling').textContent = formatFactor(bucklingFactor)
-  document.querySelector('#metric-wind-direction').textContent = angle(result.envelope.governing.windDirectionDeg)
-  document.querySelector('#metric-critical').textContent = `№ ${strengthCase.analysis.criticalMemberId}`
-  document.querySelector('#metric-residual').textContent = result.analysis.diagnostics.maximumNodeEquilibriumResidual.toExponential(2)
-  document.querySelector('#metric-lateral-capacity').textContent = `${formatForce(lateral.criticalForceKgf, 1)} кгс`
-  document.querySelector('#metric-lateral-buckling').textContent = `${formatForce(lateral.globalBucklingForceKgf, 1)} кгс`
-  document.querySelector('#metric-lateral-bolt').textContent = `${formatForce(lateral.boltLimitForceKgf, 1)} кгс`
-  document.querySelector('#metric-lateral-mode').textContent = limitModeLabel(lateral.governingMode)
-  document.querySelector('#metric-static-payload').textContent = `${formatForce(staticPayload.maximumTotalTopMassKg, 1)} кг`
-  document.querySelector('#metric-static-reserve').textContent = `${formatForce(staticPayload.remainingAdditionalMassKg, 1)} кг`
-  document.querySelector('#metric-water-volume').textContent = `${formatForce(staticPayload.equivalentWaterVolumeM3, 3)} м³ (${formatForce(staticPayload.equivalentWaterVolumeLiters, 0)} л)`
-  document.querySelector('#metric-static-mode').textContent = limitModeLabel(staticPayload.governingMode)
+  $('#metric-height').textContent = `${format(parameters.moduleCount * parameters.moduleHeightMm / 1000)} м`
+  $('#metric-mass').textContent = `${format(result.analysis.totalMassKg, 1)} кг`
+  $('#metric-displacement').textContent = `${format(topDisplacementMm, 2)} мм`
+  $('#metric-utilization').textContent = format(result.envelope.maxUtilization, 3)
+  $('#metric-buckling').textContent = formatFactor(bucklingFactor)
+  $('#metric-wind-direction').textContent = angle(result.envelope.governing.windDirectionDeg)
+  $('#metric-critical').textContent = `мод. ${(criticalModelMember?.moduleIndex ?? 0) + 1}, № ${strengthCase.analysis.criticalMemberId}`
+  $('#metric-residual').textContent = result.analysis.diagnostics.maximumNodeEquilibriumResidual.toExponential(2)
+  $('#metric-lateral-capacity').textContent = `${formatForce(lateral.criticalForceKgf, 1)} кгс`
+  $('#metric-lateral-buckling').textContent = `${formatForce(lateral.globalBucklingForceKgf, 1)} кгс`
+  $('#metric-lateral-bolt').textContent = `${formatForce(lateral.boltLimitForceKgf, 1)} кгс`
+  $('#metric-lateral-mode').textContent = limitModeLabel(lateral.governingMode)
+  $('#metric-static-payload').textContent = `${formatForce(staticPayload.maximumTotalTopMassKg, 1)} кг`
+  $('#metric-static-reserve').textContent = `${formatForce(staticPayload.remainingAdditionalMassKg, 1)} кг`
+  $('#metric-water-volume').textContent = `${formatForce(staticPayload.equivalentWaterVolumeM3, 3)} м³ (${formatForce(staticPayload.equivalentWaterVolumeLiters, 0)} л)`
+  $('#metric-static-mode').textContent = limitModeLabel(staticPayload.governingMode)
 
-  document.querySelector('#metric-displacement').classList.toggle('danger', topDisplacementMm > parameters.displacementLimitMm)
-  document.querySelector('#metric-utilization').classList.toggle('danger', result.envelope.maxUtilization > 1)
-  document.querySelector('#metric-buckling').classList.toggle('danger', bucklingFactor < parameters.minimumBucklingFactor)
-  document.querySelector('#metric-static-reserve').classList.toggle('danger', staticPayload.remainingAdditionalMassKg <= 0)
+  $('#metric-displacement').classList.toggle('danger', topDisplacementMm > parameters.displacementLimitMm)
+  $('#metric-utilization').classList.toggle('danger', result.envelope.maxUtilization > 1)
+  $('#metric-buckling').classList.toggle('danger', bucklingFactor < parameters.minimumBucklingFactor)
+  $('#metric-static-reserve').classList.toggle('danger', staticPayload.remainingAdditionalMassKg <= 0)
 
-  document.querySelector('#critical-description').textContent = critical
-    ? `Ребро № ${critical.memberId}: N = ${format(critical.axialForceN / 1000, 3)} кН, Vmax = ${format(critical.maxShearN / 1000, 3)} кН, Mmax = ${format(critical.maxBendingNm, 2)} Н·м, σэкв = ${format(critical.equivalentStressPa / 1e6, 2)} МПа, использование = ${format(critical.utilization, 4)} при ветре ${angle(strengthCase.windDirectionDeg)}. Максимальный прогиб возникает при ${angle(displacementCase.windDirectionDeg)}, минимальный множитель общей устойчивости — при ${angle(bucklingCase.windDirectionDeg)}.`
+  $('#critical-description').textContent = critical
+    ? `Ребро №${critical.memberId} модуля ${(criticalModelMember?.moduleIndex ?? 0) + 1}: N=${format(critical.axialForceN / 1000, 3)} кН, Vmax=${format(critical.maxShearN / 1000, 3)} кН, Mmax=${format(critical.maxBendingNm, 2)} Н·м, σэкв=${format(critical.equivalentStressPa / 1e6, 2)} МПа, U=${format(critical.utilization, 4)} при ветре ${angle(strengthCase.windDirectionDeg)}. Максимальный прогиб при ${angle(displacementCase.windDirectionDeg)}, минимальный λcr при ${angle(bucklingCase.windDirectionDeg)}.`
     : 'Критическое ребро не определено.'
 
-  document.querySelector('#lateral-capacity-description').textContent = `Чистая горизонтальная сила прикладывается к вершине и распределяется поровну между тремя верхними узлами. Худшее направление ${angle(lateral.directionDeg)}: первый расчётный предел ${formatForce(lateral.criticalForceN / 1000, 3)} кН = ${formatForce(lateral.criticalForceKgf, 1)} кгс; механизм — ${limitModeLabel(lateral.governingMode)}. Предел по ребру ${formatForce(lateral.memberLimitForceKgf, 1)} кгс, общая потеря устойчивости ${formatForce(lateral.globalBucklingForceKgf, 1)} кгс, выбранный межмодульный болт ${formatForce(lateral.boltLimitForceKgf, 1)} кгс.`
-
-  const boundedNote = staticPayload.bounded
-    ? ''
-    : ' Численный предел не был достигнут до программной верхней границы поиска, поэтому результат является нижней оценкой.'
-  document.querySelector('#static-payload-description').textContent = `Гравитационный расчёт включает собственный вес мачты с γg = ${format(parameters.deadLoadFactor, 2)}, суммарную массу на вершине с γ = ${format(parameters.equipmentLoadFactor, 2)} и выбранный межмодульный болт, но исключает ветер и лёд. Максимальная суммарная масса на вершине ${formatForce(staticPayload.maximumTotalTopMassKg, 1)} кг (${formatForce(staticPayload.maximumNominalTopForceN / 1000, 3)} кН номинально); механизм — ${limitModeLabel(staticPayload.governingMode)}. После заданного оборудования и дополнительной вертикальной силы остаётся ${formatForce(staticPayload.remainingAdditionalMassKg, 1)} кг, то есть примерно ${formatForce(staticPayload.equivalentWaterVolumeM3, 3)} м³ воды. На пределе: ребро ${format(staticPayload.utilizationAtLimit, 4)}, болт ${format(staticPayload.boltUtilizationAtLimit, 4)}, λcr = ${formatFactor(staticPayload.bucklingFactorAtLimit)}, осадка ${format(staticPayload.topSettlementAtLimitM * 1000, 2)} мм.${boundedNote}`
+  $('#lateral-capacity-description').textContent = `Чистая горизонтальная сила прикладывается к верхней грани. Худшее направление ${angle(lateral.directionDeg)}: первый предел ${formatForce(lateral.criticalForceKgf, 1)} кгс; механизм — ${limitModeLabel(lateral.governingMode)}. По ребру ${formatForce(lateral.memberLimitForceKgf, 1)} кгс, global buckling ${formatForce(lateral.globalBucklingForceKgf, 1)} кгс, болт ${formatForce(lateral.boltLimitForceKgf, 1)} кгс.`
+  $('#static-payload-description').textContent = `Gravity-only расчёт: максимальная суммарная масса на вершине ${formatForce(staticPayload.maximumTotalTopMassKg, 1)} кг; после уже заданной вертикальной нагрузки остаётся ${formatForce(staticPayload.remainingAdditionalMassKg, 1)} кг ≈ ${formatForce(staticPayload.equivalentWaterVolumeM3, 3)} м³ воды. Механизм — ${limitModeLabel(staticPayload.governingMode)}; Uребра=${format(staticPayload.utilizationAtLimit, 4)}, Uболта=${format(staticPayload.boltUtilizationAtLimit, 4)}, λcr=${formatFactor(staticPayload.bucklingFactorAtLimit)}.`
 
   const performance = result.performance
+  const modular = result.analysis.modular
   const performanceText = performance
-    ? ` Solver: ${performance.linearSystemSolver}; ${performance.freeDofCount} свободных DOF; полуширина ${performance.stiffnessBandwidth}; факторизация K ${performance.stiffnessFactorizationCount} раз; ветровых случаев ${performance.operationalCaseCount}, боковых ${performance.lateralCaseCount}, оценок статического груза ${performance.staticPayloadEvaluationCount}; внутренних проверок ${performance.verificationInternalCheckCount}.`
+    ? ` Global solver: ${performance.linearSystemSolver}, ${performance.freeDofCount} свободных DOF, полуширина ${performance.stiffnessBandwidth}, K факторизована ${performance.stiffnessFactorizationCount} раз. Modular solver: ${performance.modularStaticSolver}, ${performance.modularInterfaceFactorizationCount} интерфейсных факторизаций; расхождение с global=${modular?.relativeDisplacementDifference?.toExponential(2) ?? '—'}, interface residual=${modular?.interfaceEquilibriumResidual?.toExponential(2) ?? '—'}; height evaluations=${performance.heightSearchEvaluationCount}.`
     : ''
-  document.querySelector('#load-summary').textContent = `Погода: ${parameters.windPresetLabel}; v = ${format(parameters.windSpeedMs, 1)} м/с; q = ${format(parameters.windPressurePa, 1)} Па до γw. Направлений ветра: ${result.envelope.caseCount}. Вес стали: ${format(result.loads.selfWeightN / 1000)} кН; лёд: ${format(result.loads.iceWeightN / 1000)} кН; ветер на рёбра: ${format(result.loads.memberWindN / 1000)} кН.${performanceText}`
+  $('#load-summary').textContent = `Погода: ${parameters.windPresetLabel}; v=${format(parameters.windSpeedMs, 1)} м/с; q=${format(parameters.windPressurePa, 1)} Па. Вес стали ${format(result.loads.selfWeightN / 1000)} кН; лёд ${format(result.loads.iceWeightN / 1000)} кН; ветер на рёбра ${format(result.loads.memberWindN / 1000)} кН.${performanceText}`
 
   warningsList.replaceChildren(...result.warnings.map((warning) => {
     const item = document.createElement('li')
     item.textContent = warning
     return item
   }))
+  renderHeightCapacity(result)
   renderConnections(result)
   renderVerification(result)
   renderMemberReport(result)
+  renderSelectedModule()
 }
 
 function updateProgressClock() {
@@ -501,9 +628,7 @@ function updateProgressClock() {
   if (latestProgressFraction >= 0.03 && elapsed >= 300) {
     const eta = elapsed * (1 - latestProgressFraction) / Math.max(latestProgressFraction, 1e-6)
     progressEta.textContent = `Осталось: ≈ ${formatDuration(eta)}`
-  } else {
-    progressEta.textContent = 'Осталось: оценивается…'
-  }
+  } else progressEta.textContent = 'Осталось: оценивается…'
 }
 
 function showProgress(label) {
@@ -527,6 +652,9 @@ function renderProgress(progress) {
   progressPercent.textContent = `${percent}%`
   if (progress.phase === 'optimize') progressStage.textContent = 'Подбор диаметра'
   else if (progress.phase === 'static-payload') progressStage.textContent = 'Статическая нагрузка вершины'
+  else if (progress.phase === 'height-capacity') progressStage.textContent = 'Поиск максимальной высоты'
+  else if (progress.phase === 'lateral') progressStage.textContent = 'Боковая несущая способность'
+  else if (progress.phase === 'wind') progressStage.textContent = 'Ветровая огибающая'
   else progressStage.textContent = 'Расчёт мачты'
   progressDetail.textContent = progress.label ?? 'Вычисление…'
   updateProgressClock()
@@ -581,13 +709,10 @@ function renderOptimization(summary, result) {
   }
   const diameter = summary.recommendedDiameter
   form.elements.namedItem('barDiameterMm').value = diameter
-  const payloadText = result?.staticPayloadCapacity
-    ? `, статическая масса на вершине ${formatForce(result.staticPayloadCapacity.maximumTotalTopMassKg, 1)} кг`
+  const heightText = result?.heightCapacity?.design
+    ? `, проектная высота ${heightBoundText(result.heightCapacity.design)}`
     : ''
-  const boltText = result?.connections?.bolt?.selected?.applicable
-    ? `, болт ${format(result.connections.bolt.selected.utilization, 3)}`
-    : ''
-  optimizationBox.textContent = `Минимальный найденный единый диаметр арматуры: ${diameter} мм. Использование ${format(result.envelope.maxUtilization, 3)}, прогиб ${format(result.envelope.maxTopDisplacementM * 1000, 2)} мм, λcr ${formatFactor(result.envelope.minimumBucklingFactor)}, первый боковой предел ${formatForce(result.lateralCapacity.criticalForceKgf, 1)} кгс${boltText}${payloadText}. Болт и сварка не меняют задачу подбора диаметра арматуры, но проверяются в итоговом расчёте.`
+  optimizationBox.textContent = `Минимальный найденный единый диаметр арматуры: ${diameter} мм. U=${format(result.envelope.maxUtilization, 3)}, прогиб ${format(result.envelope.maxTopDisplacementM * 1000, 2)} мм, λcr=${formatFactor(result.envelope.minimumBucklingFactor)}, боковой предел ${formatForce(result.lateralCapacity.criticalForceKgf, 1)} кгс${heightText}. Болт и сварка проверяются итоговым расчётом.`
 }
 
 function startWorkerJob(action, parameters) {
@@ -603,19 +728,15 @@ function startWorkerJob(action, parameters) {
   worker.onmessage = (event) => {
     const message = event.data ?? {}
     if (message.jobId !== jobId || worker !== activeWorker) return
-    if (message.type === 'progress') {
-      renderProgress(message.progress)
-      return
-    }
-    if (message.type === 'error') {
-      failWorker(message.message ?? 'Неизвестная ошибка worker')
-      return
-    }
+    if (message.type === 'progress') return renderProgress(message.progress)
+    if (message.type === 'error') return failWorker(message.message ?? 'Неизвестная ошибка worker')
     if (message.type === 'result') {
       if (message.result) renderResult(message.result)
       if (message.optimization) renderOptimization(message.optimization, message.result)
       stopActiveWorker()
-      finishProgress(message.optimization ? 'Подбор и итоговый расчёт завершены.' : 'Расчёт, соединения и верификация завершены.')
+      finishProgress(message.optimization
+        ? 'Подбор, итоговый расчёт и поиск предельной высоты завершены.'
+        : 'Расчёт, модульный cross-check, соединения и предельная высота завершены.')
     }
   }
   worker.onerror = (event) => {
@@ -648,10 +769,9 @@ optimizeButton.addEventListener('click', runOptimization)
 cancelCalculationButton.addEventListener('click', cancelActiveJob)
 exportNoteButton.addEventListener('click', () => {
   if (!lastResult || !lastParameters) return
-  const generatedAt = new Date().toISOString()
   downloadText(
     exportFilename('html'),
-    createCalculationProjectHtml(lastResult, lastParameters, generatedAt, buildInfo),
+    createCalculationProjectHtml(lastResult, lastParameters, new Date().toISOString(), buildInfo),
     'text/html;charset=utf-8',
   )
 })
@@ -667,7 +787,11 @@ form.elements.namedItem('windPressurePa').addEventListener('input', () => {
 form.elements.namedItem('stockBarLengthMm').addEventListener('change', syncFabricationFields)
 form.elements.namedItem('stockBarPieces').addEventListener('change', syncFabricationFields)
 form.elements.namedItem('reinforcementClass').addEventListener('change', syncFabricationFields)
-showBucklingMode.addEventListener('change', () => viewer.setBucklingMode(showBucklingMode.checked))
+showBucklingMode.addEventListener('change', () => mastViewer.setBucklingMode(showBucklingMode.checked))
+moduleSelector.addEventListener('change', () => selectModule(Number(moduleSelector.value)))
+memberGroupMode.addEventListener('change', () => { if (lastResult) renderMemberReport(lastResult) })
+memberSortField.addEventListener('change', () => { if (lastResult) renderMemberReport(lastResult) })
+memberSortDirection.addEventListener('change', () => { if (lastResult) renderMemberReport(lastResult) })
 form.addEventListener('submit', (event) => {
   event.preventDefault()
   runCalculation()

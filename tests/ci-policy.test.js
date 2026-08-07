@@ -9,10 +9,7 @@ const workflowDir = path.join(root, '.github', 'workflows')
 const workflowFiles = fs.readdirSync(workflowDir)
   .filter((name) => /\.ya?ml$/i.test(name))
   .sort()
-const workflows = new Map(workflowFiles.map((name) => [
-  name,
-  fs.readFileSync(path.join(workflowDir, name), 'utf8'),
-]))
+const workflows = new Map(workflowFiles.map((name) => [name, fs.readFileSync(path.join(workflowDir, name), 'utf8')]))
 
 function jobBlocks(workflow) {
   const jobsIndex = workflow.indexOf('\njobs:')
@@ -20,7 +17,6 @@ function jobBlocks(workflow) {
   const lines = workflow.slice(jobsIndex + '\njobs:'.length).split(/\r?\n/)
   const jobs = []
   let current = null
-
   for (const line of lines) {
     const match = line.match(/^  ([A-Za-z0-9_-]+):\s*$/)
     if (match) {
@@ -77,11 +73,24 @@ test('PR CI содержит fresh-merge simulation и три ОС', () => {
   assert.match(ci, /fail-fast:\s*false/)
 })
 
-test('static-site smoke загружает worker и все browser-модули расчёта соединений', () => {
+test('PR CI имеет отдельный gate сравнения трёх независимых FEM путей', () => {
+  const ci = workflows.get('ci.yml')
+  assert.ok(ci)
+  assert.match(ci, /triple-fem:/)
+  assert.match(ci, /name:\s*Triple FEM equivalence/)
+  assert.match(ci, /npm run test:triple/)
+  assert.match(ci, /Compare global, Schur and independent dense FEM/)
+})
+
+test('static-site smoke загружает worker, module viewer и все browser-модули расчёта', () => {
   const ci = workflows.get('ci.yml')
   assert.ok(ci)
   for (const modulePath of [
     'calculation-worker.js',
+    'module-viewer.js',
+    'engine/reference-frame.js',
+    'engine/module-stack.js',
+    'engine/module-verification.js',
     'engine/banded.js',
     'engine/buckling.js',
     'engine/weather.js',
@@ -94,9 +103,7 @@ test('static-site smoke загружает worker и все browser-модули
     'engine/static-payload-capacity.js',
     'engine/verification.js',
     'engine/calculation-project.js',
-  ]) {
-    assert.ok(ci.includes(modulePath), `ci.yml smoke не проверяет ${modulePath}`)
-  }
+  ]) assert.ok(ci.includes(modulePath), `ci.yml smoke не проверяет ${modulePath}`)
 })
 
 test('Pages deploy использует официальные актуальные actions и не отменяет начатую публикацию', () => {

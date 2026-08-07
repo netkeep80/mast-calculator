@@ -1,325 +1,299 @@
 # Производительность расчёта и индикация прогресса
 
-Статус: архитектура прототипа 0.7, реализованная для issue #10.
+Статус: архитектура производительности прототипа **1.1**.
 
-## 1. Исходная проблема
+## 1. Global frame scale
 
-При росте мачты до десятков модулей старая реализация начинала выглядеть как зависшая страница. Причина была не в количестве стержней само по себе, а в алгоритмической структуре расчёта:
-
-1. глобальная матрица упругой жёсткости `K` хранилась как плотная `n×n` матрица;
-2. для каждого направления ветра заново выполнялась сборка и dense-факторизация;
-3. для каждого направления боковой проверки происходило то же самое;
-4. eigen-buckling явно строил плотную преобразованную матрицу через Cholesky, обращение нижнетреугольной матрицы и matrix multiplication;
-5. весь расчёт выполнялся в main thread браузера, поэтому интерфейс переставал перерисовываться.
-
-Для 40 модулей модель имеет:
+Для 40 одинаковых модулей:
 
 ```text
-41 уровень
-123 узла
-738 полных DOF
-720 свободных DOF после заделки основания
+41 level
+123 node
+738 total DOF
+720 free DOF after rigid base fixation
 ```
 
-Плотный алгоритм при таком размере уже делает много лишней работы.
+Topology соединяет только один level и соседние levels, поэтому при level-order numbering глобальная stiffness matrix ленточная.
 
-## 2. Локальность frame-модели
-
-Каждый стержень соединяет узлы одного уровня либо двух соседних уровней. При существующей нумерации узлов это означает, что после исключения закреплённых DOF ненулевые коэффициенты `K` находятся около главной диагонали.
-
-Для 40-модульной модели фактическая полуширина ленты равна:
+Текущий regression invariant:
 
 ```text
-b = 35
+half-bandwidth <= 35
 ```
 
-Вместо хранения порядка
+Dense storage `O(n²)` и dense factorization `O(n³)` для production path не требуются.
+
+## 2. Symmetric band Cholesky
+
+`site/engine/banded.js` хранит только нижнюю симметричную ленту.
+
+При `n=720`, `b=35` порядок storage:
 
 ```text
-n² = 720² = 518400
+n*(b+1) = 720*36 = 25920 values
 ```
 
-ячеек для каждой симметричной матрицы достаточно порядка
+вместо:
 
 ```text
-n·(b+1) = 720·36 = 25920
+n² = 518400 values
 ```
 
-ячеек.
+Asymptotics:
 
-Главное преимущество — не только память. Cholesky-факторизация ленточной SPD-матрицы имеет стоимость порядка `O(n·b²)`, тогда как общий dense solve растёт как `O(n³)`.
+```text
+storage       O(n*b)
+factorization O(n*b²)
+solve         O(n*b)
+```
 
 ## 3. Compile once, solve many
 
-Упругая матрица `K` зависит от:
-
-- геометрии;
-- диаметра стержней;
-- материала;
-- закрепления.
-
-Она **не зависит от направления одной и той же нагрузки**.
-
-Поэтому `compileFrameSystem()` теперь один раз выполняет:
+`compileFrameSystem()` один раз на geometry/material/diameter/restraints выполняет:
 
 ```text
-геометрия элементов
-локальные и глобальные ke
-free-DOF map
-сборка Kfree
-banded Cholesky(Kfree)
+member geometry/transforms
+free DOF map
+K assembly
+banded Cholesky(K)
 ```
 
-После этого каждое направление нагрузки выполняет только:
+После этого operational wind cases, lateral cases и static-payload trials переиспользуют factorization.
 
-```text
-сборка F
-forward/back substitution
-member end forces
-KG для данного напряжённого состояния
-eigen-buckling
-```
-
-Для одного полного `calculateCompleteMast()` диагностический инвариант:
+Invariant:
 
 ```text
 stiffnessFactorizationCount = 1
 ```
 
-Он зафиксирован regression-тестом на 40 модулях.
+для одного complete calculation текущей geometry.
 
-## 4. Ленточный SPD solver
+## 4. Matrix-free global buckling
 
-`site/engine/banded.js` реализует симметричное ленточное хранение и операции:
-
-- сборка коэффициентов;
-- matrix-vector multiplication;
-- Cholesky-факторизация;
-- forward/back substitution;
-- residual check.
-
-Отдельный тест сравнивает решение с существующим dense solver на малой SPD-задаче и требует практически машинного совпадения.
-
-Dense linear algebra оставлена как reference-инструмент для малых аналитических тестов; основной FEM-путь её больше не использует.
-
-## 5. Matrix-free generalized Lanczos для buckling
-
-Задача общей устойчивости остаётся прежней:
+Eigenproblem:
 
 ```text
-(K + lambda·KG)·phi = 0
+(K + lambda*KG)*phi = 0
 ```
 
-или эквивалентно
+переписывается как оператор:
 
 ```text
-K^-1·(-KG)·phi = mu·phi
+A(v) = solve(K,-KG*v)
+mu = eigenvalue(A)
 lambda = 1/mu
 ```
 
-Вместо явного вычисления `K^-1` и плотного произведения матриц версия 0.7 применяет оператор к вектору:
+Явный `K^-1` и dense transformed matrix не строятся.
+
+Generalized Lanczos использует готовую band Cholesky factorization и проверяет actual generalized residual.
+
+## 5. Новый modular static path 1.1
+
+Issue #18 добавляет второй static solver, но не возвращает приложение к dense global algebra.
+
+Один physical module имеет:
 
 ```text
-v
-↓
--KG·v
-↓
-solve(K, ...)
-↓
-K^-1(-KG)v
+3 bottom node * 6 DOF = 18
+3 top node    * 6 DOF = 18
+module total           = 36 DOF
 ```
 
-`solve(K, ...)` использует уже готовую ленточную Cholesky-факторизацию.
+`compileModuleStack()` собирает только 36×36 stiffness каждого physical module и выполняет top-down Schur recursion по 18×18 interface matrices.
 
-Итерационный generalized Lanczos работает в `K`-скалярном произведении и строит малую трёхдиагональную Ritz-задачу. Добавлена повторная `K`-ортогонализация для устойчивости при близких собственных значениях.
-
-Остановка итераций выполняется не только по дешёвой Ritz-оценке, а по фактической невязке исходного generalized equation:
+Для `N` modules:
 
 ```text
-r = (K + lambda·KG)·phi
+interface factorizations = N
+matrix size per factorization = 18×18
 ```
 
-40-модульный regression дополнительно требует малой невязки buckling для эксплуатационных и боковых cases.
+То есть дополнительная стоимость static cross-check растёт примерно линейно с числом modules и не требует второго factorization глобальной 720×720 system.
 
-Автотест сравнивает banded/Lanczos результат с прежним dense reference на одной и той же малой generalized eigen-задаче.
+## 6. Почему modular solver не заменяет global factorization полностью
 
-## 6. 120° вращательная симметрия
+Для обычного static response Schur stack mathematically equivalent global assembly и используется как independent cross-check.
 
-Идеальная трёхгранная расчётная модель периодична при повороте на 120°.
-
-Важно: оптимизация не заменяет исходную угловую сетку на произвольный диапазон `0..120`. Алгоритм сначала строит **ровно прежнюю полную сетку 0..360°**, затем каждое направление приводит modulo 120° и удаляет только дубликаты.
-
-Например при стандартном шаге 30°:
+Но global eigen-buckling требует coupled `K/KG` всей мачты. Поэтому текущая performance architecture:
 
 ```text
-старый набор: 0,30,60,90,120,150,180,210,240,270,300,330
-уникальный набор: 0,30,60,90
+global banded K: once
+modular 18x18 Schur factors: once per module
+static cases: both paths
+buckling: global matrix-free path only
 ```
 
-То есть ветровых FEM-сценариев становится 4 вместо 12 без изменения дискретизации исходной огибающей.
+Это сознательно сохраняет независимость проверок и корректность global modes.
 
-Для шага 45° уникальный набор равен:
+## 7. Maximum-height search
+
+Наивный вариант issue #18 мог бы считать:
 
 ```text
-0,15,30,45,60,75,90,105
+N = 1,2,3,...,heightSearchMaxModules
 ```
 
-что отдельно проверяется тестом и показывает, почему нельзя просто наивно сделать цикл `0..120` с исходным шагом.
+что стало бы дорого при верхней границе 200–500 modules.
 
-## 7. Web Worker
-
-Тяжёлый расчёт больше не выполняется в main thread.
-
-Main thread:
+Поэтому `calculateMaximumHeight()` использует:
 
 ```text
-форма
-progress UI
-3D viewer
-экспорт отчёта
+1. exponential bracketing: 1,2,4,8,...
+2. binary refinement PASS/FAIL interval
+3. local integer neighbourhood scan around boundary
 ```
 
-Worker:
+При монотонной границе число candidate geometries имеет порядок:
 
 ```text
-calculateCompleteMast
-подбор диаметра
-FEM solves
-eigen-buckling
+O(log Nmax) + small constant neighbourhood
 ```
 
-Файл:
+а не `O(Nmax)`.
+
+Local scan нужен для контроля возможного discrete parity effect от alternating 60° orientation.
+
+`result.heightCapacity.evaluationCount` и `performance.heightSearchEvaluationCount` позволяют regression-test отслеживать фактическое число candidate solves.
+
+## 8. Ограничение поиска высоты
+
+`heightSearchMaxModules` является protective upper bound, default `200`, hard-clamped to `500`.
+
+Если failure до этой границы не найден:
 
 ```text
-site/calculation-worker.js
+bounded = false
 ```
 
-Это даёт два независимых эффекта:
+и UI/report показывают `>= Hsearch` вместо того, чтобы выдавать search bound за физический maximum.
 
-1. даже если расчёт занимает заметное время, браузер продолжает перерисовывать страницу;
-2. расчёт можно немедленно прервать через `worker.terminate()`.
+## 9. Web Worker
 
-## 8. Индикация хода вычисления
-
-Worker отправляет progress events после законченных вычислительных этапов.
-
-Для полного расчёта пользователь видит:
+Тяжёлые операции выполняются в `site/calculation-worker.js`:
 
 ```text
-сборка и факторизация K
-ветровая огибающая: i/N и направление
-боковая проверка: i/N и направление
-готово
+operational global FEM
+modular Schur cross-check
+buckling
+lateral capacity
+static payload search
+height capacity search
+rebar diameter optimization
+verification augmentation
 ```
 
-UI показывает:
-
-- процент выполнения;
-- текущий этап;
-- поясняющий текст;
-- прошедшее время;
-- оценку оставшегося времени;
-- кнопку отмены.
-
-ETA после получения достаточной доли прогресса оценивается как:
+Main thread выполняет только:
 
 ```text
-ETA = elapsed · (1-progress) / progress
+form/UI
+progress/ETA
+full mast canvas
+selected-module canvas
+CSV/paper rendering from finished result
 ```
 
-Это оценка, а не обещание точного времени: разные eigen-cases могут иметь различное число Lanczos-итераций.
+## 10. Progress contract
 
-## 9. Подбор диаметра
+Core callback:
 
-Подбор стандартного диаметра также выполняется внутри Worker.
-
-Диаметры сортируются по возрастанию. Как только первый кандидат проходит одновременно по прочности, прогибу и общей устойчивости, более крупные диаметры больше не рассчитываются: первый проходящий вариант уже является минимальным искомым.
-
-Для regression/debug оставлен `stopAtFirstPassing: false`, позволяющий явно просчитать весь список.
-
-Прогресс UI разбит на две части:
-
-```text
-78% — поиск минимального проходящего стандартного диаметра
-22% — полный итоговый расчёт выбранного диаметра, включая боковую проверку
+```js
+{
+  phase,
+  label,
+  completed,
+  total
+}
 ```
 
-Во время перебора UI показывает текущий диаметр и внутренний этап его расчёта.
-
-## 10. Regression benchmark 40 модулей
-
-CI содержит обязательный тест полной 40-модульной модели с обычными параметрами прототипа.
-
-Проверяются:
+Major phases 1.1:
 
 ```text
-free DOF = 720
+compile
+wind
+lateral
+static-payload
+height-capacity
+done
+```
+
+UI переводит это в fraction, elapsed time и ETA.
+
+## 11. Height progress budget
+
+`HEIGHT_SEARCH_PROGRESS_STEPS` задаёт фиксированный budget progress bar, а actual candidate count сохраняется отдельно.
+
+Это разделяет:
+
+- UX progress contract;
+- реальное число evaluated module counts.
+
+Даже если cache или search strategy меняются, progress остаётся монотонным и заканчивается на 100%.
+
+## 12. Cancel
+
+Пользовательская отмена:
+
+```js
+worker.terminate()
+```
+
+немедленно останавливает текущий calculation job и освобождает main UI для нового запуска.
+
+## 13. Rebar optimization
+
+`selectUniformDiameter()` проверяет standard rebar diameters по возрастанию и может остановиться на первом проходящем.
+
+Optimization candidates используют обычный global calculation. После выбора minimum diameter выполняется complete result, который уже включает modular analysis, height capacity, connections и verification.
+
+Так expensive full reporting/height search не должен без необходимости повторяться для каждой строковой candidate diameter сверх существующей optimization logic.
+
+## 14. Regression expectations
+
+CI контролирует минимум:
+
+```text
+40 modules
+720 free DOF
 bandwidth <= 35
-K factorization count = 1
-wind cases = 4
-lateral cases = 8
-progress monotonic
-progress ends at 100%
-finite engineering results
-static residual < 1e-8
-node equilibrium residual < 1e-8
-buckling residual < 1e-5
+global K factorization count = 1
+finite wind/lateral/static results
+modular/global difference < 1e-8
+module interface residual < 1e-8
+height search finite evaluation count
+verification internal checks pass
+progress monotonic and final 100%
 ```
 
-Финальное измерение GitHub-hosted Ubuntu runner после ужесточения критерия сходимости buckling, 7 августа 2026 г.:
+Runtime guard является защитой от возврата к minute-scale dense behavior, а не обещанием одинакового millisecond time на любом CPU.
+
+## 15. Static-site smoke
+
+CI запускает HTTP server над `site/` и проверяет доступность browser entry points, включая:
 
 ```text
-40-module benchmark: 1078.3 ms
-DOF = 720
-bandwidth = 35
-cases = 4 + 8
+app.js
+calculation-worker.js
+viewer.js
+module-viewer.js
+engine/solver.js
+engine/module-stack.js
+engine/module-verification.js
+engine/banded.js
+engine/buckling.js
+engine/connection-check.js
+engine/calculation-project.js
 ```
 
-Полный test suite в том же job занял около 1.46 с.
+Это предотвращает ситуацию, когда Node tests проходят, но GitHub Pages не может загрузить новый ES module.
 
-На macOS ARM тот же 40-модульный тест в предыдущем запуске занимал около 0.60 с; различия между shared runners ожидаемы.
+## 16. Future performance work
 
-В performance regression оставлен щедрый предел 20 с. Его цель — не требовать определённой скорости конкретного CI-host, а гарантировать, что код случайно не вернулся к минутному dense `O(n³)` поведению.
+Если будет добавлена geometric nonlinearity/P-Delta/contact:
 
-## 11. Что именно считается прогрессом
+- `K` перестанет быть полностью reusable between iterations;
+- current linear Schur factors также потребуют update;
+- progress должен учитывать nonlinear iterations;
+- performance regressions нужно будет разделить на linear and nonlinear modes.
 
-Процент отражает число завершённых крупных расчётных случаев, а не количество floating-point операций.
-
-Для одиночного полного расчёта вес сейчас задаётся так:
-
-```text
-1 шаг — compile/factorize K
-Nwind шагов — wind cases
-Nlateral шагов — lateral cases
-```
-
-Это намеренно простая и воспроизводимая модель. Если в будущем nonlinear solver сделает время одного case сильно неоднородным, progress weighting следует заменить статистически калиброванными весами.
-
-## 12. Инварианты производительности
-
-Чтобы оптимизация не деградировала незаметно, зафиксированы следующие архитектурные инварианты:
-
-1. основной static solve использует `symmetric-band-cholesky`;
-2. `K` факторизуется один раз на полный расчёт одной геометрии;
-3. buckling не строит явный dense `K^-1`;
-4. Lanczos подтверждает решение фактической невязкой `(K+lambda·KG)phi`;
-5. полная ветровая сетка сворачивается только по доказуемой 120° симметрии;
-6. 40-модульная модель остаётся в bounded band (`b <= 35` при текущей топологии/нумерации);
-7. main thread не вызывает FEM API;
-8. тяжёлая работа выполняется в Worker;
-9. UI имеет progress, elapsed, ETA и cancel;
-10. подбор диаметра останавливается на первом проходящем размере;
-11. static-site smoke test проверяет выдачу worker и banded/buckling modules.
-
-## 13. Границы оптимизации
-
-Эта работа не меняет физическую постановку версии 0.6:
-
-- остаётся линейная Euler–Bernoulli frame FEM;
-- реальные узлы по-прежнему идеализированы как жёсткие;
-- P-Delta и геометрическая нелинейность не добавлены;
-- нормативная механика соединений не добавлена.
-
-Версия 0.7 меняет численный путь решения и UX длительного вычисления, но не должна сама по себе менять инженерный смысл модели.
-
-Именно поэтому новая реализация проверяется одновременно аналитическими задачами, сравнением с dense reference, контролем фактических residuals и прежними regression-тестами физики.
+Нельзя механически переносить текущую `compile once, solve many` гарантию на nonlinear model.

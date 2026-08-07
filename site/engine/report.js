@@ -1,6 +1,8 @@
-const familyName = (family) => family === 'horizontal' ? 'Горизонтальное' : 'Диагональ'
+const familyName = (family) => family === 'horizontal' ? 'Верхний треугольник' : 'Ножка'
 
 function classifyMember(model, member) {
+  if (member.role === 'top-ring') return 'horizontal'
+  if (member.role === 'leg') return 'diagonal'
   const nodeA = model.nodes[member.nodeA]
   const nodeB = model.nodes[member.nodeB]
   return Math.abs(nodeA.position[2] - nodeB.position[2]) < 1e-9 ? 'horizontal' : 'diagonal'
@@ -34,6 +36,9 @@ export function buildMemberEnvelope(result) {
 
     return {
       memberId: member.id,
+      moduleIndex: member.moduleIndex ?? null,
+      moduleNumber: Number.isInteger(member.moduleIndex) ? member.moduleIndex + 1 : null,
+      role: member.role ?? family,
       nodeA: member.nodeA,
       nodeB: member.nodeB,
       family,
@@ -140,10 +145,10 @@ function weldLengthMap(result) {
 
 export function createCalculationCsv(result) {
   const members = buildMemberEnvelope(result)
-    .sort((left, right) => right.utilization - left.utilization)
+    .sort((left, right) => (left.moduleNumber - right.moduleNumber) || right.utilization - left.utilization)
   const welds = weldLengthMap(result)
   const rows = [[
-    'Ребро', 'Тип', 'Узел A', 'Узел B', 'Длина, мм', 'Диаметр, мм',
+    'Модуль', 'Ребро', 'Тип', 'Узел A', 'Узел B', 'Длина, мм', 'Диаметр, мм',
     'Направление ветра, град', 'N, кН', 'Vmax, кН', 'Tmax, Н·м', 'Mmax, Н·м',
     'σN, МПа', 'σM, МПа', 'τ, МПа', 'σэкв, МПа',
     'Использование по напряжению', 'Использование по Эйлеру', 'Итоговое использование',
@@ -154,6 +159,7 @@ export function createCalculationCsv(result) {
     const weldA = welds.get(`${member.memberId}:A`)
     const weldB = welds.get(`${member.memberId}:B`)
     rows.push([
+      member.moduleNumber ?? '',
       member.memberId,
       member.familyName,
       member.nodeA,
@@ -184,9 +190,21 @@ export function createCalculationCsv(result) {
 function exportModel(model) {
   return {
     moduleCount: model.moduleCount,
+    baseNodeIds: [...(model.baseNodeIds ?? [])],
     topNodeIds: [...model.topNodeIds],
+    modules: (model.modules ?? []).map((module) => ({
+      index: module.index,
+      number: module.number,
+      bottomLevel: module.bottomLevel,
+      topLevel: module.topLevel,
+      bottomNodeIds: [...module.bottomNodeIds],
+      topNodeIds: [...module.topNodeIds],
+      memberIds: [...module.memberIds],
+    })),
     nodes: model.nodes.map((node) => ({
       id: node.id,
+      level: node.level ?? null,
+      corner: node.corner ?? null,
       positionM: [...node.position],
       restrained: [...node.restrained],
     })),
@@ -194,12 +212,55 @@ function exportModel(model) {
       id: member.id,
       nodeA: member.nodeA,
       nodeB: member.nodeB,
+      moduleIndex: member.moduleIndex ?? null,
+      role: member.role ?? null,
       diameterM: member.diameterM,
       youngModulusPa: member.youngModulusPa,
       yieldStrengthPa: member.yieldStrengthPa,
+      tensileStrengthPa: member.tensileStrengthPa ?? null,
       poissonRatio: member.poissonRatio,
       densityKgM3: member.densityKgM3,
       effectiveLengthFactor: member.effectiveLengthFactor,
+    })),
+  }
+}
+
+function exportModularAnalysis(analysis) {
+  const modular = analysis.modular
+  if (!modular) return null
+  return {
+    method: modular.method,
+    referenceSolver: modular.referenceSolver ?? null,
+    relativeDisplacementDifference: modular.relativeDisplacementDifference,
+    interfaceEquilibriumResidual: modular.interfaceEquilibriumResidual,
+    interfaceFactorizationCount: modular.interfaceFactorizationCount,
+    interfaces: (modular.interfaces ?? []).map((value) => [...value]),
+    condensedBaseLoad: [...(modular.condensedBaseLoad ?? [])],
+    modules: (analysis.moduleResults ?? modular.modules ?? []).map((module) => ({
+      ...module,
+      bottomNodeIds: [...module.bottomNodeIds],
+      topNodeIds: [...module.topNodeIds],
+      memberIds: [...module.memberIds],
+      topAppliedFromAbove: module.topAppliedFromAbove.map((action) => ({
+        nodeId: action.nodeId,
+        forceN: [...action.forceN],
+        momentNm: [...action.momentNm],
+      })),
+      bottomReactionFromBelow: module.bottomReactionFromBelow.map((action) => ({
+        nodeId: action.nodeId,
+        forceN: [...action.forceN],
+        momentNm: [...action.momentNm],
+      })),
+      topResultantFromAbove: {
+        forceN: [...module.topResultantFromAbove.forceN],
+        momentNm: [...module.topResultantFromAbove.momentNm],
+      },
+      bottomResultantFromBelow: {
+        forceN: [...module.bottomResultantFromBelow.forceN],
+        momentNm: [...module.bottomResultantFromBelow.momentNm],
+      },
+      bottomDisplacement: [...module.bottomDisplacement],
+      topDisplacement: [...module.topDisplacement],
     })),
   }
 }
@@ -218,6 +279,7 @@ function exportLoadCase(loadCase) {
     },
     analysis: {
       solver: loadCase.analysis.solver,
+      linearSystemSolver: loadCase.analysis.linearSystemSolver,
       degreesOfFreedomPerNode: loadCase.analysis.degreesOfFreedomPerNode,
       displacementsM: loadCase.analysis.displacements.map((value) => [...value]),
       rotationsRad: (loadCase.analysis.rotations ?? []).map((value) => [...value]),
@@ -229,6 +291,7 @@ function exportLoadCase(loadCase) {
         localEndForces: [...(value.localEndForces ?? [])],
         distributedLoadLocalNPerM: [...(value.distributedLoadLocalNPerM ?? [])],
       })),
+      modular: exportModularAnalysis(loadCase.analysis),
       maxDisplacementM: loadCase.analysis.maxDisplacementM,
       maxTopDisplacementM: loadCase.analysis.maxTopDisplacementM,
       maxUtilization: loadCase.analysis.maxUtilization,
@@ -278,6 +341,7 @@ function exportVerification(verification) {
 
 function clonePlain(value) {
   if (Array.isArray(value)) return value.map(clonePlain)
+  if (ArrayBuffer.isView(value)) return Array.from(value, clonePlain)
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, clonePlain(item)]))
   }
@@ -300,6 +364,7 @@ export function createCalculationExport(
   const members = buildMemberEnvelope(result)
   const lateralCapacity = exportLateralCapacity(result.lateralCapacity)
   const staticPayloadCapacity = exportStaticPayloadCapacity(result.staticPayloadCapacity)
+  const heightCapacity = result.heightCapacity ? clonePlain(result.heightCapacity) : null
   const verification = exportVerification(result.verification)
   const connections = exportConnections(result.connections)
   const selectedBolt = connections?.bolt?.selected
@@ -309,7 +374,7 @@ export function createCalculationExport(
   const criticalWeld = connections?.weld?.critical
 
   return {
-    schema: 'mast-calculator/calculation-snapshot/v7',
+    schema: 'mast-calculator/calculation-snapshot/v8',
     generatedAt,
     software: {
       method: result.method ?? null,
@@ -334,6 +399,18 @@ export function createCalculationExport(
       displacementWindDirectionDeg: result.envelope.displacement.windDirectionDeg,
       bucklingWindDirectionDeg: result.envelope.buckling.windDirectionDeg,
       loadCaseCount: result.envelope.caseCount,
+      modularStaticSolver: result.analysis.modular?.method ?? null,
+      modularRelativeDisplacementDifference: result.analysis.modular?.relativeDisplacementDifference ?? null,
+      modularInterfaceEquilibriumResidual: result.analysis.modular?.interfaceEquilibriumResidual ?? null,
+      designMaximumModules: heightCapacity?.design?.maximumModules ?? null,
+      designMaximumHeightM: heightCapacity?.design?.maximumHeightM ?? null,
+      designHeightBounded: heightCapacity?.design?.bounded ?? null,
+      designFirstFailMode: heightCapacity?.design?.firstFailCase?.designMode ?? null,
+      ultimateMaximumModules: heightCapacity?.ultimateResistance?.maximumModules ?? null,
+      ultimateMaximumHeightM: heightCapacity?.ultimateResistance?.maximumHeightM ?? null,
+      bottomModuleVerticalMode: heightCapacity?.bottomModuleAtFirstDesignOverload?.mode
+        ?? heightCapacity?.bottomModuleAtDesignLimit?.mode
+        ?? null,
       lateralCriticalForceN: lateralCapacity?.criticalForceN ?? null,
       lateralCriticalForceKgf: lateralCapacity?.criticalForceKgf ?? null,
       lateralBoltLimitForceN: lateralCapacity?.boltLimitForceN ?? null,
@@ -362,11 +439,16 @@ export function createCalculationExport(
       verificationFailed: verification?.counts?.failed ?? null,
       verificationNotVerified: verification?.counts?.notVerified ?? null,
     },
-    diagnostics: { ...result.analysis.diagnostics },
+    diagnostics: {
+      ...result.analysis.diagnostics,
+      modularRelativeDisplacementDifference: result.analysis.modular?.relativeDisplacementDifference ?? null,
+      modularInterfaceEquilibriumResidual: result.analysis.modular?.interfaceEquilibriumResidual ?? null,
+    },
     model: exportModel(result.model),
     loadCases: result.cases.map(exportLoadCase),
     lateralCapacity,
     staticPayloadCapacity,
+    heightCapacity,
     connections,
     verification,
     material,

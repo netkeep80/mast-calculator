@@ -8,222 +8,189 @@
 
 - [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md) — требования и допущения;
 - [`docs/CALCULATION_ARCHITECTURE.md`](docs/CALCULATION_ARCHITECTURE.md) — FEM, solver и data flow;
+- [`docs/MODULAR_ANALYSIS_AND_HEIGHT.md`](docs/MODULAR_ANALYSIS_AND_HEIGHT.md) — модульная схема, подробная визуализация и поиск предельной высоты;
+- [`docs/TRIPLE_SOLVER_VERIFICATION.md`](docs/TRIPLE_SOLVER_VERIFICATION.md) — тройная независимая numerical verification global/Schur/dense;
 - [`docs/CONNECTIONS.md`](docs/CONNECTIONS.md) — межмодульный болт и сварные концы;
 - [`docs/VERIFICATION_FOR_NON_SPECIALISTS.md`](docs/VERIFICATION_FOR_NON_SPECIALISTS.md) — пошаговая верификация;
-- [`docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md`](docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md) — lateral/weather/sanity-check;
+- [`docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md`](docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md) — боковая нагрузка и погода;
 - [`docs/STATIC_PAYLOAD_CAPACITY.md`](docs/STATIC_PAYLOAD_CAPACITY.md) — максимальная масса на вершине;
 - [`docs/PERFORMANCE_AND_PROGRESS.md`](docs/PERFORMANCE_AND_PROGRESS.md) — Worker/performance;
 - [`docs/CI_CD_REVIEW.md`](docs/CI_CD_REVIEW.md) — CI/CD.
 
-## Прототип 1.0
+## Прототип 1.1
 
-Версия 1.0 добавляет physical connection post-processing поверх 3D frame FEM:
+Версия 1.1 меняет сам способ представления мачты, добавляет точный помодульный Schur solver и третий независимый dense FEM reference path для CI-проверки корректности.
 
-- выбранный межмодульный bolt — tension/shear/combined action;
-- characteristic rupture reference `Rbun*Abn` отдельно от design capacity;
-- minimum standard bolt diameter для классов 5.6 / 5.8 / 8.8 / 10.9 / 12.9;
-- minimum total fillet-weld length на каждом physical member end;
-- electrode/wire recommendation;
-- bolt как возможный governing mode lateral/static capacity;
-- `CalculationSnapshot v7` с полным `connections` object.
+### Физический модуль
 
-## Геометрия
+Каждый одинаковый октаэдр устанавливается **ножками вниз**:
 
-Из закупочной длины и числа частей:
+```text
+верх модуля: 3 горизонтальных ребра
+низ модуля: 3 опорные точки
+между ними: 6 диагональных ножек
+```
+
+Поэтому один модуль всегда содержит ровно `9` рёбер, а мачта из `N` одинаковых модулей — `9N` рёбер. Верхний треугольник последнего модуля уже является частью этого модуля; отдельного `closeTopRing` больше нет.
+
+Геометрия правильного октаэдра:
 
 ```text
 a = Lstock/nparts
 R = a/sqrt(3)
 h = a*sqrt(2/3)
-H = Nmodules*h
+H = N*h
 ```
 
-Один regular octahedron: `3 horizontal + 6 diagonal = 9 members`.
+Нижние три узла первого модуля пока считаются идеально жёстко закреплёнными в фундаменте по всем 6 DOF.
 
-## 3D frame FEM
+## Три независимых пути расчёта и проверки
 
-Node DOF:
+### 1. Production global banded FEM
+
+Основной global solver остаётся 3D Euler–Bernoulli frame FEM с 6 DOF на узел:
 
 ```text
 [ux,uy,uz,rx,ry,rz]
 ```
 
-Circular member:
+Он собирает всю мачту целиком и решает `K*u=F` через symmetric band Cholesky.
+
+### 2. Production module Schur solver
+
+Та же линейная статическая задача решается **помодульно сверху вниз**. Это не упрощённое суммирование веса. Каждый физический модуль рассматривается как 36-DOF substructure:
 
 ```text
-A = pi*d²/4
-I = pi*d⁴/64
-J = pi*d⁴/32
-W = pi*d³/32
+18 DOF нижнего интерфейса = 3 узла × 6 DOF
+18 DOF верхнего интерфейса = 3 узла × 6 DOF
 ```
 
-Euler–Bernoulli element returns coincident end actions:
+Уже обработанный верхний стек заменяется точным Schur-эквивалентом на верхнем интерфейсе следующего модуля:
 
 ```text
-N
-Vy,Vz
-T
-My,Mz
+A = Ktt + Supper
+S = Kbb - Kbt * A^-1 * Ktb
 ```
 
-Global solver uses symmetric band Cholesky; geometric stiffness and matrix-free generalized Lanczos solve:
+Одновременно сверху вниз конденсируется фактическая нагрузка, поэтому нижний модуль получает от всех вышестоящих не только результирующую силу, но и полный набор сил/моментов по трём узлам и влияние жёсткости верхнего стека. После достижения заделанного основания перемещения восстанавливаются снизу вверх.
+
+Для каждого operational load case приложение автоматически сравнивает полный вектор перемещений/поворотов modular solver с global banded FEM и контролирует равновесие интерфейсов соседних модулей.
+
+### 3. Independent dense reference FEM
+
+Для CI и reference verification добавлен `site/engine/reference-frame.js`. Он намеренно **не импортирует** production `solver.js`, `module-stack.js` или `banded.js` и независимо повторно строит:
+
+```text
+геометрию и локальные оси member
+12x12 Euler-Bernoulli stiffness
+consistent distributed-load vector
+dense global K
+boundary-condition reduction
+member end-force recovery
+dense KG для reference buckling
+```
+
+Линейная система решается dense Gaussian elimination с partial pivoting. Для малых/средних контрольных случаев дополнительно сравнивается `lambda_cr` с независимым dense generalized eigen path.
+
+Этот третий solver **не участвует в пользовательском production result** и поэтому не может случайно «подправить» проверяемый ответ. Он существует как independent oracle для CI.
+
+Dedicated CI gate сравнивает три пути на мачтах из 1, 2, 4, 7, 10 и 12 модулей: все `ux/uy/uz/rx/ry/rz`, реакции основания и все 12 local end-force components каждого ребра. Допуски для static state находятся на уровне `10^-9` relative / `10^-12` absolute для DOF; это floating-point tolerance, а не инженерный коэффициент запаса.
+
+Подробности: [`docs/TRIPLE_SOLVER_VERIFICATION.md`](docs/TRIPLE_SOLVER_VERIFICATION.md).
+
+**Global eigen-buckling не декомпозируется на независимые модули.** Общая потеря устойчивости физически является свойством всей связанной мачты, поэтому production задача
 
 ```text
 (K + lambda*KG)*phi = 0
 ```
 
-For one geometry `K` is assembled/factorized once and reused by operational, lateral and static-payload cases.
+по-прежнему решается для полной конструкции. Dense reference eigen path используется только как независимая проверка на ограниченном наборе CI scenarios.
 
-## Нагрузки
+## Подробная визуализация модуля
 
-Operational calculation supports:
+Главная 3D-схема позволяет выбрать модуль кликом либо через список. Выбранный модуль подсвечивается.
 
-- self weight;
-- cylindrical ice;
-- wind on spatial round members;
-- equipment mass/wind area;
-- extra horizontal/vertical load;
-- wind-direction envelope;
-- Beaufort 0–12 or custom pressure.
+Второе окно показывает только этот физический модуль:
 
-Preset pressure:
+- девять его рёбер;
+- `N`, `V`, `M` на каждом ребре;
+- красными стрелками — силы от всего вышестоящего стека на верхней грани;
+- синими — реакции нижележащей части/фундамента;
+- коричневыми — непосредственные узловые нагрузки;
+- силы и моменты по каждому из трёх узлов интерфейса;
+- критическое ребро и механизм вертикальной перегрузки.
 
-```text
-q = rho_air*v²/2
-rho_air = 1.225 kg/m³
-```
+Это позволяет последовательно смотреть мачту сверху вниз и видеть, как нагрузка на одинаковый модуль возрастает по мере приближения к фундаменту.
 
-Beaufort presets are comparative scenarios, not a replacement for СП 20 load design.
+## Ведомость рёбер
 
-## Межмодульный болт
+`Ведомость рёбер по огибающей` теперь знает принадлежность каждого ребра физическому модулю. В UI можно:
 
-At each interior FEM node six members meet. Physical stacking interpretation:
+- группировать по модулям или показывать единый список;
+- сортировать по модулю, номеру ребра, `|N|`, `V`, `M`, `σэкв`, ветру или итоговому использованию;
+- выбирать направление сортировки.
 
-```text
-4 members remain with lower module
-2 upward diagonals form next module foot
-1 vertical bolt connects the two parts
-```
+CSV также содержит номер физического модуля.
 
-For `N>1`:
+## Максимальная высота
 
-```text
-Njoints = 3*(N-1)
-```
+Версия 1.1 выполняет отдельный дискретный поиск по целому числу одинаковых модулей до задаваемой верхней границы.
 
-The two upward members from the **same load case** are transformed to global coordinates and summed:
+Проектный предел требует одновременно:
 
 ```text
-Fjoint = F1 + F2
-Mjoint = M1 + M2
+Umember <= 1
+Ubolt <= 1
+lambda_cr >= minimumBucklingFactor
+delta_top <= displacementLimit
 ```
 
-Bolt axis is vertical. Solver end-force sign is interpreted physically:
+Отдельно показывается **предельная высота по сопротивлению** без эксплуатационного ограничения по прогибу:
 
 ```text
-Faxis > 0 -> joint contact is compressed
-Faxis < 0 -> joint tends to open
+Umember <= 1
+Ubolt <= 1
+lambda_cr >= 1
 ```
 
-Therefore compression is not turned into fictitious bolt tension:
+Поиск использует exponential bracketing, binary search и локальную проверку соседних целых высот, чтобы не пропустить эффект чередования поворота модулей на 60°.
 
-```text
-Nt,direct = max(0,-Faxis)
-Ncontact = max(0,Faxis)
-```
+Результат сообщает:
 
-Rigid frame moment is transferred through explicit effective contact radius `reff`:
+- максимальное число модулей;
+- высоту в метрах;
+- первый не проходящий вариант;
+- определяющий критерий;
+- отдельную оценку нижнего модуля по двум требуемым вертикальным механизмам: **локальная потеря устойчивости сжатой ножки** либо **растягивающий разрыв ножки по `Rm/γM`**.
+
+Этот результат относится только к выбранным геометрии, материалу, болту, оборудованию, ветру, льду и коэффициентам. Он не является универсальной высотой данного изделия.
+
+## Соединения
+
+Connection layer версии 1.0 сохранён. Для каждого внутреннего стыка проверяется один вертикальный болт и сварные концы рёбер. Demand строится из совпадающих `N/V/T/M` одного load case, а не из независимых максимумов.
+
+Для болта:
 
 ```text
 Nt = max(0,-Faxis) + |Mb|/reff
 Ns = |Fperp| + |T|/reff
-```
-
-Compression is deliberately **not credited** against `|Mb|/reff` until an exact contact-pressure model exists. `reff` is visible/editable and must match the real washer/nut/stop geometry.
-
-СП 16 design capacities:
-
-```text
 Nbs = Rbs*Ab*ns*gamma_b*gamma_c
 Nbt = Rbt*Abn*gamma_c
 Ubolt = sqrt((Ns/Nbs)^2 + (Nt/Nbt)^2)
-PASS: Ubolt <= 1
 ```
 
-For current single-bolt joint `gamma_b=1`.
+Сжатие контакта не превращается в фиктивное растяжение болта. Подробности: [`docs/CONNECTIONS.md`](docs/CONNECTIONS.md).
 
-Characteristic rupture reference:
+## Lateral / static payload
 
-```text
-Nu,characteristic = Rbun*Abn
-```
-
-is shown separately and is **not** an allowable working load.
-
-Auto-selection checks `M16/M20/M24/M30/M36/M42/M48` for each supported property class. Class 5.8 is not accepted for tension because the used СП 16 table does not provide `Rbt` for it.
-
-Full details: [`docs/CONNECTIONS.md`](docs/CONNECTIONS.md).
-
-## Сварка
-
-Each physical member end keeps one coincident vector from one load case:
-
-```text
-N
-V = hypot(Vy,Vz)
-T
-M = hypot(My,Mz)
-```
-
-Because exact coordinates of the actual beads around the nut are not yet inputs, the current model explicitly uses a conservative circular-group surrogate:
-
-```text
-Qaxial = |N| + 2*|M|/rw
-Qshear = |V| + |T|/rw
-Qw = sqrt(Qaxial² + Qshear²)
-```
-
-Required effective length:
-
-```text
-Rwz = 0.45*Run
-lw,f = Qw/(beta_f*kf*Rwf*gamma_c)
-lw,z = Qw/(beta_z*kf*Rwz*gamma_c)
-lw = max(lw,f,lw,z,4*kf,40 mm)
-```
-
-Physical total length for `nsegments` continuous welds:
-
-```text
-Lphysical = lw + 10 mm*nsegments
-```
-
-Catalog contains Э42А, Э46А, Э50А/УОНИ-13/55, Св-08Г2С baseline Э50, Э60, Э70, Э85 and selects the first consumable with `Rwun >= Run` of the weaker parent metal.
-
-## Lateral capacity
-
-Special unit case:
+Сохраняются отдельные специальные расчёты:
 
 ```text
 F0 = 1 N horizontal at top
-```
-
-with gravity/weather/equipment disabled.
-
-```text
-Fmember = 1/Umember(1 N)
-Fglobal = lambda_cr(1 N)*1 N
-Fbolt   = 1/Ubolt(1 N)
 Flim = min(Fmember,Fglobal,Fbolt)
 ```
 
-A weak intermodule bolt can become `governingMode=bolt-connection`.
-
-Solid-rod sanity-check intentionally compares **memberLimitForceN**, not overall `Flim`, because its job is to validate frame/member scale rather than a concrete M24 in an artificial `d_rib=a/2` model.
-
-## Максимальная статическая масса на вершине
-
-Gravity-only binary search keeps self weight. Every trial mass checks:
+и gravity-only поиск максимальной массы на верхней грани:
 
 ```text
 U_member(m) <= 1
@@ -231,79 +198,65 @@ U_bolt(m) <= 1
 lambda_cr(m) >= 1
 ```
 
-Pure vertical compression does not create direct bolt tension merely because its magnitude grows. Bolt demand appears only from actual separating/shear/moment components of the calculated state.
-
-UI also reports remaining mass and equivalent water volume at `rho_water=1000 kg/m³`.
-
 ## Verification passport
 
-`calculateCompleteMast()` builds six evidence levels:
-
-1. simple formulas;
-2. force/moment equilibrium and residuals;
-3. known-answer `FL/EA`, `PL³/3EI`, `PL²/2EI` tasks using production solver;
-4. dense/reference algorithm cross-checks;
-5. external FEM and engineering review — `NOT VERIFIED`;
-6. physical validation — `NOT VERIFIED`.
-
-Green levels 1–4 verify implementation of the stated model; they do not prove safety of the fabricated structure.
-
-## Paper report / snapshot
-
-The printable HTML includes:
-
-- inputs, Git SHA, geometry, loads;
-- frame actions/stresses/buckling;
-- lateral/static capacity;
-- physical joint split and `reff`;
-- `Nt/Ns/Nbt/Nbs/Ubolt/Rbun*Abn`;
-- minimum bolt by class;
-- critical weld ends and required lengths;
-- consumable recommendation;
-- verification passport and explicit limits.
-
-Internal reproducibility format:
+Внутренний passport проверяет простые формулы, равновесие, аналитические frame benchmarks и независимые numerical algorithms. Для модульного слоя добавлены отдельные evidence items:
 
 ```text
-mast-calculator/calculation-snapshot/v7
+3 top-ring + 6 leg на каждый модуль
+interface force/moment equilibrium
+u_modular ≈ u_global
 ```
 
-No user JSON button is exposed.
+Кроме runtime passport, CI имеет более сильный triple-solver regression: `global banded FEM ↔ module Schur ↔ independent dense FEM` с проверкой DOF, реакций, member end forces и `lambda_cr` на выбранных сценариях.
 
-## Что ещё не считается
+Независимый сторонний FEM, инженерная рецензия и натурный эксперимент остаются `NOT VERIFIED` до появления реальных внешних артефактов. Внутренний dense reference solver не выдаётся за сторонний FEM.
 
-Version 1.0 calculates the bolt itself and minimum weld length, but does not invent missing geometry for:
+## Snapshot и paper project
 
+Internal reproducibility format версии 1.1:
+
+```text
+mast-calculator/calculation-snapshot/v8
+```
+
+Он хранит physical module ownership, interface actions, modular/global cross-check и `heightCapacity`. Пользовательской JSON-кнопки нет.
+
+Печатный HTML-проект должен оставаться человекочитаемым и содержать расчётную методику, предельную высоту, модульный баланс, соединения, формулы и ограничения модели.
+
+## Ограничения
+
+Пока не реализованы:
+
+- реальная податливость болтового/сварного узла в глобальной `K`;
 - thread stripping / actual engagement length;
-- bearing of nut/washer/member material;
-- prying and washer/contact bending;
-- preload/friction/slip;
-- exact weld-group `W/Ix/Iy`;
-- finite joint stiffness;
+- bearing/prying/preload/slip;
+- точная геометрия weld group;
 - fatigue;
-- foundation;
-- P-Delta/initial imperfections/plasticity.
+- параметрический фундамент;
+- P-Delta/geometric nonlinearity;
+- initial imperfections и plasticity;
+- нормативные сочетания СП 20 в полном объёме;
+- внешний FEM cross-check реальной мачты.
 
-These require actual manufactured joint dimensions and external validation.
-
-## CI/CD
+## CI/CD и запуск
 
 PR checks:
 
 ```text
 Syntax, policy and maintainability
 Secrets scan
+Triple FEM equivalence
 Tests: Ubuntu/macOS/Windows
 Static site smoke
 ```
 
-The 40-module regression checks one `K` factorization, 720 free DOF, bounded bandwidth, `117` internal bolt joints, one weld-envelope item per physical member end, finite bolt limits and green internal verification.
-
-## Локальный запуск
+Локально:
 
 ```bash
 python3 -m http.server 8080 --directory site
 npm test
+npm run test:triple
 npm run check
 node scripts/check-file-line-limits.mjs
 ```

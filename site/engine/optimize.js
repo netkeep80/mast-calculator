@@ -3,6 +3,13 @@ import { STANDARD_DIAMETERS_MM } from './catalog.js'
 
 export { STANDARD_DIAMETERS_MM }
 
+function variantPasses(variant) {
+  return variant.passesStrength
+    && variant.passesDisplacement
+    && variant.passesBuckling
+    && variant.passesConnection
+}
+
 export function selectUniformDiameter(parameters, diameters = STANDARD_DIAMETERS_MM, options = {}) {
   const orderedDiameters = [...diameters].sort((left, right) => left - right)
   const variants = []
@@ -26,7 +33,15 @@ export function selectUniformDiameter(parameters, diameters = STANDARD_DIAMETERS
     const passesStrength = result.envelope.maxUtilization <= 1
     const passesDisplacement = result.envelope.maxTopDisplacementM * 1000 <= parameters.displacementLimitMm
     const passesBuckling = result.envelope.minimumBucklingFactor >= parameters.minimumBucklingFactor
-    const variant = { diameter, result, passesStrength, passesDisplacement, passesBuckling }
+    const passesConnection = result.connections?.passes !== false
+    const variant = {
+      diameter,
+      result,
+      passesStrength,
+      passesDisplacement,
+      passesBuckling,
+      passesConnection,
+    }
     variants.push(variant)
     options.onVariant?.({
       diameter,
@@ -35,19 +50,19 @@ export function selectUniformDiameter(parameters, diameters = STANDARD_DIAMETERS
       passesStrength,
       passesDisplacement,
       passesBuckling,
+      passesConnection,
     })
 
-    // Диаметры проверяются по возрастанию. Как только первый кандидат проходит
-    // все три ограничения, он уже является минимальным подходящим; расчёт более
-    // крупных диаметров ничего не меняет в ответе и только тратит CPU.
-    if (stopAtFirstPassing && passesStrength && passesDisplacement && passesBuckling) break
+    // Диаметры проверяются по возрастанию. В режиме auto каждый вариант уже
+    // содержит собственную минимальную согласованную конфигурацию болта/гаек.
+    // Первый вариант, проходящий каркас И соединение, является минимальным
+    // пригодным комплектом и позволяет не считать более крупную арматуру.
+    if (stopAtFirstPassing && variantPasses(variant)) break
   }
 
   return {
     variants,
-    recommended: variants.find((variant) => (
-      variant.passesStrength && variant.passesDisplacement && variant.passesBuckling
-    )) ?? null,
+    recommended: variants.find(variantPasses) ?? null,
     evaluatedCount: variants.length,
     availableCount: orderedDiameters.length,
   }

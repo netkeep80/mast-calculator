@@ -130,17 +130,29 @@ const csvCell = (value) => {
   return /[;"\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
 }
 
+function weldLengthMap(result) {
+  const map = new Map()
+  for (const item of result.connections?.weld?.envelope ?? []) {
+    map.set(`${item.memberId}:${item.end}`, item)
+  }
+  return map
+}
+
 export function createCalculationCsv(result) {
   const members = buildMemberEnvelope(result)
     .sort((left, right) => right.utilization - left.utilization)
+  const welds = weldLengthMap(result)
   const rows = [[
     'Ребро', 'Тип', 'Узел A', 'Узел B', 'Длина, мм', 'Диаметр, мм',
     'Направление ветра, град', 'N, кН', 'Vmax, кН', 'Tmax, Н·м', 'Mmax, Н·м',
     'σN, МПа', 'σM, МПа', 'τ, МПа', 'σэкв, МПа',
     'Использование по напряжению', 'Использование по Эйлеру', 'Итоговое использование',
+    'Сварка A: физ. длина, мм', 'Сварка B: физ. длина, мм', 'Сварочный материал',
   ]]
 
   for (const member of members) {
+    const weldA = welds.get(`${member.memberId}:A`)
+    const weldB = welds.get(`${member.memberId}:B`)
     rows.push([
       member.memberId,
       member.familyName,
@@ -160,6 +172,9 @@ export function createCalculationCsv(result) {
       csvNumber(member.stressUtilization, 4),
       csvNumber(member.bucklingUtilization, 4),
       csvNumber(member.utilization, 4),
+      csvNumber(weldA?.check.requiredPhysicalLengthMm, 2),
+      csvNumber(weldB?.check.requiredPhysicalLengthMm, 2),
+      weldA?.check.consumableLabel ?? weldB?.check.consumableLabel ?? '',
     ])
   }
 
@@ -261,6 +276,18 @@ function exportVerification(verification) {
   }
 }
 
+function clonePlain(value) {
+  if (Array.isArray(value)) return value.map(clonePlain)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, clonePlain(item)]))
+  }
+  return value
+}
+
+function exportConnections(connections) {
+  return connections ? clonePlain(connections) : null
+}
+
 export function createCalculationExport(
   result,
   parameters = result?.parameters,
@@ -274,9 +301,15 @@ export function createCalculationExport(
   const lateralCapacity = exportLateralCapacity(result.lateralCapacity)
   const staticPayloadCapacity = exportStaticPayloadCapacity(result.staticPayloadCapacity)
   const verification = exportVerification(result.verification)
+  const connections = exportConnections(result.connections)
+  const selectedBolt = connections?.bolt?.selected
+  const selectedBoltRecommendation = connections?.bolt?.recommendationsByClass?.find(
+    (item) => item.boltClass === resolvedParameters.jointBoltClass,
+  )?.recommended
+  const criticalWeld = connections?.weld?.critical
 
   return {
-    schema: 'mast-calculator/calculation-snapshot/v6',
+    schema: 'mast-calculator/calculation-snapshot/v7',
     generatedAt,
     software: {
       method: result.method ?? null,
@@ -303,12 +336,27 @@ export function createCalculationExport(
       loadCaseCount: result.envelope.caseCount,
       lateralCriticalForceN: lateralCapacity?.criticalForceN ?? null,
       lateralCriticalForceKgf: lateralCapacity?.criticalForceKgf ?? null,
+      lateralBoltLimitForceN: lateralCapacity?.boltLimitForceN ?? null,
+      lateralBoltLimitForceKgf: lateralCapacity?.boltLimitForceKgf ?? null,
       lateralGoverningMode: lateralCapacity?.governingMode ?? null,
       lateralDirectionDeg: lateralCapacity?.directionDeg ?? null,
       maximumTotalTopMassKg: staticPayloadCapacity?.maximumTotalTopMassKg ?? null,
       remainingAdditionalTopMassKg: staticPayloadCapacity?.remainingAdditionalMassKg ?? null,
       equivalentWaterVolumeM3: staticPayloadCapacity?.equivalentWaterVolumeM3 ?? null,
+      staticPayloadBoltUtilization: staticPayloadCapacity?.boltUtilizationAtLimit ?? null,
       staticPayloadGoverningMode: staticPayloadCapacity?.governingMode ?? null,
+      configuredBoltDiameterMm: resolvedParameters.jointBoltDiameterMm,
+      configuredBoltClass: resolvedParameters.jointBoltClass,
+      configuredBoltUtilization: selectedBolt?.utilization ?? 0,
+      configuredBoltPasses: selectedBolt?.passes ?? true,
+      configuredBoltGoverningLevel: selectedBolt?.governingDemand?.level ?? null,
+      configuredBoltGoverningNodeId: selectedBolt?.governingDemand?.nodeId ?? null,
+      minimumBoltDiameterForConfiguredClassMm: selectedBoltRecommendation?.diameterMm ?? null,
+      criticalWeldPhysicalLengthMm: criticalWeld?.check?.requiredPhysicalLengthMm ?? null,
+      criticalWeldEffectiveLengthMm: criticalWeld?.check?.requiredEffectiveLengthMm ?? null,
+      criticalWeldMemberId: criticalWeld?.memberId ?? null,
+      criticalWeldEnd: criticalWeld?.end ?? null,
+      configuredWeldConsumable: criticalWeld?.check?.consumableLabel ?? null,
       verificationStatus: verification?.status ?? null,
       verificationPassed: verification?.counts?.passed ?? null,
       verificationFailed: verification?.counts?.failed ?? null,
@@ -319,6 +367,7 @@ export function createCalculationExport(
     loadCases: result.cases.map(exportLoadCase),
     lateralCapacity,
     staticPayloadCapacity,
+    connections,
     verification,
     material,
     members,

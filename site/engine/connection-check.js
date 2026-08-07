@@ -207,6 +207,8 @@ export function calculateConnectionChecks(result) {
   const electrodeRecommendation = summarizeWeldRecommendation(result, parameters, 'electrode')
   const wireRecommendation = summarizeWeldRecommendation(result, parameters, 'wire')
   const strength = resolveJointStrengthParameters(parameters)
+  const hardwareGeometryPasses = configurator.geometry.passes
+  const jointGeometryPasses = hardwareGeometryPasses && configurator.nutSections.passes
 
   return {
     method: 'two-nut-intermodule-joint-and-member-end-weld-v3',
@@ -254,13 +256,13 @@ export function calculateConnectionChecks(result) {
       wireRecommendation,
     },
     passesConfiguredBolt: selectedBolt.passes,
-    passesJointGeometry: configurator.geometry.passes,
+    passesHardwareGeometry: hardwareGeometryPasses,
+    passesJointGeometry: jointGeometryPasses,
     passesNutSections: configurator.nutSections.passes,
     selectedWeldConsumableCompatible: selectedWeldCompatible,
     passesWeldAreaCriterion: weldAreaPasses,
     passes: selectedBolt.passes
-      && configurator.geometry.passes
-      && configurator.nutSections.passes
+      && jointGeometryPasses
       && selectedWeldCompatible
       && weldAreaPasses,
   }

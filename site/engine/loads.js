@@ -4,14 +4,32 @@ const GRAVITY = 9.80665
 
 const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 
-export function buildLoadCase(model, parameters) {
+function normalizedTopPointLoad(options = {}) {
+  const raw = options.topPointLoadN ?? [0, 0, 0]
+  if (!Array.isArray(raw) || raw.length !== 3) {
+    throw new Error('Внутренняя точечная нагрузка вершины должна быть вектором [Fx, Fy, Fz]')
+  }
+  const value = raw.map(Number)
+  if (!value.every(Number.isFinite)) {
+    throw new Error('Компоненты внутренней точечной нагрузки вершины должны быть конечными числами')
+  }
+  return value
+}
+
+export function buildLoadCase(model, parameters, options = {}) {
   // В frame-модели собственный вес, лёд и ветер на стержни являются
   // распределёнными нагрузками. В nodalLoads остаются только нагрузки,
-  // приложенные непосредственно к расчётным узлам (оборудование и доп. силы).
+  // приложенные непосредственно к расчётным узлам: масса/парусность
+  // оборудования и внутренняя test-fixture нагрузка специальных расчётов.
+  //
+  // Issue #36: произвольные extraHorizontal/extraVertical больше не являются
+  // пользовательскими параметрами. Нормированные 1 Н проверки передают силу
+  // отдельно через options.topPointLoadN, чтобы verification API не протекал в UI.
   const nodalLoads = model.nodes.map(() => [0, 0, 0])
   const nodalMoments = model.nodes.map(() => [0, 0, 0])
   const memberDistributedLoads = model.members.map(() => [0, 0, 0])
   const memberLoadDetails = model.members.map(() => null)
+  const topPointLoadN = normalizedTopPointLoad(options)
 
   const directionRad = parameters.windDirectionDeg * Math.PI / 180
   const wind = [Math.cos(directionRad), Math.sin(directionRad), 0]
@@ -83,25 +101,21 @@ export function buildLoadCase(model, parameters) {
     distributedResultant = add3(distributedResultant, scale3(distributed, lengthM))
   }
 
-  // equipmentMassKg is a physical mass. It is converted to a design force by
-  // m*g*equipmentLoadFactor. extra*LoadN fields are already forces in newtons
-  // and therefore are not multiplied by the equipment factor a second time.
-  const equipmentWeightN = parameters.equipmentMassKg * GRAVITY * parameters.equipmentLoadFactor
+  // equipmentMassKg — единственная пользовательская вертикальная нагрузка
+  // вершины. Она переводится в расчётный вес по m*g*equipmentLoadFactor.
+  const equipmentMassKg = Math.max(0, Number(parameters.equipmentMassKg ?? 0))
+  const equipmentWeightN = equipmentMassKg * GRAVITY * parameters.equipmentLoadFactor
   const equipmentWindN = parameters.windPressurePa
     * parameters.equipmentDragCoefficient
     * parameters.equipmentWindAreaM2
     * parameters.windLoadFactor
-  const extraHorizontalLoadN = Number(parameters.extraHorizontalLoadN ?? 0)
-  const extraVerticalLoadN = Number(parameters.extraVerticalLoadN ?? 0)
-  const horizontalN = equipmentWindN + extraHorizontalLoadN
-  const verticalN = equipmentWeightN + extraVerticalLoadN
 
   const topCount = Math.max(model.topNodeIds.length, 1)
   for (const nodeId of model.topNodeIds) {
     addNodeLoad(nodeId, [
-      wind[0] * horizontalN / topCount,
-      wind[1] * horizontalN / topCount,
-      -verticalN / topCount,
+      (wind[0] * equipmentWindN + topPointLoadN[0]) / topCount,
+      (wind[1] * equipmentWindN + topPointLoadN[1]) / topCount,
+      (-equipmentWeightN + topPointLoadN[2]) / topCount,
     ])
   }
 
@@ -124,10 +138,12 @@ export function buildLoadCase(model, parameters) {
     memberWindN,
     equipmentWeightN,
     equipmentWindN,
-    extraHorizontalLoadN,
-    extraVerticalLoadN,
-    topHorizontalLoadN: horizontalN,
-    topVerticalLoadN: verticalN,
+    topPointLoadN: [...topPointLoadN],
+    topHorizontalLoadN: Math.hypot(
+      equipmentWindN * wind[0] + topPointLoadN[0],
+      equipmentWindN * wind[1] + topPointLoadN[1],
+    ),
+    topVerticalLoadN: equipmentWeightN - topPointLoadN[2],
     windDirectionDeg: parameters.windDirectionDeg,
   }
 }

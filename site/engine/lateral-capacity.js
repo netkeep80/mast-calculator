@@ -1,3 +1,4 @@
+import { selectedBoltUtilizationForAnalysis } from './connection-check.js'
 import { buildLoadCase } from './loads.js'
 import { analyzeFrame, compileFrameSystem } from './solver.js'
 
@@ -62,6 +63,13 @@ function meaningfulCompressionN(analysis) {
   )
 }
 
+function governingMode(memberLimitN, globalBucklingN, boltLimitN) {
+  const minimum = Math.min(memberLimitN, globalBucklingN, boltLimitN)
+  if (boltLimitN <= minimum + 1e-12) return 'bolt-connection'
+  if (globalBucklingN <= minimum + 1e-12) return 'global-buckling'
+  return null
+}
+
 function evaluateDirection(model, parameters, directionDeg, frameSystem) {
   const unitParameters = pureUnitLateralParameters(parameters, directionDeg)
   const loads = buildLoadCase(model, unitParameters)
@@ -71,10 +79,17 @@ function evaluateDirection(model, parameters, directionDeg, frameSystem) {
   const globalBucklingForceN = unitCompressionN > MIN_COMPRESSION_FOR_GLOBAL_BUCKLING_N
     ? analysis.buckling.criticalLoadFactor
     : Number.POSITIVE_INFINITY
-  const criticalForceN = Math.min(memberLimit.forceN, globalBucklingForceN)
-  const governingMode = globalBucklingForceN <= memberLimit.forceN
-    ? 'global-buckling'
-    : memberLimit.mode
+  const boltUnitUtilization = selectedBoltUtilizationForAnalysis(model, analysis, unitParameters)
+  const boltLimitForceN = boltUnitUtilization > Number.EPSILON
+    ? 1 / boltUnitUtilization
+    : Number.POSITIVE_INFINITY
+  const criticalForceN = Math.min(memberLimit.forceN, globalBucklingForceN, boltLimitForceN)
+  const connectionOrBucklingMode = governingMode(
+    memberLimit.forceN,
+    globalBucklingForceN,
+    boltLimitForceN,
+  )
+  const mode = connectionOrBucklingMode ?? memberLimit.mode
 
   return {
     directionDeg,
@@ -85,7 +100,10 @@ function evaluateDirection(model, parameters, directionDeg, frameSystem) {
     memberLimitMode: memberLimit.mode,
     globalBucklingForceN,
     globalBucklingForceKgf: globalBucklingForceN / STANDARD_GRAVITY_M_S2,
-    governingMode,
+    boltLimitForceN,
+    boltLimitForceKgf: boltLimitForceN / STANDARD_GRAVITY_M_S2,
+    boltUnitUtilization,
+    governingMode: mode,
     criticalMemberId: memberLimit.memberId,
     unitUtilization: memberLimit.unitUtilization,
     unitCompressionN,
@@ -124,9 +142,10 @@ export function calculateLateralCapacity(model, parameters, options = {}) {
   const governing = minimumCaseBy(cases, (item) => item.criticalForceN)
   const memberGoverning = minimumCaseBy(cases, (item) => item.memberLimitForceN)
   const globalBucklingGoverning = minimumCaseBy(cases, (item) => item.globalBucklingForceN)
+  const boltGoverning = minimumCaseBy(cases, (item) => item.boltLimitForceN)
 
   return {
-    method: 'unit-horizontal-tip-load-linear-v1',
+    method: 'unit-horizontal-tip-load-linear-v2-with-bolt',
     stepDeg,
     symmetrySectorDeg: ROTATIONAL_SYMMETRY_DEG,
     forceApplication: '1 Н горизонтально, поровну между тремя узлами верхней треугольной грани',
@@ -135,6 +154,7 @@ export function calculateLateralCapacity(model, parameters, options = {}) {
     governing,
     memberGoverning,
     globalBucklingGoverning,
+    boltGoverning,
     criticalForceN: governing.criticalForceN,
     criticalForceKgf: governing.criticalForceKgf,
     governingMode: governing.governingMode,
@@ -148,5 +168,8 @@ export function calculateLateralCapacity(model, parameters, options = {}) {
     globalBucklingForceN: globalBucklingGoverning.globalBucklingForceN,
     globalBucklingForceKgf: globalBucklingGoverning.globalBucklingForceKgf,
     globalBucklingDirectionDeg: globalBucklingGoverning.directionDeg,
+    boltLimitForceN: boltGoverning.boltLimitForceN,
+    boltLimitForceKgf: boltGoverning.boltLimitForceKgf,
+    boltLimitDirectionDeg: boltGoverning.directionDeg,
   }
 }

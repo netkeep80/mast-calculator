@@ -13,10 +13,9 @@ permissions:
 
 jobs:
   architecture:
-    name: Architecture audit and baseline
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    name: Architecture audit and regression
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     concurrency:
       group: architecture-${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: true
@@ -35,10 +34,15 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24.x'
+      - name: Check JavaScript syntax
+        run: npm run check
       - name: Test architecture audit tooling
         run: npm run test:architecture
       - name: Enforce current architecture baseline
         run: npm run audit:architecture
+      - name: Run complete regression suite
+        run: npm test
       - name: Publish human-readable snapshot to job summary
+        if: always()
         shell: bash
         run: npm run audit:architecture:report >> "$GITHUB_STEP_SUMMARY"

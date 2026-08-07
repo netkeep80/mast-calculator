@@ -4,6 +4,12 @@ import {
   getBoltClass,
   getBoltSize,
 } from './connection-catalog.js'
+import {
+  calculateBoltPreload,
+  DEFAULT_NUT_FACTOR,
+  DEFAULT_PRELOAD_VARIATION,
+  torqueForNominalPreloadNm,
+} from './bolt-preload.js'
 
 const EPSILON_FORCE_N = 1e-9
 const UTILIZATION_TOLERANCE = 1e-12
@@ -14,21 +20,47 @@ const positiveFactor = (value, name) => {
   return numeric
 }
 
+const nonNegative = (value, name) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric < 0) throw new Error(`${name} должен быть неотрицательным числом`)
+  return numeric
+}
+
 export function calculateBoltCapacity({
   diameterMm,
   boltClass,
   connectionConditionFactor = 1,
   shearPlanes = 1,
+  tighteningTorqueNm = 0,
+  nutFactor = DEFAULT_NUT_FACTOR,
+  preloadVariation = DEFAULT_PRELOAD_VARIATION,
 }) {
   const size = getBoltSize(diameterMm)
   const propertyClass = getBoltClass(boltClass)
   const gammaC = positiveFactor(connectionConditionFactor, 'Коэффициент условий работы соединения')
   const planes = positiveFactor(shearPlanes, 'Число плоскостей среза')
+  const torqueNm = nonNegative(tighteningTorqueNm, 'Момент затяжки')
   const shearCapacityN = propertyClass.rbsMPa * size.grossAreaMm2 * planes * gammaC
   const tensionCapacityN = Number.isFinite(propertyClass.rbtMPa)
     ? propertyClass.rbtMPa * size.netAreaMm2 * gammaC
     : null
   const characteristicRuptureN = propertyClass.rbunMPa * size.netAreaMm2
+  const preload = calculateBoltPreload({
+    tighteningTorqueNm: torqueNm,
+    diameterMm: size.diameterMm,
+    nutFactor,
+    preloadVariation,
+  })
+  const externalTensionReserveN = tensionCapacityN == null
+    ? null
+    : Math.max(0, tensionCapacityN - preload.maximumPreloadN)
+  const designTorqueAtTensionCapacityNm = tensionCapacityN == null
+    ? null
+    : torqueForNominalPreloadNm(
+        tensionCapacityN / (1 + preload.preloadVariation),
+        size.diameterMm,
+        preload.nutFactor,
+      )
 
   return {
     diameterMm: size.diameterMm,
@@ -44,6 +76,9 @@ export function calculateBoltCapacity({
     shearCapacityN,
     tensionCapacityN,
     characteristicRuptureN,
+    preload,
+    externalTensionReserveN,
+    designTorqueAtTensionCapacityNm,
     nutClassForTension: propertyClass.nutClassForTension,
     note: propertyClass.note ?? null,
   }
@@ -53,26 +88,42 @@ export function checkBoltDemand(demand, options) {
   const tensionN = Math.max(0, Number(demand.tensionN) || 0)
   const shearN = Math.max(0, Number(demand.shearN) || 0)
   const capacity = calculateBoltCapacity(options)
+  const strengthTensionN = tensionN + capacity.preload.maximumPreloadN
   const shearUtilization = shearN / Math.max(capacity.shearCapacityN, Number.EPSILON)
-  const tensionSupported = capacity.tensionCapacityN != null || tensionN <= EPSILON_FORCE_N
-  const tensionUtilization = tensionN <= EPSILON_FORCE_N
+  const tensionSupported = capacity.tensionCapacityN != null || strengthTensionN <= EPSILON_FORCE_N
+  const tensionUtilization = strengthTensionN <= EPSILON_FORCE_N
     ? 0
     : tensionSupported
-      ? tensionN / Math.max(capacity.tensionCapacityN, Number.EPSILON)
+      ? strengthTensionN / Math.max(capacity.tensionCapacityN, Number.EPSILON)
       : Number.POSITIVE_INFINITY
+  const preloadUtilization = capacity.tensionCapacityN == null
+    ? capacity.preload.maximumPreloadN <= EPSILON_FORCE_N ? 0 : Number.POSITIVE_INFINITY
+    : capacity.preload.maximumPreloadN / Math.max(capacity.tensionCapacityN, Number.EPSILON)
+  const externalTensionUtilization = capacity.tensionCapacityN == null
+    ? tensionN <= EPSILON_FORCE_N ? 0 : Number.POSITIVE_INFINITY
+    : tensionN / Math.max(capacity.tensionCapacityN, Number.EPSILON)
   const interactionUtilization = Math.hypot(shearUtilization, tensionUtilization)
-  const governingUtilization = Math.max(shearUtilization, tensionUtilization, interactionUtilization)
+  const governingUtilization = Math.max(
+    shearUtilization,
+    tensionUtilization,
+    preloadUtilization,
+    interactionUtilization,
+  )
   const loadFactorToDesignLimit = governingUtilization > Number.EPSILON
     ? 1 / governingUtilization
     : Number.POSITIVE_INFINITY
-  const resultantDemandN = Math.hypot(tensionN, shearN)
+  const resultantDemandN = Math.hypot(strengthTensionN, shearN)
 
   return {
     ...capacity,
     tensionN,
+    serviceExternalTensionN: tensionN,
+    strengthTensionN,
     shearN,
     resultantDemandN,
     shearUtilization,
+    externalTensionUtilization,
+    preloadUtilization,
     tensionUtilization,
     interactionUtilization,
     utilization: governingUtilization,
@@ -113,6 +164,9 @@ export function minimumBoltForClass(demands, boltClass, options = {}) {
       boltClass,
       connectionConditionFactor: options.connectionConditionFactor ?? 1,
       shearPlanes: options.shearPlanes ?? 1,
+      tighteningTorqueNm: options.tighteningTorqueNm ?? 0,
+      nutFactor: options.nutFactor ?? DEFAULT_NUT_FACTOR,
+      preloadVariation: options.preloadVariation ?? DEFAULT_PRELOAD_VARIATION,
     })
     return {
       diameterMm: size.diameterMm,

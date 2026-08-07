@@ -27,10 +27,13 @@ function pureUnitLateralParameters(parameters, directionDeg) {
     windEnvelopeEnabled: false,
     equipmentMassKg: 0,
     equipmentWindAreaM2: 0,
-    extraHorizontalLoadN: 1,
-    extraVerticalLoadN: 0,
     iceThicknessMm: 0,
   }
+}
+
+function unitTopPointLoad(directionDeg) {
+  const radians = directionDeg * Math.PI / 180
+  return [Math.cos(radians), Math.sin(radians), 0]
 }
 
 function governingMemberLimit(analysis) {
@@ -72,7 +75,9 @@ function governingMode(memberLimitN, globalBucklingN, boltLimitN) {
 
 function evaluateDirection(model, parameters, directionDeg, frameSystem) {
   const unitParameters = pureUnitLateralParameters(parameters, directionDeg)
-  const loads = buildLoadCase(model, unitParameters)
+  const loads = buildLoadCase(model, unitParameters, {
+    topPointLoadN: unitTopPointLoad(directionDeg),
+  })
   const analysis = analyzeFrame(model, loads, unitParameters, frameSystem)
   const memberLimit = governingMemberLimit(analysis)
   const unitCompressionN = meaningfulCompressionN(analysis)
@@ -95,6 +100,7 @@ function evaluateDirection(model, parameters, directionDeg, frameSystem) {
     directionDeg,
     criticalForceN,
     criticalForceKgf: criticalForceN / STANDARD_GRAVITY_M_S2,
+    idealizedCraneBoomPayloadKg: criticalForceN / STANDARD_GRAVITY_M_S2,
     memberLimitForceN: memberLimit.forceN,
     memberLimitForceKgf: memberLimit.forceN / STANDARD_GRAVITY_M_S2,
     memberLimitMode: memberLimit.mode,
@@ -145,11 +151,12 @@ export function calculateLateralCapacity(model, parameters, options = {}) {
   const boltGoverning = minimumCaseBy(cases, (item) => item.boltLimitForceN)
 
   return {
-    method: 'unit-horizontal-tip-load-linear-v2-with-bolt',
+    method: 'unit-horizontal-tip-load-linear-v3-internal-fixture-with-bolt',
     stepDeg,
     symmetrySectorDeg: ROTATIONAL_SYMMETRY_DEG,
-    forceApplication: '1 Н горизонтально, поровну между тремя узлами верхней треугольной грани',
-    excludedLoads: 'ветер, лёд, собственный вес, оборудование и дополнительные нагрузки',
+    forceApplication: 'внутренняя нормированная сила 1 Н горизонтально, поровну между тремя узлами верхней треугольной грани',
+    excludedLoads: 'ветер, лёд, собственный вес и оборудование',
+    craneBoomInterpretation: 'Эквивалентная масса концевого груза для идеализированной консольной стрелы получается как Flim/g. Это поперечный unit-load предел без собственного веса горизонтально ориентированной стрелы и не является паспортной грузоподъёмностью крана.',
     cases,
     governing,
     memberGoverning,
@@ -157,6 +164,7 @@ export function calculateLateralCapacity(model, parameters, options = {}) {
     boltGoverning,
     criticalForceN: governing.criticalForceN,
     criticalForceKgf: governing.criticalForceKgf,
+    idealizedCraneBoomPayloadKg: governing.idealizedCraneBoomPayloadKg,
     governingMode: governing.governingMode,
     directionDeg: governing.directionDeg,
     criticalMemberId: governing.criticalMemberId,

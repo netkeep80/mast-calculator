@@ -156,6 +156,7 @@ jobs:
           curl --fail --silent http://127.0.0.1:4173/engine/buckling.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/weather.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/lateral-capacity.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/static-payload-capacity.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/calculation-note.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/calculation-project.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/styles.css >/dev/null

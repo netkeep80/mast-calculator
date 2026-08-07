@@ -9,6 +9,7 @@
 - [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md) — требования и допущения;
 - [`docs/CALCULATION_ARCHITECTURE.md`](docs/CALCULATION_ARCHITECTURE.md) — FEM, solver и data flow;
 - [`docs/MODULAR_ANALYSIS_AND_HEIGHT.md`](docs/MODULAR_ANALYSIS_AND_HEIGHT.md) — модульная схема, подробная визуализация и поиск предельной высоты;
+- [`docs/TRIPLE_SOLVER_VERIFICATION.md`](docs/TRIPLE_SOLVER_VERIFICATION.md) — тройная независимая numerical verification global/Schur/dense;
 - [`docs/CONNECTIONS.md`](docs/CONNECTIONS.md) — межмодульный болт и сварные концы;
 - [`docs/VERIFICATION_FOR_NON_SPECIALISTS.md`](docs/VERIFICATION_FOR_NON_SPECIALISTS.md) — пошаговая верификация;
 - [`docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md`](docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md) — боковая нагрузка и погода;
@@ -18,7 +19,7 @@
 
 ## Прототип 1.1
 
-Версия 1.1 меняет сам способ представления мачты и добавляет второй независимый путь статического расчёта.
+Версия 1.1 меняет сам способ представления мачты, добавляет точный помодульный Schur solver и третий независимый dense FEM reference path для CI-проверки корректности.
 
 ### Физический модуль
 
@@ -43,7 +44,9 @@ H = N*h
 
 Нижние три узла первого модуля пока считаются идеально жёстко закреплёнными в фундаменте по всем 6 DOF.
 
-## Два статических solver
+## Три независимых пути расчёта и проверки
+
+### 1. Production global banded FEM
 
 Основной global solver остаётся 3D Euler–Bernoulli frame FEM с 6 DOF на узел:
 
@@ -53,7 +56,9 @@ H = N*h
 
 Он собирает всю мачту целиком и решает `K*u=F` через symmetric band Cholesky.
 
-Дополнительно та же задача решается **помодульно сверху вниз**. Это не упрощённое суммирование веса. Каждый физический модуль рассматривается как 36-DOF substructure:
+### 2. Production module Schur solver
+
+Та же линейная статическая задача решается **помодульно сверху вниз**. Это не упрощённое суммирование веса. Каждый физический модуль рассматривается как 36-DOF substructure:
 
 ```text
 18 DOF нижнего интерфейса = 3 узла × 6 DOF
@@ -71,13 +76,35 @@ S = Kbb - Kbt * A^-1 * Ktb
 
 Для каждого operational load case приложение автоматически сравнивает полный вектор перемещений/поворотов modular solver с global banded FEM и контролирует равновесие интерфейсов соседних модулей.
 
-**Global eigen-buckling не декомпозируется на независимые модули.** Общая потеря устойчивости физически является свойством всей связанной мачты, поэтому задача
+### 3. Independent dense reference FEM
+
+Для CI и reference verification добавлен `site/engine/reference-frame.js`. Он намеренно **не импортирует** production `solver.js`, `module-stack.js` или `banded.js` и независимо повторно строит:
+
+```text
+геометрию и локальные оси member
+12x12 Euler-Bernoulli stiffness
+consistent distributed-load vector
+dense global K
+boundary-condition reduction
+member end-force recovery
+dense KG для reference buckling
+```
+
+Линейная система решается dense Gaussian elimination с partial pivoting. Для малых/средних контрольных случаев дополнительно сравнивается `lambda_cr` с независимым dense generalized eigen path.
+
+Этот третий solver **не участвует в пользовательском production result** и поэтому не может случайно «подправить» проверяемый ответ. Он существует как independent oracle для CI.
+
+Dedicated CI gate сравнивает три пути на мачтах из 1, 2, 4, 7, 10 и 12 модулей: все `ux/uy/uz/rx/ry/rz`, реакции основания и все 12 local end-force components каждого ребра. Допуски для static state находятся на уровне `10^-9` relative / `10^-12` absolute для DOF; это floating-point tolerance, а не инженерный коэффициент запаса.
+
+Подробности: [`docs/TRIPLE_SOLVER_VERIFICATION.md`](docs/TRIPLE_SOLVER_VERIFICATION.md).
+
+**Global eigen-buckling не декомпозируется на независимые модули.** Общая потеря устойчивости физически является свойством всей связанной мачты, поэтому production задача
 
 ```text
 (K + lambda*KG)*phi = 0
 ```
 
-по-прежнему решается для полной конструкции.
+по-прежнему решается для полной конструкции. Dense reference eigen path используется только как независимая проверка на ограниченном наборе CI scenarios.
 
 ## Подробная визуализация модуля
 
@@ -181,7 +208,9 @@ interface force/moment equilibrium
 u_modular ≈ u_global
 ```
 
-Независимый сторонний FEM, инженерная рецензия и натурный эксперимент остаются `NOT VERIFIED` до появления реальных внешних артефактов.
+Кроме runtime passport, CI имеет более сильный triple-solver regression: `global banded FEM ↔ module Schur ↔ independent dense FEM` с проверкой DOF, реакций, member end forces и `lambda_cr` на выбранных сценариях.
+
+Независимый сторонний FEM, инженерная рецензия и натурный эксперимент остаются `NOT VERIFIED` до появления реальных внешних артефактов. Внутренний dense reference solver не выдаётся за сторонний FEM.
 
 ## Snapshot и paper project
 
@@ -217,6 +246,7 @@ PR checks:
 ```text
 Syntax, policy and maintainability
 Secrets scan
+Triple FEM equivalence
 Tests: Ubuntu/macOS/Windows
 Static site smoke
 ```
@@ -226,6 +256,7 @@ Static site smoke
 ```bash
 python3 -m http.server 8080 --directory site
 npm test
+npm run test:triple
 npm run check
 node scripts/check-file-line-limits.mjs
 ```

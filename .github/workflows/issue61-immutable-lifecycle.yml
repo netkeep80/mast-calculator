@@ -1,0 +1,43 @@
+name: Issue 61 immutable lifecycle migration
+
+on:
+  push:
+    branches: [agent/issue-61-contracts]
+
+permissions:
+  contents: write
+
+env:
+  GIT_CONFIG_KEY_0: init.defaultBranch
+  GIT_CONFIG_VALUE_0: main
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout contracts branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/issue-61-contracts
+          fetch-depth: 0
+      - name: Use Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+      - name: Apply immutable lifecycle migration
+        run: node scripts/issue61-immutable-lifecycle.mjs
+      - name: Check migrated JavaScript
+        run: node --check packages/application/src/calculate.js && node --check packages/engineering/src/guy-wire-system.js
+      - name: Prove canonical and guy physics unchanged
+        run: npm run test:canonical && npm run test:guys
+      - name: Commit deterministic migration and remove one-shot tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/application/src/calculate.js packages/engineering/src/guy-wire-system.js
+          git rm scripts/issue61-immutable-lifecycle.mjs .github/workflows/issue61-immutable-lifecycle.yml
+          git commit -m "Make calculation result assembly immutable"
+          git push origin HEAD:agent/issue-61-contracts

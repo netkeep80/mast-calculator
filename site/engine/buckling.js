@@ -173,7 +173,7 @@ export function calculateCriticalBucklingFactorBanded(
   }
 
   const tolerance = options.tolerance ?? 1e-8
-  const maxIterations = Math.min(size, options.maxIterations ?? 80)
+  const maxIterations = Math.min(size, options.maxIterations ?? 160)
   const checkEvery = Math.max(1, options.checkEvery ?? 4)
   const initial = Float64Array.from(
     { length: size },
@@ -187,7 +187,7 @@ export function calculateCriticalBucklingFactorBanded(
   const diagonal = []
   const offDiagonal = []
   let lastEigenpair = null
-  let lastRitzResidual = Number.POSITIVE_INFINITY
+  let lastGeneralizedResidual = Number.POSITIVE_INFINITY
   let iterations = 0
 
   for (let iteration = 0; iteration < maxIterations; iteration += 1) {
@@ -213,9 +213,20 @@ export function calculateCriticalBucklingFactorBanded(
 
     if (shouldCheck) {
       lastEigenpair = largestEigenpairTridiagonal(diagonal, offDiagonal)
-      const lastCoefficient = Math.abs(lastEigenpair.vector[lastEigenpair.vector.length - 1] ?? 0)
-      lastRitzResidual = beta * lastCoefficient / Math.max(1, Math.abs(lastEigenpair.eigenvalue))
-      if (lastEigenpair.eigenvalue > 1e-12 && lastRitzResidual <= tolerance) break
+      if (lastEigenpair.eigenvalue > 1e-12) {
+        const candidateFactor = 1 / lastEigenpair.eigenvalue
+        const candidateMode = buildRitzMode(basis, lastEigenpair.vector)
+        lastGeneralizedResidual = bandedBucklingResidual(
+          elasticStiffness,
+          geometricStiffness,
+          candidateMode,
+          candidateFactor,
+        )
+        // Оценка beta*e_m^T*y дешёвая, но после полной reorthogonalization сама
+        // по себе не является достаточным критерием. Останавливаемся только по
+        // реальной невязке исходного generalized equation (K+lambda*KG)phi=0.
+        if (lastGeneralizedResidual <= tolerance) break
+      }
     }
 
     if (!(beta > 1e-14)) break
@@ -243,7 +254,7 @@ export function calculateCriticalBucklingFactorBanded(
     factor,
     mode,
     residual,
-    eigenResidual: Math.max(lastEigenpair.residual, lastRitzResidual),
+    eigenResidual: lastEigenpair.residual,
     iterations,
   }
 }

@@ -1,0 +1,44 @@
+name: Architecture foundation checks
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  architecture:
+    name: Architecture audit and baseline
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: architecture-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Simulate fresh merge with latest base
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/simulate-fresh-merge.sh
+      - name: Use Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+      - name: Test architecture audit tooling
+        run: npm run test:architecture
+      - name: Enforce current architecture baseline
+        run: npm run audit:architecture
+      - name: Publish human-readable snapshot to job summary
+        shell: bash
+        run: npm run audit:architecture:report >> "$GITHUB_STEP_SUMMARY"

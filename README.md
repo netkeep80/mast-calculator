@@ -9,36 +9,27 @@
 - [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md) — требования и расчётные допущения;
 - [`docs/CALCULATION_ARCHITECTURE.md`](docs/CALCULATION_ARCHITECTURE.md) — устройство FEM и численного solver;
 - [`docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md`](docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md) — боковая нагрузка, Бофорт и solid-rod sanity-check;
-- [`docs/PERFORMANCE_AND_PROGRESS.md`](docs/PERFORMANCE_AND_PROGRESS.md) — оптимизация issue #10, Worker, progress/ETA и benchmark;
+- [`docs/STATIC_PAYLOAD_CAPACITY.md`](docs/STATIC_PAYLOAD_CAPACITY.md) — максимальная статическая масса на вершине и эквивалентный объём воды;
+- [`docs/PERFORMANCE_AND_PROGRESS.md`](docs/PERFORMANCE_AND_PROGRESS.md) — banded solver, Worker, progress/ETA и performance regression;
 - [`docs/CI_CD_REVIEW.md`](docs/CI_CD_REVIEW.md) — CI/CD.
 
-## Прототип 0.7
+## Прототип 0.8
 
-Версия 0.7 сохраняет физическую 3D frame-постановку 0.6, но полностью меняет вычислительный путь длительных расчётов:
+Версия 0.8 добавляет к быстрому 3D frame solver отдельный расчёт **максимальной статической массы на вершине** для задач вроде водонапорной башни.
 
-1. `K` хранится как симметричная ленточная матрица;
-2. используется banded Cholesky вместо повторного dense `O(n³)` solve;
-3. геометрия элементов и `Cholesky(K)` компилируются один раз для всех load cases одной модели;
-4. global eigen-buckling решается matrix-free generalized Lanczos без явного `K^-1`;
-5. Lanczos останавливается по фактической невязке `(K + λKG)φ`;
-6. полная ветровая сетка сворачивается по точной 120° rotational symmetry;
-7. тяжёлый FEM и подбор диаметра вынесены в Web Worker;
-8. UI показывает progress, текущий этап, elapsed time, ETA и кнопку отмены;
-9. подбор диаметра прекращается на первом проходящем стандартном размере;
-10. CI содержит 40-модульный performance regression.
+Основные возможности текущей версии:
 
-Финальное измерение GitHub-hosted Ubuntu runner после проверки невязок:
-
-```text
-40 modules
-720 free DOF
-half-bandwidth = 35
-1 factorization of K
-4 wind cases + 8 lateral cases
-1078.3 ms
-```
-
-Это не обещание браузеру укладываться ровно в 1,08 с на любом железе; benchmark нужен как защита от возврата к минутному dense-поведению.
+1. правильная геометрия октаэдров из закупочной длины арматуры;
+2. жёсткая 3D Euler–Bernoulli frame FEM, 6 DOF/узел;
+3. symmetric band Cholesky и одна факторизация `K` для всех load cases;
+4. matrix-free generalized Lanczos для global eigen-buckling;
+5. ветровая огибающая с точной 120° rotational symmetry;
+6. отдельная проверочная боковая нагрузка вершины;
+7. отдельная gravity-only грузоподъёмность вершины с учётом собственного веса мачты;
+8. вывод остатка массы после уже заданного оборудования и дополнительной вертикальной силы;
+9. перевод остатка в м³ и литры воды при `ρ = 1000 кг/м³`;
+10. Web Worker, progress, elapsed time, ETA и отмена;
+11. regression tests на Linux/macOS/Windows, включая 40-модульную модель.
 
 ## Геометрия
 
@@ -93,7 +84,7 @@ My, Mz
 
 ## Нагрузки
 
-Реализованы:
+В эксплуатационных случаях реализованы:
 
 - собственный вес арматуры;
 - цилиндрический слой льда;
@@ -141,21 +132,19 @@ N_E = pi²*E*I/(mu*L)²/gamma_M
 
 ## Общая устойчивость
 
-Исходная задача не изменилась:
+Исходная задача:
 
 ```text
 (K + lambda*KG)*phi = 0
 ```
 
-В 0.7 оператор применяется matrix-free:
+Оператор применяется matrix-free:
 
 ```text
 v -> -KG*v -> solve(K, ...) -> K^-1(-KG)v
 ```
 
-`solve(K, ...)` использует уже готовую banded Cholesky-факторизацию.
-
-Малая generalized eigen-задача в tests сравнивает Lanczos с dense reference. 40-модульный regression дополнительно контролирует фактическую buckling residual.
+`solve(K, ...)` использует заранее готовую banded Cholesky-факторизацию. Lanczos проверяется по фактической невязке исходной generalized eigen-задачи.
 
 ## Compile once, solve many
 
@@ -168,7 +157,7 @@ assembly K
 banded Cholesky(K)
 ```
 
-Затем все направления одной геометрии используют одну факторизацию:
+Затем все направления и специальные проверки одной геометрии используют ту же факторизацию:
 
 ```text
 stiffnessFactorizationCount = 1
@@ -187,7 +176,7 @@ half-bandwidth = 35
 
 Идеальная трёхгранная модель периодична при повороте на 120°.
 
-Оптимизация сначала строит прежнюю полную сетку `0..360°`, затем приводит каждый угол modulo 120° и удаляет только точные эквиваленты.
+Оптимизация сначала строит полную сетку `0..360°`, затем приводит каждый угол modulo 120° и удаляет только физически эквивалентные дубликаты.
 
 Default step 30°:
 
@@ -196,7 +185,7 @@ Default step 30°:
 0°, 30°, 60°, 90°
 ```
 
-Для шагов, не делящих 120°, сохраняются все уникальные остатки; это покрыто отдельным тестом.
+Для шагов, не делящих 120°, сохраняются все уникальные остатки; это покрыто regression test.
 
 ## Боковая нагрузка вершины
 
@@ -218,14 +207,73 @@ Flim = min(Fmember, Fglobal)
 
 Проверяется 120° сектор с шагом по умолчанию 15°.
 
-UI отдельно показывает:
-
-- первый предел боковой нагрузки;
-- боковую силу общей потери устойчивости;
-- механизм первого предела;
-- Н/кН/кгс.
+UI отдельно показывает первый предел, global buckling limit, механизм и значения в Н/кН/кгс.
 
 Это характеристика идеальной линейной модели, а не паспортная грузоподъёмность крана.
+
+## Максимальная статическая масса на вершине
+
+Для issue #11 введён отдельный gravity-only сценарий:
+
+```text
+включено:
+  собственный вес мачты * deadLoadFactor
+  суммарная масса на вершине * equipmentLoadFactor
+
+исключено:
+  ветер
+  лёд
+  горизонтальные силы
+  прочие дополнительные нагрузки
+```
+
+Масса прикладывается вертикально вниз поровну к трём верхним узлам.
+
+Для пробной массы `m`:
+
+```text
+Pnom = m*g
+Pdesign = m*g*equipmentLoadFactor
+```
+
+Предел определяется одновременно по двум условиям:
+
+```text
+U_member(m) <= 1
+lambda_cr(m) >= 1
+```
+
+Собственный вес не обнуляется, поэтому финальный результат нельзя получить простым масштабированием случая 1 кг. Чистый случай 1 кг без собственного веса используется только как верхняя граница, затем выполняется 18 итераций двоичного поиска уже с собственным весом.
+
+UI показывает:
+
+```text
+maximumTotalTopMassKg
+remainingAdditionalMassKg
+equivalentWaterVolumeM3
+equivalentWaterVolumeLiters
+governingMode
+```
+
+Уже введённые оборудование и дополнительная вертикальная сила переводятся в эквивалентную массу и вычитаются из общего предела:
+
+```text
+m_existing = equipmentMassKg
+           + extraVerticalLoadN/(g*equipmentLoadFactor)
+
+m_remaining = max(0, m_max - m_existing)
+```
+
+Для воды используется инженерное значение:
+
+```text
+rho_water = 1000 kg/m³
+Vwater = m_remaining/rho_water
+```
+
+То есть при отсутствии прочего оборудования 1000 кг резерва отображаются примерно как 1 м³ или 1000 л воды.
+
+Подробная постановка и ограничения: [`docs/STATIC_PAYLOAD_CAPACITY.md`](docs/STATIC_PAYLOAD_CAPACITY.md).
 
 ## Solid-rod sanity-check
 
@@ -243,19 +291,13 @@ A6/Asolid = 9/8 = 1.125
 
 `site/calculation-worker.js` выполняет FEM, eigen-buckling и подбор диаметра вне main thread.
 
-Main thread остаётся свободным для:
-
-```text
-формы
-progress UI
-3D viewer
-экспорта отчёта
-```
+Main thread остаётся свободным для формы, progress UI, 3D viewer и экспорта отчёта.
 
 Во время вычисления пользователь видит:
 
 - progress bar и процент;
 - текущий этап и направление/candidate;
+- отдельный этап «Статическая нагрузка вершины»;
 - прошедшее время;
 - ETA;
 - кнопку **«Отменить расчёт»**.
@@ -264,21 +306,21 @@ progress UI
 
 ## Подбор диаметра
 
-Стандартные диаметры проверяются по возрастанию. Первый вариант, который одновременно проходит по прочности, прогибу и общей устойчивости, уже является минимальным искомым, поэтому более крупные размеры не считаются.
+Стандартные диаметры проверяются по возрастанию. Первый вариант, который одновременно проходит по прочности, прогибу и общей устойчивости, является минимальным искомым, поэтому более крупные размеры не считаются.
 
-После выбора выполняется полный итоговый расчёт найденного диаметра, включая lateral capacity.
+После выбора выполняется полный итоговый расчёт найденного диаметра, включая lateral capacity и static top payload capacity.
 
 ## Бумажный расчётный проект
 
 Кнопка **«Скачать расчётный проект»** формирует автономный HTML для печати/PDF и передачи инженеру.
 
-Документ включает исходные данные, геометрию, section properties, нагрузки, frame equations, `N/V/T/M`, stress/Euler checks, global buckling, погоду, `Fmember/Fglobal/Flim`, таблицы cases, diagnostics и ограничения.
+Документ включает исходные данные, геометрию, section properties, нагрузки, frame equations, `N/V/T/M`, stress/Euler checks, global buckling, погоду, боковую нагрузку и отдельный вывод максимальной статической массы/объёма воды.
 
-В бумажном проекте нет JSON. Internal `CalculationSnapshot v4` остаётся regression/debug format.
+В бумажном проекте нет JSON. Internal `CalculationSnapshot v5` остаётся regression/debug format.
 
 ## Верификация
 
-Текущий suite содержит **82 теста** и проверяет, в частности:
+Suite проверяет, в частности:
 
 - `FL/EA`;
 - `PL³/(3EI)` и `PL²/(2EI)`;
@@ -288,15 +330,19 @@ progress UI
 - banded Cholesky vs dense reference;
 - generalized Lanczos vs dense reference;
 - 120° symmetry reduction;
-- 40-module performance + residual regression;
 - Beaufort 0–12;
 - lateral capacity;
+- static top payload capacity с собственным весом;
+- перевод payload reserve в объём воды;
+- независимость gravity-only capacity от ветра и льда;
+- рост payload capacity с диаметром;
+- 40-module performance + residual regression;
 - solid-rod sanity-check;
 - early-stop diameter optimization;
 - Worker/progress/ETA/cancel UI contract;
 - CI policy.
 
-До признания программы окончательным инженерным инструментом всё ещё требуется cross-check с независимым КЭ-комплексом.
+До признания программы окончательным инженерным инструментом требуется cross-check с независимым КЭ-комплексом.
 
 ## Ограничения
 
@@ -312,7 +358,7 @@ progress UI
 - параметрический фундамент;
 - независимые external FEM reference results.
 
-Оптимизация 0.7 меняет численный путь, но не отменяет ограничения физической модели.
+Для водонапорной башни отдельно необходимо учитывать ветровую площадь и эксцентриситет бака, динамику воды, реальные соединения и фундамент. Gravity-only `m_max` — полезная отдельная характеристика, но не полный проект башни.
 
 ## CI/CD
 
@@ -327,7 +373,7 @@ Tests — Windows
 Static site smoke test
 ```
 
-Smoke дополнительно проверяет выдачу Worker и browser modules `banded.js`, `buckling.js`, `weather.js`, `lateral-capacity.js` и report layer.
+Smoke проверяет Worker и browser modules `banded.js`, `buckling.js`, `weather.js`, `lateral-capacity.js`, `static-payload-capacity.js` и report layer.
 
 ## Локальный запуск
 
@@ -349,4 +395,4 @@ Runtime npm-зависимостей нет. Node.js используется д
 
 ## Единицы
 
-Внутри ядра — SI: метры, ньютоны, паскали, радианы и килограммы. UI и бумажный проект преобразуют единицы на границе системы.
+Внутри ядра — SI: метры, ньютоны, паскали, радианы и килограммы. UI и бумажный проект преобразуют единицы на границе системы. Для статической нагрузки явно различаются масса `кг`, сила `Н` и, для боковой испытательной характеристики, `кгс`.

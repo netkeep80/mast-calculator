@@ -1,9 +1,17 @@
-import { dot3, norm3, sub3, unit3 } from './vector.js'
+import { dot3, norm3, scale3, sub3, unit3 } from './vector.js'
 
 const GRAVITY = 9.80665
 
+const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+
 export function buildLoadCase(model, parameters) {
-  const loads = model.nodes.map(() => [0, 0, 0])
+  // В frame-модели собственный вес, лёд и ветер на стержни являются
+  // распределёнными нагрузками. В nodalLoads остаются только нагрузки,
+  // приложенные непосредственно к расчётным узлам (оборудование и доп. силы).
+  const nodalLoads = model.nodes.map(() => [0, 0, 0])
+  const memberDistributedLoads = model.members.map(() => [0, 0, 0])
+  const memberLoadDetails = model.members.map(() => null)
+
   const directionRad = parameters.windDirectionDeg * Math.PI / 180
   const wind = [Math.cos(directionRad), Math.sin(directionRad), 0]
   const iceThicknessM = Math.max(0, parameters.iceThicknessMm ?? 0) / 1000
@@ -11,9 +19,10 @@ export function buildLoadCase(model, parameters) {
   let selfWeightN = 0
   let iceWeightN = 0
   let memberWindN = 0
+  let distributedResultant = [0, 0, 0]
 
   const addNodeLoad = (nodeId, load) => {
-    const target = loads[nodeId]
+    const target = nodalLoads[nodeId]
     if (!target) throw new Error(`Не найден узел ${nodeId}`)
     target[0] += load[0]
     target[1] += load[1]
@@ -27,28 +36,50 @@ export function buildLoadCase(model, parameters) {
 
     const delta = sub3(nodeB.position, nodeA.position)
     const lengthM = norm3(delta)
+    const axis = unit3(delta)
     const steelAreaM2 = Math.PI * member.diameterM ** 2 / 4
     const outerDiameterM = member.diameterM + 2 * iceThicknessM
     const iceAreaM2 = Math.PI * Math.max(0, outerDiameterM ** 2 - member.diameterM ** 2) / 4
-    const steelWeightN = member.densityKgM3 * steelAreaM2 * lengthM * GRAVITY * parameters.deadLoadFactor
-    const memberIceWeightN = iceDensityKgM3 * iceAreaM2 * lengthM * GRAVITY * parameters.deadLoadFactor
+
+    const steelWeightPerLengthN = member.densityKgM3
+      * steelAreaM2
+      * GRAVITY
+      * parameters.deadLoadFactor
+    const iceWeightPerLengthN = iceDensityKgM3
+      * iceAreaM2
+      * GRAVITY
+      * parameters.deadLoadFactor
+
+    const steelWeightN = steelWeightPerLengthN * lengthM
+    const memberIceWeightN = iceWeightPerLengthN * lengthM
     selfWeightN += steelWeightN
     iceWeightN += memberIceWeightN
-    const gravityLoad = steelWeightN + memberIceWeightN
-    addNodeLoad(member.nodeA, [0, 0, -gravityLoad / 2])
-    addNodeLoad(member.nodeB, [0, 0, -gravityLoad / 2])
 
-    const axis = unit3(delta)
-    const projectedLengthM = lengthM * Math.sqrt(Math.max(0, 1 - dot3(axis, wind) ** 2))
-    const windForceN = parameters.windPressurePa
+    // Для цилиндрического стержня учитываем только компонент скорости/давления,
+    // нормальный к его оси. Вектор (wind - axis*(axis·wind)) одновременно задаёт
+    // направление силы и коэффициент пространственной проекции.
+    const axisWindProjection = dot3(axis, wind)
+    const windNormal = sub3(wind, scale3(axis, axisWindProjection))
+    const windCoefficientNPerM = parameters.windPressurePa
       * parameters.dragCoefficient
       * outerDiameterM
-      * projectedLengthM
       * parameters.windLoadFactor
+    const windPerLength = scale3(windNormal, windCoefficientNPerM)
+    const windForceN = norm3(windPerLength) * lengthM
     memberWindN += windForceN
-    const halfWind = [wind[0] * windForceN / 2, wind[1] * windForceN / 2, 0]
-    addNodeLoad(member.nodeA, halfWind)
-    addNodeLoad(member.nodeB, halfWind)
+
+    const gravityPerLength = [0, 0, -(steelWeightPerLengthN + iceWeightPerLengthN)]
+    const distributed = add3(windPerLength, gravityPerLength)
+    memberDistributedLoads[member.id] = distributed
+    memberLoadDetails[member.id] = {
+      memberId: member.id,
+      lengthM,
+      steelWeightPerLengthN,
+      iceWeightPerLengthN,
+      windForcePerLengthN: [...windPerLength],
+      resultantForcePerLengthN: [...distributed],
+    }
+    distributedResultant = add3(distributedResultant, scale3(distributed, lengthM))
   }
 
   const equipmentWeightN = parameters.equipmentMassKg * GRAVITY * parameters.equipmentLoadFactor
@@ -59,18 +90,28 @@ export function buildLoadCase(model, parameters) {
   const horizontalN = equipmentWindN + parameters.extraHorizontalLoadN
   const verticalN = equipmentWeightN + parameters.extraVerticalLoadN
 
+  const topCount = Math.max(model.topNodeIds.length, 1)
   for (const nodeId of model.topNodeIds) {
-    addNodeLoad(nodeId, [wind[0] * horizontalN / 3, wind[1] * horizontalN / 3, -verticalN / 3])
+    addNodeLoad(nodeId, [
+      wind[0] * horizontalN / topCount,
+      wind[1] * horizontalN / topCount,
+      -verticalN / topCount,
+    ])
   }
 
-  const totalAppliedLoad = loads.reduce(
-    (sum, load) => [sum[0] + load[0], sum[1] + load[1], sum[2] + load[2]],
+  const nodalResultant = nodalLoads.reduce(
+    (sum, load) => add3(sum, load),
     [0, 0, 0],
   )
+  const totalAppliedLoad = add3(distributedResultant, nodalResultant)
 
   return {
-    nodalLoads: loads,
+    nodalLoads,
+    memberDistributedLoads,
+    memberLoadDetails,
     totalAppliedLoad,
+    distributedResultant,
+    nodalResultant,
     selfWeightN,
     iceWeightN,
     memberWindN,

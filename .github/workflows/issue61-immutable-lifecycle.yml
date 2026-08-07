@@ -3,6 +3,9 @@ name: Issue 61 immutable lifecycle migration
 on:
   push:
     branches: [agent/issue-61-contracts]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
@@ -13,6 +16,7 @@ env:
 
 jobs:
   migrate:
+    if: github.head_ref == 'agent/issue-61-contracts' || github.ref == 'refs/heads/agent/issue-61-contracts'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

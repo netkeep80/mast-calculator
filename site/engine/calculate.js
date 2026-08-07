@@ -27,7 +27,7 @@ const PASS_TOLERANCE = 1e-9
 
 export const CALCULATION_METHOD = Object.freeze({
   id: 'linear-frame-v1.1',
-  description: 'Линейная пространственная Euler-Bernoulli frame-модель; статическое состояние дополнительно решается точной помодульной Schur-конденсацией сверху вниз, global eigen-buckling сохраняет полную связанную модель; соединения, предел высоты и многоуровневая верификация рассчитываются отдельно.',
+  description: 'Линейная пространственная Euler-Bernoulli frame-модель; статическое состояние дополнительно решается точной помодульной Schur-конденсацией сверху вниз, global eigen-buckling сохраняет полную связанную модель; физический узел из двух гаек и болта проверяется отдельным connection-layer.',
 })
 
 export const DEFAULT_PARAMETERS = Object.freeze({
@@ -69,10 +69,14 @@ export const DEFAULT_PARAMETERS = Object.freeze({
   displacementLimitMm: 65,
   minimumBucklingFactor: 2,
   heightSearchMaxModules: 200,
+  jointConfiguratorMode: 'auto',
   jointBoltDiameterMm: 24,
   jointBoltClass: '8.8',
+  jointClearanceNutThreadMm: 30,
+  jointBoltLengthMm: 80,
+  jointThreadEngagementFactor: 2,
   jointBoltShearPlanes: 1,
-  jointEffectiveRadiusMm: 22,
+  jointEffectiveRadiusMm: 18,
   connectionConditionFactor: 1,
   jointBaseMetalTensileStrengthMPa: 490,
   weldConsumableId: 'electrode-e50a-uoni-13-55',
@@ -129,16 +133,17 @@ const vectorNorm = (vector) => Math.hypot(...vector)
 
 function createWarnings(parameters, governing, buckling) {
   const warnings = [
-    'Каждый физический модуль ориентирован ножками вниз: три горизонтальных ребра принадлежат его верхней грани. Отдельного искусственного closeTopRing больше нет — верхний треугольник последнего модуля является частью самого модуля.',
-    'Статическое состояние дополнительно решается точной помодульной Schur-конденсацией: верхний стек заменяется эквивалентной 18-DOF жёсткостью и нагрузкой на три верхних узла следующего модуля. Это учитывает не только сумму сил, но и повороты, моменты и совместную жёсткость.',
-    'Global eigen-buckling остаётся задачей всей связанной мачты. Простая передача только сил сверху вниз не может заменить глобальную собственную задачу устойчивости; модульный solver используется для статической прочности и детального баланса интерфейсов, а полная banded FEM остаётся независимым cross-check.',
-    'Глобальный каркас идеализирован абсолютно жёсткими общими узлами. Межмодульный болт и сварные концы проверяются post-processing слоем; конечная податливость реального соединения пока не возвращается в матрицу жёсткости.',
-    'Межмодульный болт моделируется вертикальным. Изгибающий момент приводится к дополнительному растяжению, а кручение — к дополнительному срезу через задаваемый эффективный радиус узла.',
-    'Болтовая проверка использует расчётные сопротивления и площади СП 16. Смятие, вырыв резьбы, податливость гайки, затяжка и проскальзывание пока не входят в эту проверку.',
+    'Каждый физический модуль ориентирован ножками вниз: три горизонтальных ребра принадлежат его верхней грани. Отдельного искусственного closeTopRing нет.',
+    'Статическое состояние дополнительно решается точной помодульной Schur-конденсацией; верхний стек передаёт на нижний модуль полный 18-DOF эффект сил, моментов, поворотов и жёсткости.',
+    'Global eigen-buckling остаётся задачей всей связанной мачты; помодульная статическая схема не заменяет глобальную собственную задачу устойчивости.',
+    'Глобальный каркас идеализирован абсолютно жёсткими общими узлами. Реальные болт, гайки и сварка проверяются post-processing слоем, их податливость пока не возвращается в K.',
+    'Межмодульный стык моделируется как проходная гайка ножки с двумя приваренными рёбрами, длинная соединительная гайка верхнего узла с четырьмя рёбрами и один вертикальный болт. Эффективный радиус выводится из размера длинной гайки под ключ.',
+    'Проверка болта использует расчётные сопротивления и площади СП 16. Срыв внутренней/наружной резьбы по фактическому материалу гайки, смятие, prying, затяжка и проскальзывание пока не рассчитаны.',
+    'Длина резьбового зацепления является правилом компоновки; фактические поля допуска, покрытие и размеры приобретённых гаек должны быть подтверждены по каталогу поставщика и изделию.',
     'Минимальная длина сварки считается по совпадающему N/V/T/M каждого конца ребра и идеализированной круговой группе угловых швов. Реальная геометрия шва должна подтвердить βf, βz, катет и эффективный радиус.',
     'Погодные пресеты по шкале Бофорта — сценарии сравнения, а не нормативное ветровое районирование, пульсация или порыв по СП 20.',
-    'Расчёт максимальной высоты является дискретным поиском по целому числу одинаковых модулей при текущих выбранных нагрузках и коэффициентах. Изменение ветрового района, оборудования, льда или соединений изменяет этот предел.',
-    'Расчёт статической массы на вершине учитывает собственный вес и выбранный болт, но сознательно исключает ветер и лёд.',
+    'Расчёт максимальной высоты является дискретным поиском при текущих нагрузках, материале и уже выбранном физическом соединительном узле.',
+    'Расчёт статической массы на вершине учитывает собственный вес и выбранный физический болтовой узел, но сознательно исключает ветер и лёд.',
     'Паспорт верификации подтверждает внутренние формулы и численные cross-checks, но не заменяет независимый КЭ-комплекс, инженерную рецензию и натурное испытание.',
     'Геометрическая нелинейность, начальные несовершенства, пластичность, усталость и реальный фундамент пока не реализованы.',
   ]
@@ -310,6 +315,7 @@ export function calculateMast(inputParameters, options = {}) {
 function criterionRatios(result, parameters, design) {
   const lambda = result.envelope.minimumBucklingFactor
   const bolt = result.connections?.bolt?.selected
+  const invalidJointGeometry = bolt?.applicable && result.connections?.passesJointGeometry === false
   const ratios = [
     { mode: 'member', value: result.envelope.maxUtilization },
     {
@@ -318,7 +324,12 @@ function criterionRatios(result, parameters, design) {
         ? (design ? parameters.minimumBucklingFactor : 1) / Math.max(lambda, Number.EPSILON)
         : 0,
     },
-    { mode: 'bolt-connection', value: bolt?.applicable ? bolt.utilization : 0 },
+    {
+      mode: 'bolt-connection',
+      value: invalidJointGeometry
+        ? Number.POSITIVE_INFINITY
+        : (bolt?.applicable ? bolt.utilization : 0),
+    },
   ]
   if (design) {
     ratios.push({
@@ -493,6 +504,16 @@ export function calculateMaximumHeight(inputParameters, options = {}) {
   }
 }
 
+function fixedPhysicalJointParameters(parameters, connections) {
+  const requestedMode = parameters.jointConfiguratorMode === 'manual' ? 'manual' : 'auto'
+  const fixed = {
+    ...parameters,
+    ...(connections?.resolvedParameters ?? {}),
+    jointConfiguratorMode: 'manual',
+  }
+  return { requestedMode, fixed }
+}
+
 export function calculateCompleteMast(inputParameters, options = {}) {
   const parameters = resolveCalculationParameters(inputParameters)
   const model = generateMastModel(parameters)
@@ -524,8 +545,17 @@ export function calculateCompleteMast(inputParameters, options = {}) {
     })
   })
   const result = buildMastResult(parameters, model, cases)
+
+  // Physical hardware is selected from the operational demand first. Every
+  // later limit search must then keep this exact product configuration fixed.
+  result.connections = calculateConnectionChecks(result)
+  const { requestedMode, fixed } = fixedPhysicalJointParameters(parameters, result.connections)
+  result.parameters = { ...fixed, jointConfiguratorMode: requestedMode }
+  result.connections.requestedMode = requestedMode
+  result.connections.capacityChecksUseFixedSelectedJoint = true
+
   const lateralOffset = 1 + directions.length
-  result.lateralCapacity = calculateLateralCapacity(model, parameters, {
+  result.lateralCapacity = calculateLateralCapacity(model, fixed, {
     frameSystem,
     onProgress: (event) => options.onProgress?.({
       phase: 'lateral',
@@ -536,7 +566,7 @@ export function calculateCompleteMast(inputParameters, options = {}) {
   })
 
   const staticPayloadOffset = lateralOffset + lateral.length
-  result.staticPayloadCapacity = calculateStaticPayloadCapacity(model, parameters, {
+  result.staticPayloadCapacity = calculateStaticPayloadCapacity(model, fixed, {
     frameSystem,
     onProgress: (event) => options.onProgress?.({
       phase: 'static-payload',
@@ -546,9 +576,8 @@ export function calculateCompleteMast(inputParameters, options = {}) {
     }),
   })
 
-  result.connections = calculateConnectionChecks(result)
   const heightOffset = staticPayloadOffset + STATIC_PAYLOAD_PROGRESS_STEPS
-  result.heightCapacity = calculateMaximumHeight(parameters, {
+  result.heightCapacity = calculateMaximumHeight(fixed, {
     knownResult: result,
     onProgress: (event) => options.onProgress?.({
       phase: 'height-capacity',
@@ -557,6 +586,14 @@ export function calculateCompleteMast(inputParameters, options = {}) {
       total,
     }),
   })
+  result.heightCapacity.fixedJointConfiguration = {
+    diameterMm: fixed.jointBoltDiameterMm,
+    boltClass: fixed.jointBoltClass,
+    boltLengthMm: fixed.jointBoltLengthMm,
+    clearanceNutThreadMm: fixed.jointClearanceNutThreadMm,
+    threadEngagementFactor: fixed.jointThreadEngagementFactor,
+  }
+
   result.verification = buildVerificationPassport(result)
   result.performance = {
     linearSystemSolver: frameSystem.method,
@@ -573,7 +610,13 @@ export function calculateCompleteMast(inputParameters, options = {}) {
     heightSearchEvaluationCount: result.heightCapacity.evaluationCount,
     verificationInternalCheckCount: result.verification.counts.internal,
     rotationalSymmetryDeg: ROTATIONAL_SYMMETRY_DEG,
+    jointConfiguratorMode: requestedMode,
   }
-  options.onProgress?.({ phase: 'done', label: 'Расчёт, предельная высота, соединения и верификация завершены', completed: total, total })
+  options.onProgress?.({
+    phase: 'done',
+    label: 'Расчёт, конфигурация физического узла, предельные проверки и верификация завершены',
+    completed: total,
+    total,
+  })
   return result
 }

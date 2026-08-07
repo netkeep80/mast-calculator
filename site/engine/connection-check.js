@@ -1,9 +1,12 @@
+import { evaluateBoltAcrossDemands } from './bolt-check.js'
 import {
-  buildBoltRecommendations,
-  evaluateBoltAcrossDemands,
-} from './bolt-check.js'
+  applyResolvedJointParameters,
+  configureIntermoduleJoint,
+  jointGeometryFromParameters,
+} from './joint-configurator.js'
 import {
   buildIntermoduleJointDemands,
+  buildIntermoduleJointResultants,
   buildMemberEndWeldDemands,
 } from './joint-demand.js'
 import {
@@ -11,10 +14,10 @@ import {
   recommendWeldConsumable,
 } from './weld-check.js'
 
-function boltOptions(parameters, overrides = {}) {
+function boltOptions(parameters) {
   return {
-    diameterMm: overrides.diameterMm ?? parameters.jointBoltDiameterMm,
-    boltClass: overrides.boltClass ?? parameters.jointBoltClass,
+    diameterMm: parameters.jointBoltDiameterMm,
+    boltClass: parameters.jointBoltClass,
     connectionConditionFactor: parameters.connectionConditionFactor,
     shearPlanes: parameters.jointBoltShearPlanes,
   }
@@ -48,51 +51,60 @@ function weldOptions(parameters, consumableId = parameters.weldConsumableId) {
 }
 
 export function evaluateBoltSystemForAnalysis(model, analysis, parameters, metadata = {}) {
-  const demands = buildIntermoduleJointDemands(model, analysis, demandOptions(parameters))
+  const geometry = jointGeometryFromParameters(parameters)
+  const effectiveParameters = {
+    ...parameters,
+    jointEffectiveRadiusMm: geometry.effectiveRadiusMm,
+  }
+  const demands = buildIntermoduleJointDemands(model, analysis, demandOptions(effectiveParameters))
     .map((demand) => ({ ...metadata, ...demand }))
   if (demands.length === 0) {
     return {
       applicable: false,
       demands,
-      passes: true,
+      passes: geometry.passes,
       utilization: 0,
       governingDemand: null,
       governingCheck: null,
+      geometry,
     }
   }
+  const evaluation = evaluateBoltAcrossDemands(demands, boltOptions(effectiveParameters))
   return {
     applicable: true,
     demands,
-    ...evaluateBoltAcrossDemands(demands, boltOptions(parameters)),
+    geometry,
+    ...evaluation,
+    passes: geometry.passes && evaluation.passes,
   }
 }
 
 export function selectedBoltUtilizationForAnalysis(model, analysis, parameters) {
-  return evaluateBoltSystemForAnalysis(model, analysis, parameters).utilization
+  const evaluation = evaluateBoltSystemForAnalysis(model, analysis, parameters)
+  if (!evaluation.applicable) return 0
+  return evaluation.geometry?.passes === false
+    ? Number.POSITIVE_INFINITY
+    : evaluation.utilization
 }
 
-function buildOperationalJointDemands(result) {
+function buildOperationalJointResultants(result) {
   return result.cases.flatMap((loadCase, caseIndex) => (
-    buildIntermoduleJointDemands(
-      result.model,
-      loadCase.analysis,
-      demandOptions(result.parameters),
-    ).map((demand) => ({
-      ...demand,
+    buildIntermoduleJointResultants(result.model, loadCase.analysis).map((resultant) => ({
+      ...resultant,
       caseIndex,
       windDirectionDeg: loadCase.windDirectionDeg,
     }))
   ))
 }
 
-function buildWeldEnvelope(result, consumableId) {
+function buildWeldEnvelope(result, parameters, consumableId) {
   const byEnd = new Map()
   for (let caseIndex = 0; caseIndex < result.cases.length; caseIndex += 1) {
     const loadCase = result.cases[caseIndex]
     const demands = buildMemberEndWeldDemands(result.model, loadCase.analysis)
     for (const demand of demands) {
       const member = result.model.members[demand.memberId]
-      const check = calculateMinimumWeldLength(demand, weldOptions(result.parameters, consumableId))
+      const check = calculateMinimumWeldLength(demand, weldOptions(parameters, consumableId))
       const key = `${demand.memberId}:${demand.end}`
       const candidate = {
         ...demand,
@@ -112,16 +124,38 @@ function buildWeldEnvelope(result, consumableId) {
   ))
 }
 
-function summarizeWeldRecommendation(result, process) {
+function summarizeWeldRecommendation(result, parameters, process) {
   const recommendation = recommendWeldConsumable({
     process,
-    baseMetalRunMPa: baseMetalRunMPa(result.parameters),
+    baseMetalRunMPa: baseMetalRunMPa(parameters),
   })
   if (!recommendation.recommended) return { ...recommendation, worstRequiredPhysicalLengthMm: null }
-  const envelope = buildWeldEnvelope(result, recommendation.recommended.id)
+  const envelope = buildWeldEnvelope(result, parameters, recommendation.recommended.id)
   return {
     ...recommendation,
     worstRequiredPhysicalLengthMm: envelope[0]?.check.requiredPhysicalLengthMm ?? 0,
+  }
+}
+
+function selectedBoltResult(configurator) {
+  const selected = configurator.selected
+  if (selected.demands.length === 0) {
+    return {
+      applicable: false,
+      options: selected.evaluation.options,
+      checks: [],
+      governingDemand: null,
+      governingCheck: null,
+      utilization: 0,
+      passes: selected.geometry.passes,
+      geometry: selected.geometry,
+    }
+  }
+  return {
+    applicable: true,
+    ...selected.evaluation,
+    geometry: selected.geometry,
+    passes: selected.geometry.passes && selected.evaluation.passes,
   }
 }
 
@@ -129,48 +163,44 @@ export function calculateConnectionChecks(result) {
   if (!result?.model?.members?.length || !result?.cases?.length) {
     throw new Error('Для расчёта соединений требуется готовый frame-result с load cases')
   }
-  const parameters = result.parameters
-  const jointDemands = buildOperationalJointDemands(result)
-  const selectedBolt = jointDemands.length
-    ? {
-        applicable: true,
-        ...evaluateBoltAcrossDemands(jointDemands, boltOptions(parameters)),
-      }
-    : {
-        applicable: false,
-        checks: [],
-        governingDemand: null,
-        governingCheck: null,
-        utilization: 0,
-        passes: true,
-      }
-  const boltRecommendations = jointDemands.length
-    ? buildBoltRecommendations(jointDemands, {
-        connectionConditionFactor: parameters.connectionConditionFactor,
-        shearPlanes: parameters.jointBoltShearPlanes,
-      })
-    : []
-
-  const weldEnvelope = buildWeldEnvelope(result, parameters.weldConsumableId)
+  const originalParameters = result.parameters
+  const jointResultants = buildOperationalJointResultants(result)
+  const configurator = configureIntermoduleJoint(jointResultants, originalParameters, {
+    baseMetalRunMPa: baseMetalRunMPa(originalParameters),
+  })
+  const parameters = applyResolvedJointParameters(
+    originalParameters,
+    configurator,
+    originalParameters.jointConfiguratorMode,
+  )
+  const jointDemands = configurator.selected.demands
+  const selectedBolt = selectedBoltResult(configurator)
+  const weldEnvelope = buildWeldEnvelope(result, parameters, parameters.weldConsumableId)
   const criticalWeld = weldEnvelope[0] ?? null
   const selectedWeldCompatible = criticalWeld?.check.baseStrengthCompatible ?? true
-  const electrodeRecommendation = summarizeWeldRecommendation(result, 'electrode')
-  const wireRecommendation = summarizeWeldRecommendation(result, 'wire')
+  const electrodeRecommendation = summarizeWeldRecommendation(result, parameters, 'electrode')
+  const wireRecommendation = summarizeWeldRecommendation(result, parameters, 'wire')
 
   return {
-    method: 'intermodule-bolt-and-member-end-weld-v1',
-    standard: 'СП 16.13330.2017 (ред. 09.12.2024)',
-    physicalSplit: 'На каждом внутреннем узле два ребра верхней ножки отделяются от четырёх рёбер нижнего модуля одним вертикальным болтом.',
-    boltModel: 'Сила и момент верхней двухреберной части приводятся к растяжению/срезу одного болта; изгибающий момент делится на эффективный радиус узла, кручение — на тот же радиус.',
+    method: 'two-nut-intermodule-joint-and-member-end-weld-v2',
+    standard: 'СП 16.13330.2017 (ред. 09.12.2024) + справочная геометрия ISO 4032 / DIN 6334',
+    physicalSplit: 'На ножке верхнего модуля два ребра приварены к проходной гайке с резьбой большего диаметра. Болт свободно проходит через неё и ввинчивается в длинную соединительную гайку верхнего узла нижнего модуля, к которой приварены четыре ребра.',
+    boltModel: 'Сила и момент двухреберной ножки приводятся к растяжению/срезу одного болта; эффективный радиус автоматически берётся как половина размера под ключ соединительной гайки.',
     weldModel: 'Каждый конец ребра проверяется как идеализированная круговая группа угловых швов по совпадающему N/V/T/M одного load case.',
     jointCount: result.model.moduleCount > 1 ? 3 * (result.model.moduleCount - 1) : 0,
     jointDemandCount: jointDemands.length,
+    jointResultants,
     jointDemands,
+    configurator,
+    resolvedParameters: configurator.resolvedParameters,
     bolt: {
       selected: selectedBolt,
-      recommendationsByClass: boltRecommendations,
+      recommendationsByClass: configurator.recommendationsByClass,
       configuredDiameterMm: parameters.jointBoltDiameterMm,
       configuredClass: parameters.jointBoltClass,
+      configuredLengthMm: parameters.jointBoltLengthMm,
+      clearanceNutThreadMm: parameters.jointClearanceNutThreadMm,
+      threadEngagementFactor: parameters.jointThreadEngagementFactor,
       effectiveRadiusMm: parameters.jointEffectiveRadiusMm,
       shearPlanes: parameters.jointBoltShearPlanes,
       connectionConditionFactor: parameters.connectionConditionFactor,
@@ -189,7 +219,8 @@ export function calculateConnectionChecks(result) {
       wireRecommendation,
     },
     passesConfiguredBolt: selectedBolt.passes,
+    passesJointGeometry: configurator.geometry.passes,
     selectedWeldConsumableCompatible: selectedWeldCompatible,
-    passes: selectedBolt.passes && selectedWeldCompatible,
+    passes: selectedBolt.passes && configurator.geometry.passes && selectedWeldCompatible,
   }
 }

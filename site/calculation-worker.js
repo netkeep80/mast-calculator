@@ -1,4 +1,4 @@
-import { calculateCompleteMast } from './engine/calculate.js'
+import { calculateCompleteMastWithConfiguredJoint } from './engine/complete-calculation.js'
 import { augmentVerificationWithModuleChecks } from './engine/module-verification.js'
 import { selectUniformDiameter, STANDARD_DIAMETERS_MM } from './engine/optimize.js'
 
@@ -40,15 +40,18 @@ function summarizeOptimization(optimization) {
       passesStrength: variant.passesStrength,
       passesDisplacement: variant.passesDisplacement,
       passesBuckling: variant.passesBuckling,
+      passesConnection: variant.passesConnection,
       utilization: variant.result.envelope.maxUtilization,
       displacementMm: variant.result.envelope.maxTopDisplacementM * 1000,
       bucklingFactor: variant.result.envelope.minimumBucklingFactor,
+      jointBoltDiameterMm: variant.result.connections?.configurator?.geometry?.bolt?.diameterMm ?? null,
+      jointBoltClass: variant.result.connections?.configurator?.selected?.boltClass ?? null,
     })),
   }
 }
 
 function runCalculation(jobId, parameters) {
-  const result = addModuleVerification(calculateCompleteMast(parameters, {
+  const result = addModuleVerification(calculateCompleteMastWithConfiguredJoint(parameters, {
     onProgress: (progress) => calculationProgress(jobId, progress),
   }))
   self.postMessage({ type: 'result', jobId, result, optimization: null })
@@ -56,12 +59,13 @@ function runCalculation(jobId, parameters) {
 
 function runOptimization(jobId, parameters) {
   const optimizationShare = 0.78
+  const automaticParameters = { ...parameters, jointConfiguratorMode: 'auto' }
   postProgress(jobId, {
     phase: 'optimize',
-    label: `Подбор диаметра: до ${STANDARD_DIAMETERS_MM.length} стандартных вариантов`,
+    label: `Подбор арматуры и соединительного узла: до ${STANDARD_DIAMETERS_MM.length} стандартных вариантов`,
     fraction: 0,
   })
-  const optimization = selectUniformDiameter(parameters, STANDARD_DIAMETERS_MM, {
+  const optimization = selectUniformDiameter(automaticParameters, STANDARD_DIAMETERS_MM, {
     stopAtFirstPassing: true,
     onProgress: (event) => {
       postProgress(jobId, {
@@ -73,7 +77,7 @@ function runOptimization(jobId, parameters) {
   })
   const summary = summarizeOptimization(optimization)
   if (!optimization.recommended) {
-    postProgress(jobId, { phase: 'done', label: 'Подбор завершён: подходящий диаметр не найден', fraction: 1 })
+    postProgress(jobId, { phase: 'done', label: 'Подбор завершён: подходящий комплект арматуры и узла не найден', fraction: 1 })
     self.postMessage({ type: 'result', jobId, result: null, optimization: summary })
     return
   }
@@ -81,10 +85,13 @@ function runOptimization(jobId, parameters) {
   const diameter = optimization.recommended.diameter
   postProgress(jobId, {
     phase: 'optimize',
-    label: `Минимальный проходящий диаметр найден после ${optimization.evaluatedCount} вариантов: Ø${diameter} мм`,
+    label: `Минимальный проходящий комплект найден после ${optimization.evaluatedCount} вариантов: арматура Ø${diameter} мм`,
     fraction: optimizationShare,
   })
-  const result = addModuleVerification(calculateCompleteMast({ ...parameters, barDiameterMm: diameter }, {
+  const result = addModuleVerification(calculateCompleteMastWithConfiguredJoint({
+    ...automaticParameters,
+    barDiameterMm: diameter,
+  }, {
     onProgress: (progress) => calculationProgress(
       jobId,
       progress,
@@ -93,7 +100,11 @@ function runOptimization(jobId, parameters) {
       `Итоговый расчёт Ø${diameter} мм`,
     ),
   }))
-  postProgress(jobId, { phase: 'done', label: `Подбор завершён: Ø${diameter} мм`, fraction: 1 })
+  const joint = result.connections?.configurator
+  const jointLabel = joint?.geometry
+    ? `; болт M${joint.geometry.bolt.diameterMm}×${joint.geometry.bolt.lengthMm} ${joint.selected.boltClass}`
+    : ''
+  postProgress(jobId, { phase: 'done', label: `Подбор завершён: арматура Ø${diameter} мм${jointLabel}`, fraction: 1 })
   self.postMessage({ type: 'result', jobId, result, optimization: summary })
 }
 
@@ -108,7 +119,7 @@ self.onmessage = (event) => {
       runOptimization(jobId, parameters)
       return
     }
-    throw new Error(`Неизвестная операция worker: ${action}`)
+    throw new Error(`Неизвестная операция расчёта: ${action}`)
   } catch (error) {
     self.postMessage({
       type: 'error',

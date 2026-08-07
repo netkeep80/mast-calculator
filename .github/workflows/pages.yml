@@ -45,6 +45,7 @@ jobs:
           set -euo pipefail
           rm -rf _site
           cp -R site _site
+          cp logo.jpg _site/logo.jpg
           touch _site/.nojekyll
           cat > _site/build-info.json <<EOF
           {
@@ -69,8 +70,7 @@ jobs:
     timeout-minutes: 10
     needs: build
     concurrency:
-      # Publication is a writer operation: never cancel a deployment that has
-      # already started. New pushes wait instead of leaving Pages half-updated.
+      # Публикация изменяет сайт: уже начавшийся deploy не отменяем новым push.
       group: main-writer-${{ github.repository }}-pages
       cancel-in-progress: false
     permissions:

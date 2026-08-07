@@ -4,8 +4,10 @@ import test from 'node:test'
 
 const html = fs.readFileSync(new URL('../site/index.html', import.meta.url), 'utf8')
 const app = fs.readFileSync(new URL('../site/app.js', import.meta.url), 'utf8')
+const bootstrap = fs.readFileSync(new URL('../site/app-bootstrap.js', import.meta.url), 'utf8')
 const viewer = fs.readFileSync(new URL('../site/viewer.js', import.meta.url), 'utf8')
 const moduleViewer = fs.readFileSync(new URL('../site/module-viewer.js', import.meta.url), 'utf8')
+const jointViewer = fs.readFileSync(new URL('../site/joint-viewer.js', import.meta.url), 'utf8')
 const worker = fs.readFileSync(new URL('../site/calculation-worker.js', import.meta.url), 'utf8')
 
 test('UI не позволяет вручную вводить геометрию правильного октаэдра', () => {
@@ -16,20 +18,51 @@ test('UI не позволяет вручную вводить геометри�
 
 test('модуль зафиксирован ножками вниз и отдельного closeTopRing в UI больше нет', () => {
   assert.match(html, /каждый модуль устанавливается ножками вниз/i)
-  assert.match(html, /верхняя грань последнего модуля уже существует/i)
+  assert.match(html, /верхний треугольник/i)
   assert.doesNotMatch(html, /name="closeTopRing"/)
   assert.doesNotMatch(app, /closeTopRing/)
 })
 
-test('практические параметры закупки, материала и соединений остаются доступны', () => {
+test('практические параметры закупки и материала остаются выпадающими списками', () => {
   for (const name of ['stockBarLengthMm', 'stockBarPieces', 'barDiameterMm', 'reinforcementClass']) {
     assert.match(html, new RegExp(`<select name="${name}">`))
   }
-  for (const name of ['jointBoltDiameterMm', 'jointBoltClass', 'weldConsumableId']) {
-    assert.match(html, new RegExp(`<select name="${name}">`))
-  }
-  assert.match(app, /BOLT_DIAMETERS_MM/)
-  assert.match(app, /WELD_CONSUMABLES/)
+})
+
+test('конфигуратор узла использует выпадающие списки и русский автоподбор', () => {
+  for (const name of [
+    'jointConfiguratorMode', 'jointBoltDiameterMm', 'jointBoltClass',
+    'jointClearanceNutThreadMm', 'jointBoltLengthMm', 'jointThreadEngagementFactor',
+    'weldConsumableId', 'weldLegMm', 'weldSegmentsPerEnd',
+  ]) assert.match(html, new RegExp(`<select name="${name}">`))
+  assert.match(html, /Автоподбор/i)
+  assert.match(html, /Гайка ножки с проходом болта/i)
+  assert.match(html, /длинн(?:ая|ой) соединительн(?:ая|ой) гайк/i)
+  assert.match(bootstrap, /jointConfiguratorMode/)
+  assert.match(bootstrap, /message\.action === 'optimize' \? 'auto'/)
+})
+
+test('эффективный радиус и длинная гайка являются производными параметрами', () => {
+  assert.match(html, /name="jointEffectiveRadiusMm"[^>]*readonly/)
+  assert.match(html, /name="jointCouplingNutDescription"[^>]*readonly/)
+  assert.match(bootstrap, /geometry\.effectiveRadiusMm/)
+  assert.match(bootstrap, /topCouplingNut/)
+})
+
+test('отдельное 3D-окно показывает соединительный узел из двух гаек и болта', () => {
+  assert.match(html, /id="joint-canvas"/)
+  assert.match(html, /две гайки и болт/i)
+  assert.match(jointViewer, /class JointViewer/)
+  assert.match(jointViewer, /topCouplingNut/)
+  assert.match(jointViewer, /bottomClearanceNut/)
+  assert.match(jointViewer, /Зацепление/)
+  assert.match(bootstrap, /new JointViewer/)
+})
+
+test('логотип из корня репозитория подключён в шапке приложения', () => {
+  assert.match(html, /class="brand-logo"/)
+  assert.match(html, /src="\.\/logo\.jpg"/)
+  assert.match(html, /alt="Логотип калькулятора мачты"/)
 })
 
 test('главная схема позволяет выбрать физический модуль кликом или select', () => {
@@ -67,14 +100,10 @@ test('интерфейс показывает максимальную прое�
   for (const id of [
     'metric-height-design', 'metric-height-modules', 'metric-height-ultimate',
     'metric-bottom-failure', 'height-capacity-description',
-  ]) {
-    assert.match(html, new RegExp(`id="${id}"`))
-  }
+  ]) assert.match(html, new RegExp(`id="${id}"`))
   assert.match(html, /name="heightSearchMaxModules"/)
   assert.match(app, /heightCapacity/)
   assert.match(app, /bottomModuleAtFirstDesignOverload/)
-  assert.match(app, /tensile-rupture/)
-  assert.match(app, /local-member-buckling/)
 })
 
 test('погодные явления выбираются из выпадающего списка вплоть до урагана', () => {
@@ -94,22 +123,18 @@ test('боковой и статический расчёты предыдуще
   for (const id of [
     'metric-lateral-capacity', 'metric-lateral-buckling', 'metric-lateral-bolt', 'metric-lateral-mode',
     'metric-static-payload', 'metric-static-reserve', 'metric-water-volume', 'metric-static-mode',
-  ]) {
-    assert.match(html, new RegExp(`id="${id}"`))
-  }
+  ]) assert.match(html, new RegExp(`id="${id}"`))
   assert.match(app, /globalBucklingForceKgf/)
   assert.match(app, /boltLimitForceKgf/)
   assert.match(app, /maximumTotalTopMassKg/)
   assert.match(app, /equivalentWaterVolumeM3/)
 })
 
-test('соединения и сварка не потеряны при добавлении модульного интерфейса', () => {
+test('соединения и сварка не потеряны при упрощении конфигуратора', () => {
   for (const id of [
     'metric-bolt-utilization', 'metric-bolt-joint', 'metric-weld-length',
     'bolt-recommendations-body', 'weld-results-body', 'weld-recommendation',
-  ]) {
-    assert.match(html, new RegExp(`id="${id}"`))
-  }
+  ]) assert.match(html, new RegExp(`id="${id}"`))
   assert.match(app, /renderConnections/)
   assert.match(app, /requiredPhysicalLengthMm/)
 })
@@ -118,20 +143,16 @@ test('многоуровневый паспорт верификации ост�
   for (const id of [
     'metric-verification', 'verification-summary-card', 'verification-summary',
     'verification-details', 'verification-levels', 'verification-checks',
-  ]) {
-    assert.match(html, new RegExp(`id="${id}"`))
-  }
-  assert.match(html, /помодульной Schur-конденсацией/i)
+  ]) assert.match(html, new RegExp(`id="${id}"`))
   assert.match(app, /renderVerification/)
   assert.match(app, /Как проверить самому/)
 })
 
 test('тяжёлый расчёт остаётся в модульном Web Worker', () => {
   assert.match(app, /new Worker\('\.\/calculation-worker\.js', \{ type: 'module' \}\)/)
-  assert.match(worker, /calculateCompleteMast/)
+  assert.match(worker, /calculateCompleteMastWithConfiguredJoint/)
   assert.match(worker, /selectUniformDiameter/)
   assert.doesNotMatch(app, /\bcalculateMast\(/)
-  assert.doesNotMatch(app, /\bcalculateCompleteMast\(/)
 })
 
 test('progress показывает отдельный этап поиска максимальной высоты', () => {
@@ -157,6 +178,8 @@ test('результирующие таблицы показывают N, V, M �
   assert.match(html, /<th>σэкв, МПа<\/th>/)
 })
 
-test('версия пользовательского прототипа обновлена до 1.1', () => {
-  assert.match(html, /прототип 1\.1/)
+test('пользовательский прототип обновлён до 1.2 и название страницы русское', () => {
+  assert.match(html, /прототип 1\.2/)
+  assert.match(html, /<title>Калькулятор мачты<\/title>/)
+  assert.doesNotMatch(html, /Mast Calculator/)
 })

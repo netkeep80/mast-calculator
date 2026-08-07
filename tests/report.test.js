@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS, calculateCompleteMast } from '../site/engine/calculate.js'
+import { DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
 import { createCalculationProjectHtml } from '../site/engine/calculation-project.js'
+import { calculateCompleteMastWithConfiguredJoint } from '../site/engine/complete-calculation.js'
 import {
   buildMaterialSummary,
   buildMemberEnvelope,
@@ -17,9 +18,10 @@ const parameters = {
   windEnvelopeEnabled: true,
   windEnvelopeStepDeg: 90,
   lateralCapacityStepDeg: 60,
+  jointConfiguratorMode: 'auto',
 }
 
-const result = calculateCompleteMast(parameters)
+const result = calculateCompleteMastWithConfiguredJoint(parameters)
 
 test('ведомость содержит физический модуль каждого ребра и frame-результаты определяющего случая', () => {
   const members = buildMemberEnvelope(result)
@@ -59,10 +61,11 @@ test('CSV начинается с модуля и содержит усилия 
   assert.equal(csv.trim().split('\r\n').length, result.model.members.length + 1)
 })
 
-test('snapshot v8 содержит physical modules, modular solver, height capacity и соединения', () => {
+test('snapshot v8 содержит physical modules, modular solver, height capacity и разрешённый двухгаечный узел', () => {
   const generatedAt = '2026-08-07T08:00:00.000Z'
   const buildInfo = { repository: 'netkeep80/mast-calculator', ref: 'main', sha: 'abc123', runId: '42' }
   const snapshot = createCalculationExport(result, result.parameters, generatedAt, buildInfo)
+  const geometry = result.connections.configurator.geometry
 
   assert.equal(snapshot.schema, 'mast-calculator/calculation-snapshot/v8')
   assert.equal(snapshot.software.sha, 'abc123')
@@ -82,9 +85,13 @@ test('snapshot v8 содержит physical modules, modular solver, height capa
 
   assert.ok(snapshot.summary.lateralCriticalForceKgf > 0)
   assert.ok(snapshot.summary.maximumTotalTopMassKg > 0)
-  assert.equal(snapshot.summary.configuredBoltDiameterMm, 24)
-  assert.equal(snapshot.summary.configuredBoltClass, '8.8')
-  assert.equal(snapshot.connections.method, 'intermodule-bolt-and-member-end-weld-v1')
+  assert.equal(snapshot.summary.configuredBoltDiameterMm, geometry.bolt.diameterMm)
+  assert.equal(snapshot.summary.configuredBoltClass, result.connections.configurator.selected.boltClass)
+  assert.equal(snapshot.connections.method, 'two-nut-intermodule-joint-and-member-end-weld-v2')
+  assert.equal(snapshot.connections.configurator.method, 'self-configuring-two-nut-joint-v1')
+  assert.equal(snapshot.connections.configurator.geometry.bottomClearanceNut.ribCount, 2)
+  assert.equal(snapshot.connections.configurator.geometry.topCouplingNut.ribCount, 4)
+  assert.equal(snapshot.connections.configurator.geometry.bolt.lengthMm, result.parameters.jointBoltLengthMm)
   assert.equal(snapshot.connections.jointCount, 3)
   assert.equal(snapshot.connections.weld.envelope.length, result.model.members.length * 2)
   assert.equal(snapshot.summary.verificationStatus, 'internal-passed-external-pending')
@@ -110,10 +117,12 @@ test('машинный JSON v8 остаётся внутренним средс�
   assert.ok(report.lateralCapacity.criticalForceKgf > 0)
   assert.ok(report.staticPayloadCapacity.maximumTotalTopMassKg > 0)
   assert.equal(report.connections.bolt.selected.applicable, true)
+  assert.equal(report.connections.configurator.geometry.bottomClearanceNut.ribCount, 2)
+  assert.equal(report.connections.configurator.geometry.topCouplingNut.ribCount, 4)
   assert.equal(report.verification.counts.failed, 0)
 })
 
-test('бумажный проект содержит global, modular, height, bolt, weld и verification formulas', () => {
+test('бумажный проект содержит global, modular, height, bolt, weld, физический узел и verification formulas', () => {
   const html = createCalculationProjectHtml(
     result,
     result.parameters,
@@ -129,6 +138,10 @@ test('бумажный проект содержит global, modular, height, bo
   assert.match(html, /Fbolt = 1\/Ubolt\(1 Н\)/)
   assert.match(html, /Nt = max\(0, −Faxis\) \+ \|Mb\|\/reff/)
   assert.match(html, /Ubolt = √\[\(Ns\/Nbs\)² \+ \(Nt\/Nbt\)²\]/)
+  assert.match(html, /проходн(?:ая|ой) гайк/i)
+  assert.match(html, /длинн(?:ая|ой) соединительн(?:ая|ой) гайк/i)
+  assert.match(html, /длина болта/i)
+  assert.match(html, /зацеплен/i)
   assert.match(html, /lw = max\(lw,f, lw,z, 4kf, 40 мм\)/)
   assert.match(html, /Помодульный расчёт и максимальная высота/)
   assert.match(html, /A = Ktt \+ Supper/)

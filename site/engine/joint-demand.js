@@ -90,12 +90,12 @@ export function splitJointDemandForBolt(forceGlobalN, momentGlobalNm, options = 
   }
 }
 
-export function buildIntermoduleJointDemands(model, analysis, options = {}) {
+export function buildIntermoduleJointResultants(model, analysis) {
   const elevations = model.nodes.map((node) => node.position[2])
   const minimumZ = Math.min(...elevations)
   const maximumZ = Math.max(...elevations)
   const moduleHeightM = (maximumZ - minimumZ) / Math.max(1, model.moduleCount)
-  const demands = []
+  const resultants = []
 
   for (const node of model.nodes) {
     const z = node.position[2]
@@ -113,17 +113,24 @@ export function buildIntermoduleJointDemands(model, analysis, options = {}) {
       forceGlobalN = add3(forceGlobalN, end.forceGlobalN)
       momentGlobalNm = add3(momentGlobalNm, end.momentGlobalNm)
     }
-    const boltDemand = splitJointDemandForBolt(forceGlobalN, momentGlobalNm, options)
-    demands.push({
+    resultants.push({
       nodeId: node.id,
       level: Math.round((z - minimumZ) / Math.max(moduleHeightM, Number.EPSILON)),
       corner: node.id % 3,
       elevationM: z,
       upperMemberIds: upperMembers.map((member) => member.id),
-      ...boltDemand,
+      forceGlobalN,
+      momentGlobalNm,
     })
   }
-  return demands
+  return resultants
+}
+
+export function buildIntermoduleJointDemands(model, analysis, options = {}) {
+  return buildIntermoduleJointResultants(model, analysis).map((resultant) => ({
+    ...resultant,
+    ...splitJointDemandForBolt(resultant.forceGlobalN, resultant.momentGlobalNm, options),
+  }))
 }
 
 export function memberEndWeldDemand(member, result, end) {

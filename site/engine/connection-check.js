@@ -132,7 +132,10 @@ export function calculateConnectionChecks(result) {
   const parameters = result.parameters
   const jointDemands = buildOperationalJointDemands(result)
   const selectedBolt = jointDemands.length
-    ? evaluateBoltAcrossDemands(jointDemands, boltOptions(parameters))
+    ? {
+        applicable: true,
+        ...evaluateBoltAcrossDemands(jointDemands, boltOptions(parameters)),
+      }
     : {
         applicable: false,
         checks: [],

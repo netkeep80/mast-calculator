@@ -1,663 +1,345 @@
 # Архитектура расчётного ядра
 
-Статус: архитектура прототипа **1.2**.
+Статус: актуальная архитектура после issue #33.
 
-Документ фиксирует границы между практическим вводом, геометрией мачты, тремя путями статического расчёта, общей устойчивостью, физическим конфигуратором соединений, предельными расчётами, Web Worker и отчётностью.
-
-## 1. Главный поток данных
+## 1. Поток данных
 
 ```text
-Практический ввод
-  арматура / раскрой / материал
-  ветер / лёд / оборудование
-  auto | manual конфигуратор узла
-        |
-        v
-resolveCalculationParameters()
-  a = Lstock/nparts
-  h = a*sqrt(2/3)
-        |
-        v
-generateMastModel()
-  N одинаковых октаэдров ножками вниз
-  3 top-ring + 6 leg = 9 members/module
-        |
-        +-------------------------------+
-        |                               |
-        v                               v
-compileFrameSystem()              compileModuleStack()
-  global banded K                   module K 36x36
-  Cholesky(K)                       Schur 18-DOF interfaces
-        |                               |
-        +----------- load case ----------+
-        |                               |
-        v                               v
-global solve K*u=F              module top-down/bottom-up
-        |                               |
-        +---------- cross-check ----------+
-        |
-        v
-member N/V/T/M + reactions + KG
-        |
-        +----> global eigen-buckling
-        |
-        v
-raw intermodule resultants F/M
-        |
-        v
-configureIntermoduleJoint()
-  bolt
-  clearance nut with 2 ribs
-  long coupling nut with 4 ribs
-  bolt length / engagement / reff
-  weld consumable / weld leg
-        |
-        v
-FIX physical joint
-        |
-        +----> lateral capacity
-        +----> static top payload
-        +----> maximum height search
-        |
-        v
-verification / UI / CSV / paper project / snapshot
+user input / scenario
+        ↓
+resolve material + weather + exact octahedron geometry
+        ↓
+generate physical 9-member modules
+        ↓
+compile global frame system + module stack
+        ↓
+operational load cases
+        ↓
+┌─────────────────────────┐
+│ global banded FEM       │
+│ exact module Schur      │ <- runtime cross-check
+└─────────────────────────┘
+        ↓
+member N/V/T/M + modular interface actions
+        ↓
+connection configurator
+  geometry + nut net area + preload + bolt tension/shear + weld
+        ↓
+fix selected physical joint
+        ↓
+┌────────────────┬──────────────────┬────────────────────┐
+│ lateral limit  │ static top mass  │ maximum height     │
+└────────────────┴──────────────────┴────────────────────┘
+        ↓
+verification / report / snapshot / UI / reference audit
 ```
 
-## 2. Геометрия физического модуля
+Independent dense FEM находится в test/verification path и не участвует в обычном browser calculation.
 
-Каждый модуль — правильный октаэдр, установленный ножками вниз.
+## 2. Геометрия
 
-```text
-bottom interface = 3 node
-upper interface  = 3 node
-members          = 6 leg + 3 top-ring
-```
-
-Для `N` модулей:
+Физический модуль — правильный октаэдр ножками вниз:
 
 ```text
-levels  = N + 1
-nodes   = 3*(N+1)
-members = 9*N
-```
-
-Соседние уровни повернуты на 60°.
-
-До учёта kerf/trim/joint overlap:
-
-```text
-a = Lstock/nparts
+edge a = Lstock/nparts
 R = a/sqrt(3)
 h = a*sqrt(2/3)
-H = N*h
+3 top-ring + 6 leg = 9 members/module
 ```
 
-Все девять рёбер одного правильного модуля имеют длину `a`.
+Уровни чередуются на 60°. Геометрия не имеет специального `closeTopRing`: верхний треугольник принадлежит последнему физическому модулю.
 
-## 3. Граничные условия
+## 3. Frame element
 
-Три нижних узла первого модуля полностью заделаны:
+Node DOF:
 
 ```text
-ux = uy = uz = rx = ry = rz = 0
+ux,uy,uz,rx,ry,rz
 ```
 
-Это идеальная фундаментная граница. Реальная жёсткость свай/швеллеров пока не моделируется.
+Member — 12-DOF 3D Euler–Bernoulli frame. Для круглого сечения вычисляются `EA, EIy, EIz, GJ`. Member loads self-weight/ice/wind задаются distributed и переходят в consistent local nodal vector.
 
-## 4. Пространственный frame element
-
-Каждый узел имеет:
+После solve восстанавливаются local end forces:
 
 ```text
-q = [ux, uy, uz, rx, ry, rz]
+[N,Vy,Vz,T,My,Mz]A
+[N,Vy,Vz,T,My,Mz]B
 ```
 
-Каждое ребро — 12-DOF Euler–Bernoulli spatial frame element.
+## 4. Production global solver
 
-Для круглой сплошной арматуры:
+`compileFrameSystem()` строит symmetric band stiffness и factorizes один раз на геометрию. Несколько load cases используют одну факторизацию.
 
-```text
-A = pi*d^2/4
-Iy = Iz = pi*d^4/64
-J = pi*d^4/32
-W = pi*d^3/32
-G = E/[2*(1+nu)]
-```
-
-Локальная матрица содержит:
-
-```text
-EA/L
-GJ/L
-12EI/L^3
-6EI/L^2
-4EI/L
-2EI/L
-```
-
-Глобальная матрица элемента:
-
-```text
-Ke = T^T * ke * T
-```
-
-Узлы в global FEM не имеют moment release: арматурный каркас идеализирован как сваренный жёстко.
-
-## 5. Нагрузки
-
-`buildLoadCase()` возвращает:
-
-```text
-nodalLoads[nodeId]
-nodalMoments[nodeId]
-memberDistributedLoads[memberId]
-```
-
-Поддерживаются:
-
-- собственный вес;
-- лёд;
-- пространственный ветер;
-- масса и парусность оборудования;
-- дополнительная горизонтальная сила;
-- дополнительная вертикальная сила;
-- огибающая ветровых направлений.
-
-Для uniform distributed load consistent vector содержит `qL/2` и `qL²/12`.
-
-## 6. Production global solver
-
-`compileFrameSystem()` создаёт один раз для геометрии:
-
-```text
-member geometry
-local axes / transforms
-free DOF map
-symmetric band K
-Cholesky(K)
-total mass
-```
-
-Production static solve:
+Статическая задача:
 
 ```text
 K*u = F
 ```
 
-После решения восстанавливаются:
+Контролируются residual, free-DOF equilibrium, force/moment equilibrium, pivots/conditioning diagnostics.
+
+## 5. Module Schur solver
+
+Один модуль имеет 36 interface DOF:
 
 ```text
-ux,uy,uz,rx,ry,rz
-reactions/reaction moments
-N,Vy,Vz,T,My,Mz на обоих концах каждого member
+bottom 18
+top 18
 ```
 
-При level-order numbering current topology даёт малую полуширину band matrix.
-
-## 7. Exact module Schur solver
-
-Один physical module имеет 36 DOF:
+Top-down:
 
 ```text
-bottom interface = 18 DOF
-top interface    = 18 DOF
+A = Ktt+Supper
+S = Kbb-Kbt*A^-1*Ktb
+p = fb-Kbt*A^-1*(ft+pupper)
 ```
 
-Module equation:
-
-```text
-[ Kbb Kbt ] [ub] = [fb]
-[ Ktb Ktt ] [ut]   [ft]
-```
-
-Already processed upper stack задаётся `(Supper,pupper)`.
-
-Top-down condensation:
-
-```text
-A = Ktt + Supper
-S = Kbb - Kbt*A^-1*Ktb
-p = fb - Kbt*A^-1*(ft+pupper)
-```
-
-На rigid foundation известно `u0=0`, после чего выполняется bottom-up recovery:
+Bottom-up:
 
 ```text
 ut = A^-1*(ft+pupper-Ktb*ub)
 ```
 
-Это точная линейная substructuring текущей FEM, а не суммирование только сил.
+Результат — математически тот же linear system, но другой assembly/solution path. Runtime сравнивает полный displacement/rotation vector с global FEM и баланс общих interfaces.
 
-## 8. Global ↔ module cross-check
+### Верхняя грань issue #32
 
-Для каждого operational load case сравниваются все DOF:
-
-```text
-||u_module-u_global|| / ||u_global|| < 1e-8
-```
-
-На каждом общем интерфейсе проверяются силы и моменты:
+В modular result специально различаются:
 
 ```text
-Ftop,lower + Fbottom,upper = 0
-Mtop,lower + Mbottom,upper = 0
+topStructuralFromAbove
+topDirectApplied
+topAppliedFromAbove = structural + direct
 ```
 
-Normalized interface residual также должен быть `<1e-8`.
+`Kmodule*u-fmodule` даёт structural action соседней конструкции; direct nodal load уже находится в `fmodule`, поэтому его нельзя терять в пользовательском результате. Interface closure соседних модулей использует structural action, чтобы direct load не удваивался.
 
-## 9. Третий независимый reference solver
+## 6. Independent dense reference FEM
 
-`site/engine/reference-frame.js` является verification-only реализацией.
+Отдельная implementation самостоятельно собирает element matrices/load vectors, full dense `K`, решает Gaussian elimination и восстанавливает reactions/end forces. Она не импортирует production band solver или module stack.
 
-Он намеренно не импортирует production:
+CI сравнивает global ↔ Schur ↔ dense по DOF, reactions и 12 end-force components. Для выбранных небольших cases production matrix-free buckling сравнивается с dense generalized eigen reference.
 
-```text
-solver.js
-module-stack.js
-banded.js
-```
+## 7. Member design checks
 
-Отдельно реализованы:
-
-```text
-local axes
-12x12 element stiffness
-consistent distributed load
-full dense K assembly
-DOF reduction
-dense Gaussian elimination with pivoting
-member force recovery
-reactions
-dense KG / reference buckling
-```
-
-Он нужен как CI oracle, а не как браузерный production solver.
-
-Dedicated `Triple FEM equivalence` сравнивает global, Schur и dense reference на наборе мачт 1…12 modules с различными нагрузками.
-
-## 10. Member strength layer
-
-По восстановленным coincident actions:
-
-```text
-sigma_N = |N|/A
-sigma_M = M/W
-tau_T = T*(d/2)/J
-tau_V = 4V/(3A)
-sigma_eq = sqrt((sigma_N+sigma_M)^2 + 3*(tau_T^2+tau_V^2))
-```
-
-Current material check:
+Elastic von Mises + local Euler:
 
 ```text
 Ustress = sigma_eq/(Ry/gamma_M)
-```
-
-Local elastic Euler check:
-
-```text
-Leff = 0.5*L
-NE = pi^2*E*I/Leff^2/gamma_M
 UEuler = Ncompression/NE
 Umember = max(Ustress,UEuler)
 ```
 
-## 11. Общая линейная устойчивость
+Это current engineering model, не полный нормативный SP16 member curve.
 
-После static solve строится `KG` и решается:
+## 8. Global eigen-buckling
 
 ```text
 (K + lambda*KG)*phi = 0
 ```
 
-Production использует matrix-free generalized Lanczos в `K`-inner product и проверяет residual исходного generalized equation.
+`KG` строится из текущего compression state. Production solver — matrix-free generalized Lanczos с eigen residual. Global buckling остаётся полной связанной задачей; Schur static decomposition её не заменяет.
 
-Общая buckling mode остаётся свойством полной мачты и не заменяется независимыми module checks.
+## 9. Connection-layer
 
-## 12. Raw demand физического узла
+Global frame joints остаются ideal-rigid. Реальная двухгаечная сборка проверяется после FEM.
 
-Важное изменение 1.2: сначала connection layer извлекает **сырые совпадающие результирующие** двух рёбер верхней ножки:
-
-```text
-Fjoint = F1 + F2
-Mjoint = M1 + M2
-```
-
-Они сохраняют `loadCase`, `windDirection`, `nodeId`, `level`.
-
-Только после выбора конкретной геометрии болта/гаек эти raw resultants переводятся в bolt demand. Это позволяет каждому кандидату иметь собственный `reff`.
-
-## 13. Physical joint hardware model
-
-Реальная топология:
+Topology:
 
 ```text
-upper module leg:
-  2 ribs -> regular clearance nut My
-                    |
-                    | bolt Mx passes freely
-                    v
-lower module top node:
-  4 ribs -> long coupling nut Mx
-                    ^
-                    | bolt Mx screws into thread
+upper module: 2 ribs -> clearance nut My
+vertical bolt Mx passes through My
+lower module: 4 ribs -> coupling nut Mx
+bolt screws into coupling nut
 ```
 
-`site/engine/joint-hardware-catalog.js` хранит reference geometry гаек, стандартные длины болтов, engagement presets и weld options.
+`joint-configurator.js` строит geometry каждого candidate. `joint-demand.js` переводит coincident upper-rib resultants в bolt-axis components. `connection-check.js` объединяет bolt/nut/weld checks.
 
-Свободный проход проверяется по базовому minor diameter:
+## 10. Nut geometry and net section — issue #33
+
+Hardware geometry проверяет свободный проход, engagement и bolt length. Новый independent filter:
 
 ```text
-D1 = D - 1.082532*P
-D1 - dbolt >= 0.5 mm
+Ahex = sqrt(3)/2*s²
+Anet = Ahex-pi*D1²/4
+Arib = pi*dbar²/4
+Anet/Arib >= ksection >= 2
 ```
 
-Long coupling nut имеет ту же резьбу, что болт. Reference geometry для M16…M36 использует длину `3d`.
+`joint-section-check.js` проверяет обе гайки. Недостаточная площадь делает candidate invalid. Для height/lateral/static это должно вести к невозможности использовать такой fixed joint, а не просто к информационному warning.
 
-## 14. Производные параметры узла
+## 11. Bolt demand and oblique shear
 
-Пользователь больше не вводит искусственный effective radius.
+Для resultants двух upper ribs:
 
 ```text
-reff = s/2
+Faxis = F·eb
+Fperp = F-eb(F·eb)
+Nt,direct=max(0,-Faxis)
+Ns,direct=|Fperp|
 ```
 
-где `s` — across-flats длинной соединительной гайки.
-
-Default thread engagement:
+Moment surrogate:
 
 ```text
-Lengagement = 2d
-nturns = Lengagement/P
+reff=s/2
+Nt,external=Nt,direct+|Mb|/reff
+Ns=Ns,direct+|T|/reff
 ```
 
-Минимальная длина болта:
+`directShearN`/`shearFromInclinedForceN` публикуется отдельно, поэтому срез от наклонной геометрии нельзя потерять внутри aggregate demand.
+
+## 12. Torque preload — issue #33
+
+`bolt-preload.js` реализует:
 
 ```text
-Lrequired = m(clearance nut) + Lengagement + 2 mm
+F0,nom=T/(K*d)
+F0,max=(1+Gamma)*F0,nom
+F0,min=(1-Gamma)*F0,nom
 ```
 
-Затем выбирается ближайшая большая standard length.
-
-Reference M24 assembly:
+Project defaults:
 
 ```text
-bolt M24
-clearance nut M30
-coupling nut M24x72
-engagement 48 mm = 16 turns
-required 75.6 mm
-selected bolt length 80 mm
-reff = 18 mm
+T=200 N*m
+K=0.20
+Gamma=0.25
 ```
 
-## 15. Auto/manual configurator
-
-`configureIntermoduleJoint()` имеет два режима.
-
-### Auto
-
-Для каждого supported bolt candidate:
+Strength tension:
 
 ```text
-candidate bolt
--> candidate clearance nut
--> candidate coupling nut
--> candidate reff
--> split raw F/M into Nt/Ns
--> bolt capacity
--> geometry checks
+Nt,strength=F0,max+Nt,external
 ```
 
-Поиск начинает с property class 8.8 и минимального проходящего standard diameter; если весь ряд не проходит, повышает класс.
-
-Также выбираются compatible electrode, weld leg и segment count.
-
-### Manual
-
-Пользователь выбирает discrete physical parameters из dropdown. Derivable geometry остаётся readonly. Ручной выбор не заменяется автоматически.
-
-## 16. Bolt demand/capacity
-
-Для vertical bolt axis:
+Bolt check:
 
 ```text
-Faxis = Fjoint dot eb
-Fperp = Fjoint - eb*Faxis
-T  = |Mjoint dot eb|
-Mb = |Mjoint - eb*(Mjoint dot eb)|
+Nbs=Rbs*Ab*ns*gamma_c
+Nbt=Rbt*Abn*gamma_c
+Ubolt=hypot(Ns/Nbs,Nt,strength/Nbt)
 ```
 
-Сжатие контакта не является растяжением болта:
+Model is deliberately conservative: external separating load is fully additive to max preload, and friction-grip shear relief is not credited.
+
+Direct low-level `bolt-check` APIs default `T=0` for backward-compatible analytical tests. User-facing connection parameters are resolved by `joint-strength-parameters.js` to explicit project defaults.
+
+## 13. Weld-layer and area reserve — issue #33
+
+Coincident member-end `N/V/T/M` enters existing circular weld-group surrogate. Two force-resistance boundaries and code/project minimum length remain.
+
+Additionally:
 
 ```text
-Ndirect = max(0,-Faxis)
-Nt = Ndirect + |Mb|/reff
-Ns = |Fperp| + |T|/reff
+teff=beta_f*kf
+Aeff=teff*lweff
+Aeff>=kweld*Arib
+2<=kweld<=3
+default=2.5
 ```
 
-Capacity:
+`calculateMinimumWeldLength()` returns the maximum of force-based, minimum-length and area-based required length. The 2–3× coefficient is a project criterion; docs/reference/report must not label it as an SP/AISC requirement.
+
+## 14. Auto-configurator and fixed physical joint
+
+For each bolt candidate:
 
 ```text
-Nbs = Rbs*Ab*ns*gamma_b*gamma_c
-Nbt = Rbt*Abn*gamma_c
-Ubolt = sqrt((Ns/Nbs)^2 + (Nt/Nbt)^2)
+hardware geometry
+→ nut net-section
+→ recompute reff
+→ decompose demand
+→ torque preload
+→ bolt interaction
 ```
 
-Geometry pass и strength pass обязательны одновременно.
+First passing candidate is selected according to class/diameter policy. Weld configuration is selected separately and checked against actual envelope.
 
-## 17. Weld layer
+After operational cases choose a physical joint, resolved parameters are frozen and reused for lateral/static/height trial calculations. Trial cases may not auto-upsize the connection.
 
-Каждый конец каждого ребра проверяется по coincident `N/V/T/M`.
+## 15. Lateral capacity
 
-Current surrogate:
+Pure normalized horizontal tip test excludes permanent/weather/equipment loads. From 1 N cases it derives independent member/global-buckling/bolt envelopes. First limit is their minimum. Connection utilization includes fixed-joint preload and nut-geometry validity.
+
+## 16. Static top payload
+
+Gravity-only trial search retains mast self-weight and fixed connection but excludes wind/ice. Binary search checks member, bolt/connection and global buckling. Payload mass and water equivalent are user-facing outputs.
+
+## 17. Maximum height
+
+Integer module count search:
 
 ```text
-Qaxial = |N| + 2|M|/rw
-Qshear = |V| + |T|/rw
-Qw = hypot(Qaxial,Qshear)
-
-lw,f = Qw/(beta_f*kf*Rwf*gamma_c)
-lw,z = Qw/(beta_z*kf*Rwz*gamma_c)
-lw = max(lw,f,lw,z,4kf,40mm)
-Lphysical = lw + 10mm*nsegments
+exponential bracket
+→ binary search
+→ local neighbour scan
 ```
 
-Auto mode выбирает базовый compatible electrode и standard weld inputs, но фактическая weld check всё равно обязательна.
+Design and ultimate-resistance limits differ by displacement and required `lambda_cr`. Fixed connection validity is part of candidate pass/fail.
 
-## 18. Почему узел фиксируется перед capacity search
+## 18. 3D connection visualization — issue #33
 
-Если auto configurator повторно запускать внутри каждого trial load, он мог бы незаметно увеличивать bolt и тем самым измерять не несущую способность конкретной конструкции, а способность конфигуратора бесконечно менять изделие.
-
-Поэтому user-facing `calculateCompleteMastWithConfiguredJoint()` делает:
+`joint-visual-geometry.js` is a deterministic geometry layer independent of canvas drawing. It derives six local rib directions from a regular octahedron:
 
 ```text
-1. operational calculation
-2. configure actual joint
-3. freeze resolved physical parameters
-4. lateral capacity with frozen joint
-5. static payload with frozen joint
-6. maximum height with frozen joint
+coupling nut: 2 top-ring + 2 legs-down
+clearance nut: 2 legs-up
 ```
 
-Это обязательный invariant прототипа 1.2.
-
-## 19. Lateral capacity
-
-Clean unit-load scenario:
+Diagonal leg angle:
 
 ```text
-F0 = 1 N horizontal at top
-Fmember = 1/Umember(F0)
-Fglobal = lambda_cr(F0)*1N
-Fbolt = 1/Ubolt(F0)
-Flim = min(Fmember,Fglobal,Fbolt)
+acos(sqrt(2/3)) = 35.264... deg to bolt axis
 ```
 
-`Fbolt` относится к уже выбранной physical assembly.
+For every rib the module stores nearest hex face, face normal, contact point, angle to bolt axis, angle to face plane and weld display segment.
 
-## 20. Static top payload
+`joint-viewer.js` renders filled depth-sorted prisms with procedural metallic gradient/hatching, ribbed bars, yellow contact markers and red weld zones. Thread profile is intentionally omitted.
 
-Gravity-only search сохраняет self weight:
+## 19. Reference data / report / snapshot
+
+`reference-data.js` remains a view over production catalogs, not a duplicated constants file. Schema `reference-data/v2` adds project connection criteria and source/status notes.
+
+Paper report appends:
 
 ```text
-Pdesign = m*g*gamma_payload
-Umember(m)
-Ubolt(m)
-lambda_cr(m)
+Anut/Arib
+T,K,Gamma,F0,max,Upreload
+external vs strength tension
+oblique direct shear
+Aeff,weld/Arib
 ```
 
-Pass:
+Internal snapshot serializes the full connection object so new fields remain reproducible without changing the user-facing JSON policy.
+
+## 20. Fabrication mass
+
+`assembly-mass.js` estimates ribs, hardware and weld deposit. Fabrication mass is not fed back into current FEM self-weight because required weld length is itself an output of FEM; introducing it requires an explicit iterative/fixed-fabrication model.
+
+## 21. Web Worker / UI
+
+Heavy calculation stays off the main thread. `app-bootstrap.js` enriches the existing form with issue #33 controls and passes them through the worker. No second browser FEM solver is introduced.
+
+## 22. CI layers
+
+Required gates include:
 
 ```text
-Umember<=1
-Ubolt<=1
-lambda_cr>=1
+Syntax, policy and maintainability
+Secrets scan
+Triple FEM equivalence
+Joint configurator
+Joint strength and visualization
+Support reaction statics
+Usage scenarios and reference catalogs
+Full tests Ubuntu/macOS/Windows
+Static site smoke
 ```
 
-Здесь также используется frozen physical joint.
+`test:joint-strength` covers nut net sections, weld area ratio, torque-preload, oblique shear and 3D geometry semantics. Full `node --test` retains all previous regression cases.
 
-## 21. Maximum height
+## 23. Model boundaries
 
-Candidate определяется целым количеством одинаковых modules:
-
-```text
-H(N)=N*h
-```
-
-Design criteria:
-
-```text
-Umember<=1
-Ubolt<=1
-lambda_cr>=minimumBucklingFactor
-delta_top<=displacementLimit
-```
-
-Ultimate criteria:
-
-```text
-Umember<=1
-Ubolt<=1
-lambda_cr>=1
-```
-
-Search: exponential bracketing → binary search → local integer neighbourhood.
-
-## 22. Rebar + joint optimization
-
-`selectUniformDiameter()` перебирает standard rebar diameter по возрастанию.
-
-В auto mode каждый вариант получает собственный согласованный physical joint. Вариант проходит только если одновременно:
-
-```text
-passesStrength
-passesDisplacement
-passesBuckling
-passesConnection
-```
-
-Поэтому кнопка «Подобрать арматуру и узел» действительно подбирает комплект, а не только арматуру.
-
-## 23. Web Worker boundary
-
-Main thread отвечает за UI и canvas.
-
-Heavy calculation работает в module Worker:
-
-```text
-app-bootstrap.js
-    -> enrich physical joint UI parameters
-app.js
-    -> Worker(calculation-worker.js)
-calculation-worker.js
-    -> calculateCompleteMastWithConfiguredJoint()
-```
-
-`app-bootstrap.js` устанавливается до импорта legacy UI-controller `app.js`, добавляет dropdown/3D-joint integration и передаёт новые discrete parameters в Worker.
-
-Cancel выполняется через `worker.terminate()`.
-
-## 24. Визуализация
-
-Три canvas имеют разные задачи:
-
-```text
-viewer.js          -> вся мачта и выбор module
-module-viewer.js   -> selected module, N/V/M, interface actions
-joint-viewer.js    -> two-nut physical joint, bolt, engagement, 4+2 ribs
-```
-
-`joint-viewer.js` является schematic 3D visualization, не CAD model thread/weld geometry.
-
-## 25. Отчётность
-
-Report renderer не решает FEM повторно.
-
-Бумажный проект получает уже рассчитанный `result` и показывает:
-
-```text
-actual bolt diameter/class/length
-clearance nut
-long coupling nut
-thread engagement / turns
-reff
-bolt demand/capacity
-weld demand
-module/global/height/verification data
-```
-
-Internal snapshot v8 сохраняет весь `connections.configurator` object для воспроизводимости. Schema number не менялся, потому что структура расширена обратносуместимыми полями внутри существующего connections block.
-
-## 26. Verification boundaries
-
-Internal verification включает:
-
-- аналитические frame benchmarks;
-- force/moment equilibrium;
-- global ↔ Schur comparison;
-- dense independent numerical reference;
-- physical joint catalogue/configuration regressions.
-
-При этом остаются `NOT VERIFIED`:
-
-```text
-external FEM
-engineering review
-physical test
-```
-
-Внутренний третий solver не называется внешней экспертизой.
-
-## 27. Performance invariants
-
-Production global path остаётся banded и factorizes `K` один раз на geometry.
-
-Module solver использует маленькие 18x18 interface factorizations.
-
-Dense third solver запускается только в CI reference cases.
-
-Joint auto-selection перебирает небольшой конечный catalogue и не создаёт dense global inverse.
-
-Height search обязан использовать bracket/binary strategy.
-
-## 28. Открытые физические слои
-
-Архитектура 1.2 намеренно пока не включает:
-
-```text
-P-Delta / geometric nonlinearity
-initial imperfections
-plasticity
-finite contact/joint stiffness
-thread stripping by actual nut material
-actual thread tolerances/coatings
-bearing/prying/preload/slip
-exact weld bead coordinates
-fatigue
-parameterized foundation
-complete normative load combinations
-external FEM validation
-```
-
-При добавлении nonlinear effects текущая linear Schur condensation должна быть заменена/развита до incremental nonlinear substructuring.
+The architecture still does not implement geometric nonlinearity/P-Delta, imperfections, plastic hinges, finite connection/contact stiffness, thread stripping by actual nut material/tolerance, bearing/prying, preload load-sharing by bolt/clamped-part stiffness, friction-grip/slip, exact weld bead geometry/defects/residual stress/fatigue, self-loosening, compliant foundation or full normative load combinations.

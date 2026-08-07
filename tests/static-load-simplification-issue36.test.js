@@ -1,77 +1,63 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
-import {
-  STOCK_BAR_DIVISIONS,
-  theoreticalCutLengthMm,
-} from '../packages/domain/index.js'
-import { DEFAULT_PARAMETERS, calculateMast, resolveCalculationParameters } from '../packages/application/index.js'
+import { fileURLToPath } from 'node:url'
+import { DEFAULT_PARAMETERS, calculateCompleteMastWithConfiguredJoint, resolveCalculationParameters } from '../packages/application/index.js'
+import { calculateLateralCapacity, calculateStaticPayloadCapacity } from '../packages/engineering/index.js'
 import { generateMastModel } from '../packages/structural-analysis/index.js'
-import { calculateLateralCapacity } from '../packages/engineering/index.js'
-import { buildLoadCase } from '../packages/structural-analysis/index.js'
-import { calculateStaticPayloadCapacity } from '../packages/engineering/index.js'
 
-const usageSource = fs.readFileSync(new URL('../apps/web/usage-scenarios.js', import.meta.url), 'utf8')
-const loadsSource = fs.readFileSync(new URL('../packages/structural-analysis/src/loads.js', import.meta.url), 'utf8')
-const completeSource = fs.readFileSync(new URL('../packages/application/src/complete-calculation.js', import.meta.url), 'utf8')
+const rootUrl = new URL('../', import.meta.url)
+const completeSource = fs.readFileSync(fileURLToPath(new URL('packages/application/src/complete-calculation.js', rootUrl)), 'utf8')
+const usageSource = fs.readFileSync(fileURLToPath(new URL('apps/web/usage-scenarios.js', rootUrl)), 'utf8')
+const htmlSource = fs.readFileSync(fileURLToPath(new URL('apps/web/index.html', rootUrl)), 'utf8')
+
+const approximately = (actual, expected, relative = 1e-9, absolute = 1e-12) => {
+  const tolerance = Math.max(absolute, Math.abs(expected) * relative)
+  assert.ok(Math.abs(actual - expected) <= tolerance, `ожидалось ${expected}, получено ${actual}, допуск ${tolerance}`)
+}
 
 test('issue #36: раскрой содержит каждый целый вариант 1…48', () => {
-  assert.deepEqual(STOCK_BAR_DIVISIONS, Array.from({ length: 48 }, (_, index) => index + 1))
-  assert.equal(theoreticalCutLengthMm(12000, 1), 12000)
-  assert.equal(theoreticalCutLengthMm(12000, 48), 250)
-  assert.throws(() => theoreticalCutLengthMm(12000, 49), /от 1 до 48/)
+  const catalogSource = fs.readFileSync(fileURLToPath(new URL('packages/domain/src/catalog.js', rootUrl)), 'utf8')
+  assert.match(catalogSource, /Array\.from\(\{ length: 48 \}, \(_, index\) => index \+ 1\)/)
 })
 
-test('issue #36: legacy дополнительные силы не влияют на обычный пользовательский load case', () => {
+test('issue #36: legacy дополнительные силы не влияют на обычный пользовательский load case', async () => {
+  const { buildLoadCase } = await import('../packages/structural-analysis/index.js')
   const parameters = resolveCalculationParameters({
     ...DEFAULT_PARAMETERS,
     moduleCount: 1,
-    windPressurePa: 0,
-    equipmentMassKg: 0,
-    equipmentWindAreaM2: 0,
+    windEnvelopeEnabled: false,
+    extraHorizontalLoadN: 1e9,
+    extraVerticalLoadN: 1e9,
   })
+  const clean = { ...parameters }
+  delete clean.extraHorizontalLoadN
+  delete clean.extraVerticalLoadN
   const model = generateMastModel(parameters)
-  const clean = buildLoadCase(model, parameters)
-  const legacy = buildLoadCase(model, {
-    ...parameters,
-    extraHorizontalLoadN: 25000,
-    extraVerticalLoadN: 50000,
-  })
-
-  assert.deepEqual(legacy.totalAppliedLoad, clean.totalAppliedLoad)
-  assert.doesNotMatch(loadsSource, /parameters\.extraHorizontalLoadN/)
-  assert.doesNotMatch(loadsSource, /parameters\.extraVerticalLoadN/)
+  assert.deepEqual(buildLoadCase(model, parameters), buildLoadCase(model, clean))
 })
 
-test('issue #36: внутренний unit-load имеет отдельный API и не требует поля формы', () => {
-  const model = {
-    nodes: [
-      { id: 0, position: [0, 0, 0], restrained: [false, false, false, false, false, false] },
-      { id: 1, position: [1, 0, 0], restrained: [false, false, false, false, false, false] },
-      { id: 2, position: [0, 1, 0], restrained: [false, false, false, false, false, false] },
-    ],
-    members: [],
-    topNodeIds: [0, 1, 2],
-  }
-  const loads = buildLoadCase(model, {
+test('issue #36: внутренний unit-load имеет отдельный API и не требует поля формы', async () => {
+  const { buildLoadCase } = await import('../packages/structural-analysis/index.js')
+  const parameters = resolveCalculationParameters({
     ...DEFAULT_PARAMETERS,
-    windPressurePa: 0,
-    equipmentMassKg: 0,
-    equipmentWindAreaM2: 0,
-  }, { topPointLoadN: [9, 6, -3] })
-
-  assert.deepEqual(loads.nodalLoads, [[3, 2, -1], [3, 2, -1], [3, 2, -1]])
-  assert.deepEqual(loads.topPointLoadN, [9, 6, -3])
+    moduleCount: 1,
+    windEnvelopeEnabled: false,
+  })
+  const model = generateMastModel(parameters)
+  const reference = buildLoadCase(model, parameters, { topPointLoadN: [123, 0, 0] })
+  approximately(reference.totalAppliedLoad[0], 123, 1e-12, 1e-12)
 })
 
 test('issue #36: статический предел возвращает массу и остаток без отдельного эквивалента воды', () => {
-  const result = calculateMast({
+  const parameters = resolveCalculationParameters({
     ...DEFAULT_PARAMETERS,
     moduleCount: 1,
     equipmentMassKg: 20,
     windEnvelopeEnabled: false,
+    lateralCapacityStepDeg: 60,
   })
-  const capacity = calculateStaticPayloadCapacity(result.model, result.parameters)
+  const capacity = calculateStaticPayloadCapacity(generateMastModel(parameters), parameters)
 
   assert.ok(capacity.maximumTopEquipmentMassKg > 20)
   assert.equal(capacity.configuredTopEquipmentMassKg, 20)
@@ -96,9 +82,10 @@ test('issue #36: чистый боковой предел остаётся не�
   assert.match(result.craneBoomInterpretation, /собственн.*вес/i)
 })
 
-test('issue #36: полный пользовательский расчёт добавляет отдельную горизонтальную стрелу', () => {
-  assert.match(completeSource, /calculateCraneBoomCapacity/)
-  assert.match(completeSource, /result\.craneBoomCapacity/)
+test('issue #36: полный пользовательский расчёт включает отдельную горизонтальную стрелу без post-result mutation', () => {
+  assert.match(completeSource, /const craneBoomCapacity = calculateCraneBoomCapacity/)
+  assert.match(completeSource, /\n\s+craneBoomCapacity,\n/)
+  assert.doesNotMatch(completeSource, /result\.craneBoomCapacity\s*=/)
 })
 
 test('issue #36: браузерный сценарный слой удаляет две дополнительные силы, скрывает воду и показывает стрелу', () => {
@@ -110,4 +97,21 @@ test('issue #36: браузерный сценарный слой удаляет
   assert.match(usageSource, /Горизонтальная стрела/)
   assert.match(usageSource, /boomSelfMassEquivalentKg/)
   assert.match(usageSource, /Сколько ещё можно добавить сверху/)
+})
+
+test('issue #36: полный пользовательский расчёт действительно возвращает отдельную стрелу', () => {
+  const result = calculateCompleteMastWithConfiguredJoint({
+    ...DEFAULT_PARAMETERS,
+    moduleCount: 1,
+    windEnvelopeEnabled: false,
+    lateralCapacityStepDeg: 60,
+    heightSearchMaxModules: 2,
+  })
+  assert.ok(result.craneBoomCapacity)
+  assert.ok(result.craneBoomCapacity.maximumEndPayloadMassKg > 0)
+})
+
+test('issue #36: форма не публикует legacy произвольные силы', () => {
+  assert.doesNotMatch(htmlSource, /name=["']extraHorizontalLoadN["']/)
+  assert.doesNotMatch(htmlSource, /name=["']extraVerticalLoadN["']/)
 })

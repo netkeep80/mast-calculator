@@ -87,7 +87,7 @@ scripts/check-version-modification.rs
 scripts/collect-changelog.rs
 scripts/create-changelog-fragment.rs
 scripts/create-github-release.rs
-scripts/detect-code-changes.rs
+scripts/detect-code_changes.rs
 scripts/get-bump-type.rs
 scripts/get-version.rs
 scripts/git-config.rs
@@ -205,6 +205,7 @@ scripts/version-and-commit.mjs
 ```text
 Syntax, policy and maintainability
 Secrets scan
+Triple FEM equivalence
 Tests (ubuntu-latest)
 Tests (macos-latest)
 Tests (windows-latest)
@@ -224,7 +225,30 @@ Static site smoke test
 - secretlint с recommended preset;
 - `scripts/check-file-line-limits.mjs`;
 - smoke-test реального статического HTTP-site;
-- workflow policy включён в обычный `npm test`.
+- workflow policy включён в обычный `npm test`;
+- отдельный `Triple FEM equivalence` gate для numerical identity трёх независимых solve paths.
+
+### Triple FEM equivalence
+
+Для issue #18 добавлен отдельный verification job:
+
+```bash
+npm run test:triple
+```
+
+Он сравнивает:
+
+```text
+global symmetric-band FEM
+module Schur top-down/bottom-up solver
+independent dense Gaussian reference FEM
+```
+
+на нескольких физических размерах и нагрузочных сценариях. Сравниваются все 6 DOF каждого узла, реакции основания и все 12 local end-force components каждого member. Для малых/средних cases дополнительно сравнивается `lambda_cr` production Lanczos и dense generalized eigen reference.
+
+Этот job намеренно выделен отдельно от общей test matrix: ошибка solver-equivalence видна как отдельный PR gate. При этом тот же файл `tests/triple-solver-crosscheck.test.js` входит в обычный `npm test`, поэтому проверяется ещё и на Ubuntu/macOS/Windows.
+
+Подробности: [`TRIPLE_SOLVER_VERIFICATION.md`](TRIPLE_SOLVER_VERIFICATION.md).
 
 ### `.github/workflows/pages.yml`
 
@@ -272,6 +296,12 @@ Static site smoke test
 
 Исправление: `tests/ci-policy.test.js` проверяет policy-инварианты workflows, а значит изменения CI/CD проходят через тот же PR test gate, что и расчётный код.
 
+### Два production solver могли разделять одну ошибку постановки
+
+Global banded FEM и module Schur solver имеют разные assembly/solution path, но описывают одну Euler–Bernoulli frame-модель. Для дополнительной защиты от общей implementation regression добавлен третий dense reference path, который не импортирует `solver.js`, `module-stack.js` или `banded.js`.
+
+`tests/ci-policy.test.js` отдельно требует наличие `Triple FEM equivalence`, а numerical test отдельно проверяет архитектурную независимость reference module и совпадение результатов.
+
 ## 5. Практики, которые сознательно не перенесены
 
 ### Changesets / Scriv / package release
@@ -316,12 +346,14 @@ Mast Calculator сейчас публикует статическое прил�
 Эти правила считаются частью архитектуры проекта:
 
 1. Ни один PR с изменением расчётного кода не должен обходить `npm test`.
-2. Аналитические FEM-тесты должны проходить минимум на Linux, macOS и Windows.
-3. Каждый job обязан иметь конечный timeout.
-4. Default token permissions — только read; write-права выдаются локально конкретному deploy job.
-5. PR должен проверяться относительно актуального `main`.
-6. Writer operations нельзя отменять посередине только потому, что появился более новый push.
-7. Версии GitHub Actions должны контролироваться тестом.
-8. Pages publication запускается только после успешной повторной проверки сайта.
-9. Git SHA опубликованной версии должен попадать в расчётный проект.
-10. CI/CD scripts являются тестируемым кодом и подчиняются тем же ограничениям размера/поддерживаемости, что и расчётное ядро.
+2. FEM regression tests должны проходить минимум на Linux, macOS и Windows.
+3. Для изменений production solver/module solver обязателен отдельный `Triple FEM equivalence` gate.
+4. Третий reference solver не должен импортировать production global/Schur/banded implementation.
+5. Каждый job обязан иметь конечный timeout.
+6. Default token permissions — только read; write-права выдаются локально конкретному deploy job.
+7. PR должен проверяться относительно актуального `main`.
+8. Writer operations нельзя отменять посередине только потому, что появился более новый push.
+9. Версии GitHub Actions должны контролироваться тестом.
+10. Pages publication запускается только после успешной повторной проверки сайта.
+11. Git SHA опубликованной версии должен попадать в расчётный проект.
+12. CI/CD scripts являются тестируемым кодом и подчиняются тем же ограничениям размера/поддерживаемости, что и расчётное ядро.

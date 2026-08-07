@@ -1,0 +1,136 @@
+{
+  "schema": "mast-calculator/canonical-baseline/v1",
+  "scenariosSchema": "mast-calculator/canonical-scenarios/v1",
+  "cases": {
+    "one-module-self-weight": {
+      "topology": { "modules": 1, "nodes": 6, "members": 9 },
+      "loads": { "selfWeightN": 64.64562874546955 },
+      "state": {
+        "dofChecksum": { "count": 36, "weightedSum": -0.004295027943351852, "maxAbs": 0.0004104350736222644 },
+        "topDisplacementM": 3.632975315517412e-7,
+        "maxUtilization": 0.01553115663780144,
+        "minimumBucklingFactor": 1743.0571626202955
+      }
+    },
+    "one-module-heavy-top-mass": {
+      "topology": { "modules": 1, "nodes": 6, "members": 9 },
+      "loads": { "selfWeightN": 64.64562874546955 },
+      "state": {
+        "dofChecksum": { "count": 36, "weightedSum": -0.011463681097728698, "maxAbs": 0.00034383550391364575 },
+        "topDisplacementM": 0.00009664015464533088,
+        "maxUtilization": 0.17192501451401238,
+        "minimumBucklingFactor": 6.925881916293914
+      }
+    },
+    "two-module-oblique-wind": {
+      "topology": { "modules": 2, "nodes": 9, "members": 18 },
+      "state": {
+        "dofChecksum": { "count": 54, "weightedSum": 0.00847724597829086, "maxAbs": 0.0004845416384139456 },
+        "topDisplacementM": 0.00007006040042461788,
+        "maxUtilization": 0.030928257998435224,
+        "minimumBucklingFactor": 62.231392919751116
+      },
+      "connection": { "jointCount": 3, "boltDiameterMm": 16, "boltLengthMm": 55, "boltUtilization": 0.552212308148273 }
+    },
+    "four-module-wind-ice-equipment": {
+      "topology": { "modules": 4, "nodes": 15, "members": 36 },
+      "loads": { "selfWeightN": 258.5825149818783, "iceWeightN": 131.76179107356856 },
+      "state": {
+        "dofChecksum": { "count": 90, "weightedSum": 1.1723097155614306, "maxAbs": 0.0016690480154033468 },
+        "topDisplacementM": 0.001867572906299044,
+        "maxUtilization": 0.25007528000735013,
+        "minimumBucklingFactor": 6.830297310260365
+      },
+      "connection": { "jointCount": 9, "boltDiameterMm": 16, "boltUtilization": 0.5914843017177147 }
+    },
+    "seven-module-static-equivalence": {
+      "topology": { "modules": 7, "nodes": 24, "members": 63 },
+      "state": {
+        "dofChecksum": { "count": 144, "weightedSum": 7.5433789443472765, "maxAbs": 0.00462097674224255 },
+        "topDisplacementM": 0.004873890543618009,
+        "maxUtilization": 0.23106798434498396,
+        "minimumBucklingFactor": 6.754087539373932,
+        "globalSchurRelativeDifference": 1.333706106473522e-13
+      }
+    },
+    "twelve-module-physical-reference": {
+      "topology": { "modules": 12, "nodes": 39, "members": 108 },
+      "state": {
+        "dofChecksum": { "count": 234, "weightedSum": 58.409353898423404, "maxAbs": 0.015362544359044708 },
+        "topDisplacementM": 0.017810626804479125,
+        "maxUtilization": 0.3013374811416079,
+        "minimumBucklingFactor": 4.18085161610479,
+        "globalSchurRelativeDifference": 1.1831627749128891e-12
+      },
+      "connection": { "jointCount": 33, "boltDiameterMm": 16, "boltUtilization": 0.6151799956047754 }
+    },
+    "forty-module-bounded": {
+      "ownerTest": "tests/performance.test.js",
+      "topology": { "modules": 40, "members": 360 }
+    },
+    "mixed-diameters": {
+      "topology": { "modules": 3, "nodes": 12, "members": 27, "moduleDiametersMm": [16, 12, 8] },
+      "loads": { "selfWeightN": 208.3025815131796 },
+      "state": { "topDisplacementM": 0.00011037527216479367, "maxUtilization": 0.062183239358775295, "minimumBucklingFactor": 38.57851398289464 },
+      "connection": { "jointCount": 6, "boltDiameterMm": 18, "boltLengthMm": 60, "boltUtilization": 0.5529151507066674 }
+    },
+    "manual-physical-joint": {
+      "connection": { "jointCount": 6, "boltClass": "8.8", "boltDiameterMm": 24, "boltLengthMm": 80, "boltUtilization": 0.33012399723670316 },
+      "state": { "topDisplacementM": 0.00020922811390918243, "maxUtilization": 0.04945886901687382 }
+    },
+    "auto-physical-joint": {
+      "connection": { "jointCount": 6, "boltClass": "8.8", "boltDiameterMm": 16, "boltLengthMm": 55, "boltUtilization": 0.5607732824379417 },
+      "state": { "topDisplacementM": 0.00033503439432931215, "maxUtilization": 0.07791877375388018 }
+    },
+    "multi-tier-guys": {
+      "topology": { "modules": 10, "members": 90, "tiers": 2, "cables": 6 },
+      "envelope": {
+        "topDisplacementM": 0.006223028409670417,
+        "maxUtilization": 0.20679645989809167,
+        "minimumBucklingFactor": 6.005851922098968,
+        "maximumCableUtilization": 0.2708381179394954
+      },
+      "cables": { "totalLengthM": 54.31509559008295, "totalMassKg": 7.821373764971943, "tensionChecksum": { "count": 6, "weightedSum": 24625.142445843452 } },
+      "nonlinear": { "allConverged": true, "maximumIterations": 3 }
+    },
+    "static-top-payload": {
+      "maximumTopMassKg": 4155.341737334014,
+      "additionalTopMassKg": 4135.341737334014,
+      "utilizationAtLimit": 0.7167149360460369,
+      "boltUtilizationAtLimit": 0.5563841758945021,
+      "bucklingFactorAtLimit": 1.0000031952658461,
+      "governingMode": "global-buckling"
+    },
+    "pure-lateral": {
+      "criticalForceN": 3349.017259857202,
+      "memberLimitForceN": 3349.017259857202,
+      "globalBucklingForceN": 4649.550668734549,
+      "boltLimitForceN": 6535.505970342197,
+      "governingMode": "local-member-buckling",
+      "directionDeg": 60
+    },
+    "horizontal-crane-boom": {
+      "maximumEndPayloadMassKg": 293.90234375,
+      "additionalEndPayloadMassKg": 273.90234375,
+      "configuredEndPayloadMassKg": 20,
+      "boomSelfWeightN": 387.8737724728175,
+      "boomSelfMassEquivalentKg": 39.55211743794441,
+      "governingMode": "local-member-buckling",
+      "governingDirectionDeg": 60
+    },
+    "maximum-height-search": {
+      "designMaximumModules": 12,
+      "designFirstFailModules": null,
+      "ultimateMaximumModules": 12,
+      "ultimateFirstFailModules": null,
+      "evaluationCount": 5
+    },
+    "design-package-obj-round-trip": {
+      "schema": "mast-calculator/design-package/v1",
+      "serializedBytes": 86140,
+      "model": { "modules": 3, "nodes": 12, "members": 27 },
+      "mesh": { "structuralMembers": 27, "hardwareObjects": 30 },
+      "obj": { "bytes": 75379, "vertexLines": 1464, "faceLines": 1242, "hasStructuralGroup": true, "hasJointHardwareGroup": true }
+    }
+  }
+}

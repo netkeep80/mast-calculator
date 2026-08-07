@@ -7,9 +7,13 @@ export function generateMastModel(parameters) {
   const diameterM = parameters.barDiameterMm / 1000
   const youngModulusPa = parameters.youngModulusGPa * 1e9
   const yieldStrengthPa = parameters.yieldStrengthMPa * 1e6
+  const poissonRatio = parameters.poissonRatio
 
   if (![sideM, heightM, diameterM, youngModulusPa, yieldStrengthPa].every((value) => Number.isFinite(value) && value > 0)) {
     throw new Error('Геометрические и механические параметры должны быть положительными числами')
+  }
+  if (!Number.isFinite(poissonRatio) || poissonRatio <= -1 || poissonRatio >= 0.5) {
+    throw new Error('Коэффициент Пуассона должен быть в диапазоне (-1; 0,5)')
   }
 
   const radius = sideM / Math.sqrt(3)
@@ -21,7 +25,11 @@ export function generateMastModel(parameters) {
       nodes.push({
         id: levelNodeId(level, corner),
         position: [radius * Math.cos(angle), radius * Math.sin(angle), level * heightM],
-        restrained: level === 0 ? [true, true, true] : [false, false, false],
+        // Целевая frame-модель имеет 6 степеней свободы на узел:
+        // ux, uy, uz, rx, ry, rz. Основание идеализировано как жёстко заделанное.
+        restrained: level === 0
+          ? [true, true, true, true, true, true]
+          : [false, false, false, false, false, false],
       })
     }
   }
@@ -35,6 +43,7 @@ export function generateMastModel(parameters) {
       diameterM,
       youngModulusPa,
       yieldStrengthPa,
+      poissonRatio,
       densityKgM3: parameters.densityKgM3,
       effectiveLengthFactor: parameters.effectiveLengthFactor,
     })
@@ -49,9 +58,7 @@ export function generateMastModel(parameters) {
     // Шесть одинаковых наклонных рёбер соединяют каждую вершину нижнего
     // треугольника с двумя ближайшими вершинами следующего уровня.
     // Уровни поочерёдно повёрнуты на +60° и -60°, поэтому направление
-    // второй диагонали также должно чередоваться. Если всегда использовать
-    // corner + 2, то каждый второй модуль получает три длинные диагонали,
-    // пересекающие треугольник почти по диаметру.
+    // второй диагонали также должно чередоваться.
     const adjacentCornerOffset = module % 2 === 0 ? 2 : 1
     for (let corner = 0; corner < 3; corner += 1) {
       addMember(levelNodeId(module, corner), levelNodeId(module + 1, corner))

@@ -33,6 +33,10 @@ test('ЕСКД-модель строится только из фактичес�
   assert.equal(model.bolt.diameterMm, result.connections.configurator.geometry.bolt.diameterMm)
   assert.equal(model.clearanceNut.threadDiameterMm, result.connections.configurator.geometry.bottomClearanceNut.threadDiameterMm)
   assert.equal(model.couplingNut.threadDiameterMm, result.connections.configurator.geometry.topCouplingNut.threadDiameterMm)
+  assert.equal(
+    model.mass.hardware.couplingNut.threadEngagementMm,
+    result.connections.configurator.geometry.threadEngagementMm,
+  )
 })
 
 test('экспорт использует актуальную российскую ЕСКД-базу и не ссылается на отменённые версии как на основную', () => {
@@ -69,6 +73,11 @@ test('спецификация модуля согласована с production
   assert.match(html, new RegExp(`Гайка проходная M${result.assemblyMass.hardware.clearanceNut.threadDiameterMm}`))
   assert.match(html, new RegExp(`Гайка соединительная M${result.assemblyMass.hardware.couplingNut.threadDiameterMm}×`))
   assert.match(html, />3<\/td>/)
+  assert.match(
+    html,
+    new RegExp(`зацепление ${result.connections.configurator.geometry.threadEngagementMm.toFixed(0)}`),
+  )
+  assert.doesNotMatch(html, /зацепление — мм/)
 })
 
 test('генератор не подделывает реквизиты, которые должен присвоить разработчик', () => {

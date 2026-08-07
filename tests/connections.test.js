@@ -154,22 +154,31 @@ test('более прочный и крупный валидный узел по
 })
 
 test('слабый межмодульный болт может стать реальным первым боковым пределом', () => {
+  // Ø14 выбран намеренно: M16/M20 ещё проходят новый геометрический критерий
+  // Anut,net >= 2*Arib. Умеренная затяжка почти расходует растягивающий резерв
+  // слабого M16 5.6, поэтому тест по-прежнему изолирует bolt-connection как
+  // физический первый предел, а не провал геометрии гайки.
   const result = calculateCompleteMast({
     ...DEFAULT_PARAMETERS,
     stockBarLengthMm: 1200,
     stockBarPieces: 4,
     moduleCount: 4,
-    barDiameterMm: 150,
+    barDiameterMm: 14,
     jointConfiguratorMode: 'manual',
     jointBoltDiameterMm: 16,
     jointBoltClass: '5.6',
     jointClearanceNutThreadMm: 20,
     jointBoltLengthMm: 55,
     jointThreadEngagementFactor: 2,
+    jointTighteningTorqueNm: 70,
+    jointNutFactor: 0.2,
+    jointPreloadVariation: 0.25,
+    jointNutSectionAreaRatio: 2,
     windEnvelopeEnabled: false,
     lateralCapacityStepDeg: 60,
   })
   assert.equal(result.connections.passesJointGeometry, true)
+  assert.equal(result.connections.passesNutSections, true)
   assert.equal(result.lateralCapacity.governingMode, 'bolt-connection')
   assert.equal(result.lateralCapacity.criticalForceN, result.lateralCapacity.boltLimitForceN)
   assert.ok(result.lateralCapacity.boltLimitForceN < result.lateralCapacity.memberLimitForceN)

@@ -62,7 +62,7 @@ test('слишком короткий вручную выбранный болт
   assert.equal(geometry.passes, false)
 })
 
-test('автоконфигуратор для 100 кН растяжения выбирает минимальный M20 класса 8.8 и согласованную арматуру узла', () => {
+test('без преднатяга автоконфигуратор для 100 кН растяжения сохраняет эталонный минимум M20 класса 8.8', () => {
   const configurator = configureIntermoduleJoint([{
     nodeId: 3,
     level: 1,
@@ -71,6 +71,7 @@ test('автоконфигуратор для 100 кН растяжения вы
   }], {
     ...baseParameters,
     jointConfiguratorMode: 'auto',
+    jointTighteningTorqueNm: 0,
   }, { baseMetalRunMPa: 490 })
 
   assert.equal(configurator.mode, 'auto')
@@ -115,6 +116,11 @@ test('полный расчёт фиксирует один автоматиче
     lateralCapacityStepDeg: 60,
     heightSearchMaxModules: 4,
     jointConfiguratorMode: 'auto',
+    jointTighteningTorqueNm: 200,
+    jointNutFactor: 0.2,
+    jointPreloadVariation: 0.25,
+    jointNutSectionAreaRatio: 2,
+    weldToRibAreaRatio: 2.5,
   }
   const result = calculateCompleteMastWithConfiguredJoint(input)
   const canonical = calculateCompleteMast(input)
@@ -125,6 +131,13 @@ test('полный расчёт фиксирует один автоматиче
   assert.equal(result.parameters.jointBoltDiameterMm, geometry.bolt.diameterMm)
   assert.equal(result.parameters.jointBoltLengthMm, geometry.bolt.lengthMm)
   assert.equal(result.parameters.jointClearanceNutThreadMm, geometry.bottomClearanceNut.threadDiameterMm)
+  assert.equal(result.parameters.jointTighteningTorqueNm, 200)
+  assert.equal(result.parameters.jointNutFactor, 0.2)
+  assert.equal(result.parameters.jointPreloadVariation, 0.25)
+  assert.equal(result.parameters.jointNutSectionAreaRatio, 2)
+  assert.equal(result.parameters.weldToRibAreaRatio, 2.5)
+  assert.equal(result.connections.nutSections.passes, true)
+  assert.ok(result.connections.bolt.selected.governingCheck.preload.maximumPreloadN > 0)
   assert.equal(result.heightCapacity.fixedJointConfiguration.diameterMm, geometry.bolt.diameterMm)
   assert.equal(result.heightCapacity.fixedJointConfiguration.boltLengthMm, geometry.bolt.lengthMm)
   assert.ok(Number.isFinite(result.lateralCapacity.boltLimitForceN))

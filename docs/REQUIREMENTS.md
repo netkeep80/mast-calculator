@@ -1,66 +1,46 @@
 # Требования к Калькулятору мачты
 
-Статус: рабочая спецификация прототипа **1.2**.
+Статус: актуальная рабочая спецификация после issues #18, #21, #26, #27, #32 и #33.
 
 Специализированные документы:
 
-- [`CALCULATION_ARCHITECTURE.md`](CALCULATION_ARCHITECTURE.md) — рамная МКЭ-модель и численные методы;
-- [`MODULAR_ANALYSIS_AND_HEIGHT.md`](MODULAR_ANALYSIS_AND_HEIGHT.md) — одинаковые модули, Schur-конденсация, визуализация и предельная высота;
-- [`TRIPLE_SOLVER_VERIFICATION.md`](TRIPLE_SOLVER_VERIFICATION.md) — независимая тройная численная проверка;
-- [`JOINT_CONFIGURATOR.md`](JOINT_CONFIGURATOR.md) — issue #21: практический конфигуратор двух гаек и болта;
-- [`CONNECTIONS.md`](CONNECTIONS.md) — расчёт болта и сварных концов;
+- [`CALCULATION_ARCHITECTURE.md`](CALCULATION_ARCHITECTURE.md) — FEM и численные пути;
+- [`MODULAR_ANALYSIS_AND_HEIGHT.md`](MODULAR_ANALYSIS_AND_HEIGHT.md) — Schur, модули и высота;
+- [`TRIPLE_SOLVER_VERIFICATION.md`](TRIPLE_SOLVER_VERIFICATION.md) — независимая тройная проверка;
+- [`SUPPORT_REACTION_STATICS.md`](SUPPORT_REACTION_STATICS.md) — аналитические реакции;
+- [`JOINT_CONFIGURATOR.md`](JOINT_CONFIGURATOR.md) — физический конфигуратор;
+- [`CONNECTIONS.md`](CONNECTIONS.md) — demand/bolt/weld;
+- [`JOINT_STRENGTH_AND_VISUALIZATION.md`](JOINT_STRENGTH_AND_VISUALIZATION.md) — issue #33;
+- [`USAGE_SCENARIOS.md`](USAGE_SCENARIOS.md) — UX;
+- [`REFERENCE_CATALOGS_AND_MASSES.md`](REFERENCE_CATALOGS_AND_MASSES.md) — справочники/массы;
 - [`VERIFICATION_FOR_NON_SPECIALISTS.md`](VERIFICATION_FOR_NON_SPECIALISTS.md) — паспорт верификации;
-- [`LATERAL_CAPACITY_WEATHER_VALIDATION.md`](LATERAL_CAPACITY_WEATHER_VALIDATION.md) — боковая нагрузка и погода;
-- [`STATIC_PAYLOAD_CAPACITY.md`](STATIC_PAYLOAD_CAPACITY.md) — статическая масса на вершине;
-- [`PERFORMANCE_AND_PROGRESS.md`](PERFORMANCE_AND_PROGRESS.md) — Web Worker и производительность;
+- [`LATERAL_CAPACITY_WEATHER_VALIDATION.md`](LATERAL_CAPACITY_WEATHER_VALIDATION.md) — боковая сила/погода;
+- [`STATIC_PAYLOAD_CAPACITY.md`](STATIC_PAYLOAD_CAPACITY.md) — статическая масса;
+- [`PERFORMANCE_AND_PROGRESS.md`](PERFORMANCE_AND_PROGRESS.md) — производительность;
 - [`CI_CD_REVIEW.md`](CI_CD_REVIEW.md) — CI/CD.
 
-## 1. Цель
+## 1. Цель и обязательные принципы
 
-Калькулятор мачты — статическое браузерное приложение для расчёта мачты из одинаковых сварных арматурных октаэдров.
+Калькулятор — статическое браузерное приложение для инженерного исследования мачты из одинаковых сварных арматурных октаэдров.
 
-Обязательные принципы:
+Обязательно:
 
-1. backend отсутствует, приложение публикуется через GitHub Pages;
-2. основной ввод ориентирован на изготовителя, а не на внутренние константы FEM;
-3. физический модуль имеет однозначные узлы, рёбра и ориентацию;
-4. глобальный каркас считается пространственной рамной моделью с жёсткими идеальными узлами;
-5. статический ответ проверяется несколькими независимыми численными путями;
-6. реальные болты/гайки/сварка проверяются отдельным connection-layer;
-7. автоподбор метизов обязан выдавать конкретную физическую сборку и затем фиксировать её;
-8. UI, отчёты и документация используют один и тот же рассчитанный результат;
-9. изменения расчётного кода проходят CI на Linux/macOS/Windows;
-10. программа явно показывает ограничения модели и не называется сертификатом конструкции.
+1. backend отсутствует, публикация через GitHub Pages;
+2. тяжёлый расчёт выполняется в Web Worker с progress/ETA/cancel;
+3. UX начинается с практического вопроса пользователя, а не с внутренней FEM-конфигурации;
+4. физический модуль имеет однозначную топологию и ориентацию;
+5. global model — 3D Euler–Bernoulli frame с 6 DOF/node;
+6. статический ответ проверяется global FEM, module Schur и independent dense FEM;
+7. global eigen-buckling остаётся задачей всей мачты;
+8. реальные болт/две гайки/сварка проверяются отдельным connection-layer;
+9. auto-конфигуратор выбирает конкретную физическую сборку и фиксирует её для предельных расчётов;
+10. UI, бумажный проект, snapshot и справочники получают данные из общего расчётного результата/каталогов;
+11. все изменения проходят regression/CI минимум на Linux/macOS/Windows;
+12. приложение явно отделяет внутреннюю верификацию от внешней инженерной/натурной проверки.
 
-## 2. Практический ввод арматуры
+## 2. Геометрия модуля
 
-Пользователь задаёт:
-
-```text
-число модулей
-закупочную длину прутка
-на сколько частей режется пруток
-диаметр арматуры
-класс арматуры
-погоду/ветер
-обледенение
-оборудование
-дополнительные нагрузки
-```
-
-Автоматически вычисляются:
-
-```text
-длина ребра
-высота модуля
-E, ν, Ry, Rm, плотность
-```
-
-Диаметр и класс арматуры, закупочная длина и число частей выбираются из выпадающих списков.
-
-## 3. Геометрия физического модуля
-
-До учёта ширины реза, припусков и нахлёстов:
+Пользователь задаёт закупочную длину `Lstock`, число частей `nparts`, диаметр и класс арматуры.
 
 ```text
 a = Lstock/nparts
@@ -69,12 +49,12 @@ h = a*sqrt(2/3)
 H = N*h
 ```
 
-Модуль всегда устанавливается **ножками вниз**:
+Каждый модуль всегда ножками вниз:
 
 ```text
-3 ребра верхнего треугольника
-6 диагональных ножек
-итого 9 рёбер на модуль
+3 top-ring members
+6 leg members
+= 9 рёбер
 ```
 
 Соседние треугольные уровни повёрнуты на 60°.
@@ -82,32 +62,20 @@ H = N*h
 Инварианты:
 
 ```text
-levels  = N + 1
-nodes   = 3*(N+1)
+levels = N+1
+nodes = 3*(N+1)
 members = 9*N
 ```
 
-Все девять геометрических рёбер правильного модуля имеют длину `a`.
+Все 9 рёбер одного правильного модуля имеют длину `a`.
 
-## 4. Фундаментная граница
+## 3. Материал и сечение ребра
 
-Три нижних узла первого модуля пока являются идеальной жёсткой заделкой:
-
-```text
-ux=uy=uz=rx=ry=rz=0
-```
-
-Реальный фундамент должен быть отдельным будущим physical layer.
-
-## 5. Глобальная пространственная рамная модель
-
-Узел:
+Параметры материала берутся из каталога класса арматуры:
 
 ```text
-[ux,uy,uz,rx,ry,rz]
+E, nu, Ry, Rm, rho
 ```
-
-Ребро — 12-DOF spatial Euler–Bernoulli frame element.
 
 Для круглого сечения:
 
@@ -119,48 +87,76 @@ W = pi*d³/32
 G = E/[2*(1+nu)]
 ```
 
-Восстанавливаются совпадающие концевые действия:
+Пользователь не должен вручную подменять однозначно производные свойства.
+
+## 4. Граничные условия
+
+Production-модель пока имеет абсолютную заделку трёх нижних узлов:
 
 ```text
-N
-Vy,Vz
-T
-My,Mz
+ux=uy=uz=rx=ry=rz=0
 ```
 
-Основной global solver использует symmetric band storage и Cholesky factorization.
+Тесты issue #26 с шарнирными точечными опорами являются только аналитическим verification fixture и не меняют production foundation model.
 
-## 6. Нагрузки
+## 5. Нагрузки
 
-Operational cases поддерживают:
+Поддерживаются:
 
-- собственный вес;
-- цилиндрический слой льда;
-- ветер на пространственные круглые рёбра;
-- массу оборудования;
-- парусность оборудования;
-- дополнительную горизонтальную силу;
-- дополнительную вертикальную силу;
-- огибающую направлений ветра.
+- собственный вес рёбер;
+- лёд;
+- ветер на круглые рёбра;
+- масса/парусность оборудования;
+- дополнительная горизонтальная сила;
+- дополнительная вертикальная сила;
+- огибающая направлений ветра.
 
-Self weight, ice и wind on members являются distributed element loads с consistent nodal vector, включая `qL/2` и `qL²/12`.
+Distributed self-weight/ice/wind должны прикладываться через consistent element load vector, включая эквивалентные узловые силы и моменты.
 
-## 7. Погодные сценарии
-
-UI содержит Бофорт 0–12 и ручное давление.
-
-Для сравнительного сценария:
+`equipmentMassKg` и `extraVerticalLoadN` не являются дублями:
 
 ```text
-q = rho_air*v²/2
-rho_air = 1.225 kg/m³
+equipment weight = m*g*gamma_equipment
+extraVerticalLoadN = уже заданная сила в Н
 ```
 
-Шкала Бофорта не заменяет нормативное ветровое районирование и сочетания СП 20.
+Одна физическая нагрузка не должна вводиться одновременно в оба поля.
 
-## 8. Проверка рёбер
+## 6. Верхняя грань и помодульный результат — issue #32
 
-Текущий elastic check:
+Для каждого модуля должны различаться:
+
+```text
+topStructuralFromAbove = действие физических модулей выше
+topDirectApplied = внешняя нагрузка непосредственно на верхнюю грань
+topAppliedFromAbove = topStructuralFromAbove + topDirectApplied
+```
+
+Пользовательская величина «нагрузка верхней грани» обязана показывать полную сумму. Для одного модуля `topStructuralFromAbove=0`, но груз оборудования на вершине не должен исчезать.
+
+Баланс соседних модулей проверяется по structural action без двойного учёта direct nodal load.
+
+## 7. Global FEM
+
+Каждый узел имеет:
+
+```text
+[ux,uy,uz,rx,ry,rz]
+```
+
+Каждое ребро — 12-DOF spatial Euler–Bernoulli frame element.
+
+Восстанавливаются:
+
+```text
+N, Vy, Vz, T, My, Mz
+```
+
+Основной solver использует symmetric-band storage и Cholesky factorization. Матрица/факторизация переиспользуются между load cases одной геометрии.
+
+## 8. Проверка ребра
+
+Упругая прочность:
 
 ```text
 sigma_N = |N|/A
@@ -169,13 +165,13 @@ sigma = sigma_N + sigma_M
 
 tau_T = T*(d/2)/J
 tau_V = 4V/(3A)
-tau = sqrt(tau_T² + tau_V²)
+tau = sqrt(tau_T²+tau_V²)
 
-sigma_eq = sqrt(sigma² + 3*tau²)
+sigma_eq = sqrt(sigma²+3*tau²)
 Ustress = sigma_eq/(Ry/gamma_M)
 ```
 
-Локальная упругая устойчивость:
+Локальный Euler:
 
 ```text
 Leff = 0.5*L
@@ -184,30 +180,28 @@ UEuler = Ncompression/NE
 Umember = max(Ustress,UEuler)
 ```
 
-Это инженерная elastic check, а не полный нормативный расчёт элемента СП 16.
+Это elastic engineering check, не полный нормативный элементный расчёт СП 16.
 
-## 9. Общая линейная устойчивость
+## 9. Общая устойчивость
 
-После static solve:
+Linear eigen-buckling:
 
 ```text
 (K + lambda*KG)*phi = 0
 ```
 
-Сохраняются `lambda`, форма, повороты, residual/eigenResidual и число итераций.
+Сохраняются `lambda_cr`, форма, residual/eigenResidual, iterations. Общая форма может охватывать много модулей, поэтому её нельзя заменить независимыми проверками отдельных модулей.
 
-Общая потеря устойчивости остаётся задачей полной связанной мачты.
+## 10. Точный module Schur solver
 
-## 10. Помодульный статический расчёт
-
-Каждый physical module рассматривается как 36-DOF substructure:
+Один physical module — 36 DOF:
 
 ```text
-bottom interface = 18 DOF
-top interface    = 18 DOF
+bottom = 18 DOF
+top = 18 DOF
 ```
 
-Top-down Schur step:
+Top-down condensation:
 
 ```text
 A = Ktt + Supper
@@ -215,366 +209,358 @@ S = Kbb - Kbt*A^-1*Ktb
 p = fb - Kbt*A^-1*(ft+pupper)
 ```
 
-После достижения rigid base выполняется bottom-up recovery:
+Bottom-up recovery:
 
 ```text
 ut = A^-1*(ft+pupper-Ktb*ub)
 ```
 
-Это точная линейная конденсация текущей FEM, а не суммирование только вертикальных сил.
+Результат обязан совпадать с global FEM по всем DOF в заданном floating-point tolerance.
 
-## 11. Тройная численная проверка
+## 11. Третий независимый solver
 
-Статическая задача должна совпадать тремя независимыми путями:
+CI содержит independent dense FEM, который независимо собирает element stiffness/load vectors, full dense `K`, решает Gaussian elimination и восстанавливает реакции/end forces.
 
-```text
-1. global banded FEM
-2. module Schur solver
-3. independent dense FEM + Gaussian elimination
-```
-
-CI сравнивает:
+Сравниваются:
 
 ```text
-все 6 DOF каждого узла
-реакции основания
-все 12 local end-force components каждого ребра
-численные residuals
-lambda_cr для выбранных reference cases
+все 6 DOF
+реакции
+12 local end-force components каждого member
+остатки
+выбранные lambda_cr reference cases
 ```
 
-Различия допускаются только на уровне floating-point tolerances, а не инженерной погрешности.
+Третий solver не участвует в обычном browser calculation и служит numerical oracle.
 
-## 12. Физический межмодульный узел — issue #21
+## 12. Физический межмодульный узел
 
-Реальный стык обязан иметь следующую топологию:
+Каждый внутренний стык:
 
 ```text
-верхний модуль, ножка:
-  2 ребра приварены к обычной гайке My
-  y > x
-  болт Mx свободно проходит через гайку My
-
-нижний модуль, верхний узел:
-  4 ребра приварены к длинной соединительной гайке Mx
-  болт Mx ввинчивается в неё
+2 ребра верхней ножки -> проходная гайка My
+болт Mx проходит через My свободно
+болт Mx ввинчивается в длинную гайку Mx
+4 ребра нижнего модуля приварены к длинной Mx
 ```
 
-Один межмодульный стык содержит:
-
-```text
-1 проходную гайку ножки
-1 длинную соединительную гайку
-1 болт
-```
-
-Для `N>1`:
+При `N>1`:
 
 ```text
 Njoints = 3*(N-1)
 ```
 
-## 13. Геометрия узла
-
-Проходная гайка должна иметь больший номинальный диаметр и проход по базовому внутреннему диаметру:
+Проходная гайка обязана иметь геометрический проход:
 
 ```text
-D1 = D - 1.082532·P
 D1 - dbolt >= 0.5 мм
+D1 = D - 1.082532*P
 ```
 
-Длинная гайка имеет резьбу того же диаметра, что болт. Для поддерживаемых M16…M36 применяется справочная длина `3d`.
-
-Эффективный радиус не вводится вручную:
+Длинная гайка имеет резьбу болта; расчётная длина каталога — `3d`. Эффективный радиус:
 
 ```text
 reff = s/2
 ```
 
-## 14. Длина зацепления и болта
+## 13. Зацепление и длина болта
 
-Основной automatic rule:
+По умолчанию:
 
 ```text
 Lengagement = 2d
 ```
 
-В ручном режиме доступны:
+В manual доступны `1d/1.5d/2d`.
 
 ```text
-1d
-1.5d
-2d
+nturns = Lengagement/P
+Lrequired = hclearance + Lengagement + 2 мм
 ```
 
-Количество витков:
+Выбирается ближайшая большая стандартная длина. `2d` — правило компоновки, не доказательство thread stripping capacity.
+
+## 14. Нетто-сечение гаек — issue #33
+
+Обе гайки должны проходить дополнительную геометрическую проверку:
 
 ```text
-n = Lengagement/P
+Ahex = sqrt(3)/2*s²
+Ahole = pi*D1²/4
+Anut,net = Ahex-Ahole
+Arib = pi*dbar²/4
+Anut,net/Arib >= ksection
+ksection >= 2
 ```
 
-Минимальная длина болта:
+Проверяются длинная и проходная гайки. FAIL блокирует узел, auto-кандидат и предельные расчёты, где этот межмодульный узел нужен.
+
+Критерий не заменяет thread stripping, bearing, local face bending или prying.
+
+## 15. Demand и срез болта — issue #33
+
+Для двух верхних рёбер одного load case:
 
 ```text
-Lrequired = m_clearance + Lengagement + 2 мм
+Fjoint = F1+F2
+Mjoint = M1+M2
+Faxis = Fjoint·eb
+Fperp = Fjoint-eb(Fjoint·eb)
+Nt,direct = max(0,-Faxis)
+Ns,direct = |Fperp|
 ```
 
-Выбирается ближайшая большая длина из стандартного выпадающего ряда.
-
-Пример M24:
+Моменты:
 
 ```text
-проходная гайка M30
-длинная гайка M24×72
-зацепление 48 мм
-Lrequired = 75.6 мм
-болт -> 80 мм
+T = |Mjoint·eb|
+Mb = |Mjoint-eb(Mjoint·eb)|
+Nt,external = Nt,direct + Mb/reff
+Ns = Ns,direct + T/reff
 ```
 
-## 15. Режимы конфигуратора
+`Ns,direct` должен явно храниться/показываться как срез от наклонной силы.
 
-### Автоподбор
+## 16. Преднатяг от момента затяжки — issue #33
 
-Программа должна сама выбрать согласованный комплект по расчётному demand:
+Torque-controlled approximation:
 
 ```text
-болт и класс
-проходную гайку
-длинную гайку
-длину болта
-зацепление
-reff
-электрод
-катет
-число участков шва
+T = K*F0*d
+F0,nom = T/(K*d)
+F0,max = (1+Gamma)*F0,nom
+F0,min = (1-Gamma)*F0,nom
 ```
 
-Подбор болта начинает с класса 8.8 и минимального проходящего стандартного диаметра; при необходимости повышает класс.
-
-При нажатии «Подобрать арматуру и узел» конфигуратор обязательно работает в `auto` независимо от ранее выбранного ручного режима.
-
-### Ручной режим
-
-Пользователь выбирает только реальные дискретные параметры из dropdown. Производные геометрические величины readonly.
-
-Геометрический FAIL — свободный проход, длина болта или размещение зацепления — блокирует узел независимо от прочности болта.
-
-## 16. Фиксация узла для предельных расчётов
-
-После operational FEM и автоподбора выбранная физическая сборка фиксируется.
-
-Один и тот же узел должен использоваться в:
+Defaults проекта:
 
 ```text
-боковой предельной нагрузке
-максимальной статической массе
-поиске максимальной высоты
+T = 200 Н·м
+K = 0.20
+Gamma = 0.25
 ```
 
-Запрещено автоматически увеличивать болт внутри trial/bisection/height-search cases.
+Они должны быть видимы/настраиваемы и попадать в snapshot/report/reference data.
 
-## 17. Проверка болта
-
-Raw coincident resultant:
+Для прочности:
 
 ```text
-Fjoint
-Mjoint
+Nt,strength = F0,max + Nt,external
 ```
 
-Current surrogate:
+Это консервативная upper-bound модель: внешнее разделяющее усилие полностью добавляется к преднатягу; slip/friction credit не используется.
+
+## 17. Болт
 
 ```text
-Nt = max(0,-Faxis) + |Mb|/reff
-Ns = |Fperp| + |T|/reff
-```
-
-Capacity:
-
-```text
-Nbs = Rbs*Ab*ns*gamma_b*gamma_c
+Nbs = Rbs*Ab*ns*gamma_c
 Nbt = Rbt*Abn*gamma_c
-Ubolt = sqrt((Ns/Nbs)^2 + (Nt/Nbt)^2)
+Us = Ns/Nbs
+Ut = Nt,strength/Nbt
+Ubolt = sqrt(Us²+Ut²)
 PASS if Ubolt <= 1
 ```
 
-Сжатие контакта не превращается в фиктивное растяжение болта.
+Публикуются также `Upreload`, `F0,max`, внешнее растяжение, остаток tensile reserve и прямой срез.
 
-## 18. Сварка
+Классы без `Rbt` не могут объявляться пригодными при ненулевом растяжении.
 
-Каждый physical member end использует совпадающие `N,Vy,Vz,T,My,Mz`.
+## 18. Сварка и дополнительный area-reserve — issue #33
 
-Current surrogate:
+Для каждого member end берутся coincident `N/V/T/M`.
+
+Силовая surrogate-модель:
 
 ```text
 Qaxial = |N|+2|M|/rw
 Qshear = |V|+|T|/rw
 Qw = hypot(Qaxial,Qshear)
-Rwz = 0.45*Run
+
 lw,f = Qw/(beta_f*kf*Rwf*gamma_c)
 lw,z = Qw/(beta_z*kf*Rwz*gamma_c)
-lw = max(lw,f,lw,z,4kf,40mm)
-Lphysical = lw+10mm*nsegments
 ```
 
-## 19. Визуализация
-
-Интерфейс должен иметь три связанные 3D-представления:
-
-1. вся мачта с выбором physical module;
-2. выбранный модуль с `N/V/M`, интерфейсными силами и моментами;
-3. соединительный узел из двух гаек и болта с условными 4+2 приваренными рёбрами и показом участка зацепления.
-
-## 20. Ведомость рёбер
-
-Поддерживаются:
+Конструктивный минимум:
 
 ```text
-group by module | none
-sort by module/member/|N|/V/M/sigma_eq/wind/utilization
-asc | desc
+lw,min = max(4kf,40 мм)
 ```
 
-CSV содержит номер physical module и weld data обоих концов.
-
-## 21. Максимальная высота
-
-Поиск выполняется по целому `N`.
-
-Design:
+Issue #33 добавляет:
 
 ```text
-Umember <= 1
-Ubolt <= 1
-lambda_cr >= minimumBucklingFactor
-delta_top <= displacementLimit
+teff = beta_f*kf
+Aeff = teff*lweff
+Aeff >= kweld*Arib
+2 <= kweld <= 3
+default kweld = 2.5
+```
+
+Итог:
+
+```text
+lweff = max(lw,f,lw,z,lw,min,kweld*Arib/teff)
+Lphysical = lweff + 10 мм*nsegments
+```
+
+`2…3×` — дополнительный консервативный проектный критерий; он не должен маркироваться как нормативное требование AISC/СП.
+
+## 19. Auto/manual и фиксация узла
+
+Auto candidate проходит только при одновременном выполнении:
+
+```text
+hardware geometry
+nut net-section ratio
+bolt preload+tension+shear
+```
+
+После operational FEM узел фиксируется и используется без автоматического увеличения в:
+
+```text
+lateral capacity
+static top payload capacity
+maximum height search
+```
+
+Manual mode сохраняет выбранные пользователем дискретные детали и проверяет их теми же критериями.
+
+## 20. 3D-визуализация issue #33
+
+Визуализация соединения обязана:
+
+- показывать заполненные гайки/болт с простой процедурной металлической текстурой;
+- не обязана рисовать резьбу;
+- строить 4 направления рёбер длинной гайки и 2 направления рёбер проходной гайки из геометрии правильного октаэдра;
+- показывать диагональный угол `acos(sqrt(2/3)) ≈ 35.264°` к оси болта;
+- определять ближайшую боковую грань для каждого ребра;
+- показывать контакт ребра с гранью и зоны шва;
+- оставаться инженерной схемой, а не притворяться CAD-точностью.
+
+## 21. Боковая предельная нагрузка
+
+Отдельный normalized tip-load test исключает weather/dead/equipment loads и использует единичную горизонтальную силу. Формируются независимые envelopes:
+
+```text
+member limit
+global buckling limit
+selected fixed bolt limit
+first limit = min(...)
+```
+
+Результат выводится в N и kgf; это не crane SWL.
+
+## 22. Статическая масса на вершине
+
+Gravity-only capacity ищется с собственным весом мачты и фиксированным выбранным соединением. Ветер/лёд отключаются. Проверяются member, bolt, global buckling. Выводятся total top mass, remaining reserve и water-equivalent.
+
+## 23. Максимальная высота
+
+Высота дискретна `H(N)=N*h`. Поиск использует exponential bracket + binary search + neighbour scan.
+
+Design limit:
+
+```text
+Umember<=1
+Uconnection<=1
+lambda_cr>=minimumBucklingFactor
+displacement<=limit
 ```
 
 Ultimate resistance:
 
 ```text
-Umember <= 1
-Ubolt <= 1
-lambda_cr >= 1
+Umember<=1
+Uconnection<=1
+lambda_cr>=1
 ```
 
-Используются exponential bracketing, binary refinement и локальная проверка соседних целых вариантов.
+Если отказ не найден до search cap, показывается нижняя оценка `>=Hsearch`.
 
-## 22. Боковая и вертикальная специальные проверки
+## 24. UX и справочники
 
-Боковая чистая единичная нагрузка:
+Четыре сценария: check/design/limits/verify. Главный результат: короткий ответ → объяснение → подробности.
+
+Reference data строится из production catalog code. Текущая схема должна включать issue #33:
 
 ```text
-F0 = 1 N horizontal at top
-Flim = min(Fmember,Fglobal,Fbolt)
+mast-calculator/reference-data/v2
+bolt preload defaults/source
+nut net-section ratio
+weld effective-area range/default
 ```
 
-Статическая масса на вершине сохраняет собственный вес и проверяет:
+Проектные коэффициенты `2×`/`2…3×` должны быть явно помечены как project criteria.
+
+## 25. Масса физической сборки
+
+Показываются rib/joint/module/mast fabrication masses. Метизы оцениваются геометрически, weld deposit — через `k²/2 * L`. Fabrication mass пока отделена от FEM self-weight из-за feedback `forces -> required weld -> mass -> forces`.
+
+## 26. Верификация
+
+Внутренние уровни должны включать:
+
+- ручные формулы геометрии/массы/weather;
+- force/moment equilibrium;
+- `K*u-F` residual;
+- аналитические beam/frame cases;
+- optimized vs reference algebra;
+- global vs Schur;
+- independent dense FEM;
+- support statics oracles;
+- negative tests, которые обязаны обнаруживать намеренную ошибку.
+
+Внешний FEM, инженерная рецензия и натурное испытание не получают PASS автоматически.
+
+## 27. Бумажный проект и snapshot
+
+Бумажный проект должен содержать формулы/подстановки/критические значения, включая:
 
 ```text
-U_member(m)<=1
-U_bolt(m)<=1
-lambda_cr(m)>=1
+геометрию и FEM
+stability/capacities
+физический узел
+Anut/Arib
+T,K,Gamma,F0,max,Upreload
+прямой bolt shear от наклонной силы
+Aeff,weld/Arib
+single-source reference audit
+verification passport
 ```
 
-В режиме 1.2 `Fbolt` и `U_bolt(m)` относятся к уже фиксированной физической сборке.
+Machine snapshot остаётся внутренним средством воспроизводимости и хранит полные connection fields.
 
-## 23. Пользовательский интерфейс issue #21
+## 28. CI/CD
 
-Все пользовательские подписи нового конфигуратора выполняются на русском языке.
-
-По возможности применяются dropdown, а не произвольный numeric input.
-
-Обязательные элементы:
+Обязательные независимые gates:
 
 ```text
-Режим конфигуратора
-Болт
-Класс болта
-Гайка ножки с проходом
-Длина болта
-Зацепление
-readonly длинная соединительная гайка
-readonly эффективный радиус
-Сварочный материал
-Катет
-Число участков
-```
-
-В шапке используется пользовательский `logo.jpg` из корня репозитория. Pages build обязан включать его в опубликованный артефакт.
-
-## 24. Отчётность
-
-UI, CSV и бумажный проект читают already calculated result и не должны повторно решать FEM.
-
-Бумажный проект обязан отражать фактически выбранный соединительный узел: две гайки, диаметр/класс/длину болта, зацепление, `reff`, расчётный demand, capacity и weld data.
-
-Internal snapshot остаётся средством воспроизводимости и должен сохранять полный `connections/configurator` object.
-
-## 25. Верификация
-
-Internal evidence ladder:
-
-1. простые формулы;
-2. равновесие/residuals;
-3. аналитические known-answer задачи;
-4. независимые численные алгоритмы;
-5. внешний FEM/эксперт — pending;
-6. натурное испытание — pending.
-
-Внутренний dense reference solver не называется внешней экспертизой.
-
-## 26. CI/CD
-
-Обязательные PR checks:
-
-```text
-npm test
-npm run check
-file line-limit guard
-Linux/macOS/Windows tests
-fresh-merge simulation
-secret scan
+Syntax, policy and maintainability
+Secrets scan
 Triple FEM equivalence
 Joint configurator
-static-site smoke
-workflow policy tests
+Joint strength and visualization
+Support reaction statics
+Usage scenarios and reference catalogs
+Tests Ubuntu/macOS/Windows
+Static site smoke test
 ```
 
-Dedicated `Joint configurator` gate проверяет физическую геометрию двух гаек, свободный проход, длину болта, auto/manual, M24/M30/80 reference assembly и фиксацию узла в предельных расчётах.
+`Joint strength and visualization` обязан проверять nut sections, weld area ratio, torque-preload, oblique bolt shear и 3D geometry/contact/weld semantics.
 
-Static smoke обязан проверять новые browser resources и `logo.jpg`.
+## 29. Ограничения
 
-## 27. Нормативные и справочные источники
+Не должны скрываться:
 
-Используемые/планируемые ссылки:
-
-- ГОСТ 34028-2016 — арматура;
-- ГОСТ ISO 898-1-2014 — болты/винты/шпильки;
-- ГОСТ 24705-2004 — метрическая резьба;
-- СП 16.13330.2017 — стальные конструкции и соединения;
-- ГОСТ 5264-80 — ручная дуговая сварка;
-- ГОСТ 9467-75 — электроды;
-- СП 20.13330.2016 — нагрузки;
-- ГОСТ 27751-2014 — надёжность;
-- ISO 4032 — справочная геометрия обычных гаек;
-- DIN 6334 — справочная геометрия длинных соединительных гаек.
-
-Упоминание документа не означает реализацию всех его нормативных проверок.
-
-## 28. Открытые инженерные границы
-
-Пока не реализованы:
-
-- P-Delta / geometric nonlinearity;
-- initial imperfections;
-- plasticity;
-- конечная податливость bolt/contact/weld joint;
-- thread stripping по фактическому материалу гайки;
-- реальные tolerance/coating метрической резьбы;
-- bearing/prying/preload/slip;
-- exact weld bead coordinates;
-- fatigue;
-- parameterized foundation;
-- полный набор нормативных сочетаний;
-- независимая внешняя FEM-верификация реальной мачты.
+- P-Delta/geometric nonlinearity;
+- initial imperfections/plasticity;
+- finite connection/foundation stiffness;
+- thread stripping по фактическому материалу/допускам;
+- bearing/local face bending/prying;
+- точное распределение внешнего bolt load по stiffness ratio;
+- friction-grip/slip;
+- фактическая weld geometry/defects/residual stress/fatigue;
+- самоотвинчивание;
+- полный нормативный набор сочетаний;
+- согласованное включение hardware/weld mass в self-weight;
+- внешняя независимая FEM/натурная верификация реальной конструкции.

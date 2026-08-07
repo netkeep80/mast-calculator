@@ -9,17 +9,23 @@ import {
   buildIntermoduleJointResultants,
   buildMemberEndWeldDemands,
 } from './joint-demand.js'
+import { checkJointNutSections } from './joint-section-check.js'
+import { resolveJointStrengthParameters } from './joint-strength-parameters.js'
 import {
   calculateMinimumWeldLength,
   recommendWeldConsumable,
 } from './weld-check.js'
 
 function boltOptions(parameters) {
+  const strength = resolveJointStrengthParameters(parameters)
   return {
     diameterMm: parameters.jointBoltDiameterMm,
     boltClass: parameters.jointBoltClass,
     connectionConditionFactor: parameters.connectionConditionFactor,
     shearPlanes: parameters.jointBoltShearPlanes,
+    tighteningTorqueNm: strength.jointTighteningTorqueNm,
+    nutFactor: strength.jointNutFactor,
+    preloadVariation: strength.jointPreloadVariation,
   }
 }
 
@@ -37,7 +43,10 @@ function baseMetalRunMPa(parameters) {
   )
 }
 
-function weldOptions(parameters, consumableId = parameters.weldConsumableId) {
+function weldOptions(parameters, memberDiameterMm, consumableId = parameters.weldConsumableId) {
+  const strength = resolveJointStrengthParameters(parameters)
+  const diameterMm = Number(memberDiameterMm)
+  const memberAreaMm2 = Math.PI * diameterMm ** 2 / 4
   return {
     consumableId,
     weldLegMm: parameters.weldLegMm,
@@ -46,27 +55,32 @@ function weldOptions(parameters, consumableId = parameters.weldConsumableId) {
     betaZ: parameters.weldBetaZ,
     connectionConditionFactor: parameters.connectionConditionFactor,
     baseMetalRunMPa: baseMetalRunMPa(parameters),
-    weldGroupRadiusMm: Math.max(parameters.barDiameterMm / 2, parameters.weldLegMm / 2),
+    weldGroupRadiusMm: Math.max(diameterMm / 2, parameters.weldLegMm / 2),
+    memberAreaMm2,
+    minimumAreaRatio: strength.weldToRibAreaRatio,
   }
 }
 
 export function evaluateBoltSystemForAnalysis(model, analysis, parameters, metadata = {}) {
-  const geometry = jointGeometryFromParameters(parameters)
-  const effectiveParameters = {
-    ...parameters,
-    jointEffectiveRadiusMm: geometry.effectiveRadiusMm,
-  }
+  const strength = resolveJointStrengthParameters(parameters)
+  const effectiveParameters = { ...parameters, ...strength }
+  const geometry = jointGeometryFromParameters(effectiveParameters)
+  const nutSections = checkJointNutSections(geometry, effectiveParameters.barDiameterMm, {
+    requiredRatio: strength.jointNutSectionAreaRatio,
+  })
+  effectiveParameters.jointEffectiveRadiusMm = geometry.effectiveRadiusMm
   const demands = buildIntermoduleJointDemands(model, analysis, demandOptions(effectiveParameters))
     .map((demand) => ({ ...metadata, ...demand }))
   if (demands.length === 0) {
     return {
       applicable: false,
       demands,
-      passes: geometry.passes,
+      passes: geometry.passes && nutSections.passes,
       utilization: 0,
       governingDemand: null,
       governingCheck: null,
       geometry,
+      nutSections,
     }
   }
   const evaluation = evaluateBoltAcrossDemands(demands, boltOptions(effectiveParameters))
@@ -74,17 +88,19 @@ export function evaluateBoltSystemForAnalysis(model, analysis, parameters, metad
     applicable: true,
     demands,
     geometry,
+    nutSections,
     ...evaluation,
-    passes: geometry.passes && evaluation.passes,
+    passes: geometry.passes && nutSections.passes && evaluation.passes,
   }
 }
 
 export function selectedBoltUtilizationForAnalysis(model, analysis, parameters) {
   const evaluation = evaluateBoltSystemForAnalysis(model, analysis, parameters)
   if (!evaluation.applicable) return 0
-  return evaluation.geometry?.passes === false
-    ? Number.POSITIVE_INFINITY
-    : evaluation.utilization
+  if (evaluation.geometry?.passes === false || evaluation.nutSections?.passes === false) {
+    return Number.POSITIVE_INFINITY
+  }
+  return evaluation.utilization
 }
 
 function buildOperationalJointResultants(result) {
@@ -104,11 +120,15 @@ function buildWeldEnvelope(result, parameters, consumableId) {
     const demands = buildMemberEndWeldDemands(result.model, loadCase.analysis)
     for (const demand of demands) {
       const member = result.model.members[demand.memberId]
-      const check = calculateMinimumWeldLength(demand, weldOptions(parameters, consumableId))
+      const memberDiameterMm = member.diameterM * 1000
+      const check = calculateMinimumWeldLength(
+        demand,
+        weldOptions(parameters, memberDiameterMm, consumableId),
+      )
       const key = `${demand.memberId}:${demand.end}`
       const candidate = {
         ...demand,
-        memberDiameterMm: member.diameterM * 1000,
+        memberDiameterMm,
         caseIndex,
         windDirectionDeg: loadCase.windDirectionDeg,
         check,
@@ -147,15 +167,17 @@ function selectedBoltResult(configurator) {
       governingDemand: null,
       governingCheck: null,
       utilization: 0,
-      passes: selected.geometry.passes,
+      passes: selected.geometry.passes && selected.nutSections.passes,
       geometry: selected.geometry,
+      nutSections: selected.nutSections,
     }
   }
   return {
     applicable: true,
     ...selected.evaluation,
     geometry: selected.geometry,
-    passes: selected.geometry.passes && selected.evaluation.passes,
+    nutSections: selected.nutSections,
+    passes: selected.geometry.passes && selected.nutSections.passes && selected.evaluation.passes,
   }
 }
 
@@ -178,21 +200,31 @@ export function calculateConnectionChecks(result) {
   const weldEnvelope = buildWeldEnvelope(result, parameters, parameters.weldConsumableId)
   const criticalWeld = weldEnvelope[0] ?? null
   const selectedWeldCompatible = criticalWeld?.check.baseStrengthCompatible ?? true
+  const weldAreaPasses = weldEnvelope.every((item) => (
+    item.check.minimumAreaRatio == null
+    || item.check.requiredAreaRatio + 1e-12 >= item.check.minimumAreaRatio
+  ))
   const electrodeRecommendation = summarizeWeldRecommendation(result, parameters, 'electrode')
   const wireRecommendation = summarizeWeldRecommendation(result, parameters, 'wire')
+  const strength = resolveJointStrengthParameters(parameters)
+  const hardwareGeometryPasses = configurator.geometry.passes
+  const jointGeometryPasses = hardwareGeometryPasses && configurator.nutSections.passes
 
   return {
-    method: 'two-nut-intermodule-joint-and-member-end-weld-v2',
-    standard: 'СП 16.13330.2017 (ред. 09.12.2024) + справочная геометрия ISO 4032 / DIN 6334',
+    method: 'two-nut-intermodule-joint-and-member-end-weld-v3',
+    standard: 'СП 16.13330.2017 (ред. 09.12.2024) + ISO/ГОСТ геометрия + torque-preload T=KFd + проектные area-reserve критерии issue #33',
     physicalSplit: 'На ножке верхнего модуля два ребра приварены к проходной гайке с резьбой большего диаметра. Болт свободно проходит через неё и ввинчивается в длинную соединительную гайку верхнего узла нижнего модуля, к которой приварены четыре ребра.',
-    boltModel: 'Сила и момент двухреберной ножки приводятся к растяжению/срезу одного болта; эффективный радиус автоматически берётся как половина размера под ключ соединительной гайки.',
-    weldModel: 'Каждый конец ребра проверяется как идеализированная круговая группа угловых швов по совпадающему N/V/T/M одного load case.',
+    boltModel: 'Сила наклонных верхних рёбер явно раскладывается на осевую и поперечную к болту составляющие; момент добавляет M/reff. Максимальный преднатяг от фактического момента затяжки добавляется к растяжению при консервативной strength-check.',
+    nutSectionModel: 'Нетто-площадь шестигранника за вычетом базового отверстия обязана быть не меньше заданного кратного сечения одного ребра; по умолчанию 2×.',
+    weldModel: 'Каждый конец ребра проверяется по совпадающему N/V/T/M одного load case. Требуемая длина является максимумом силового расчёта, нормативного минимума и проектного запаса эффективной площади шва 2–3× площади ребра.',
     jointCount: result.model.moduleCount > 1 ? 3 * (result.model.moduleCount - 1) : 0,
     jointDemandCount: jointDemands.length,
     jointResultants,
     jointDemands,
     configurator,
     resolvedParameters: configurator.resolvedParameters,
+    strengthParameters: strength,
+    nutSections: configurator.nutSections,
     bolt: {
       selected: selectedBolt,
       recommendationsByClass: configurator.recommendationsByClass,
@@ -204,6 +236,9 @@ export function calculateConnectionChecks(result) {
       effectiveRadiusMm: parameters.jointEffectiveRadiusMm,
       shearPlanes: parameters.jointBoltShearPlanes,
       connectionConditionFactor: parameters.connectionConditionFactor,
+      tighteningTorqueNm: strength.jointTighteningTorqueNm,
+      nutFactor: strength.jointNutFactor,
+      preloadVariation: strength.jointPreloadVariation,
     },
     weld: {
       configuredConsumableId: parameters.weldConsumableId,
@@ -212,15 +247,23 @@ export function calculateConnectionChecks(result) {
       betaF: parameters.weldBetaF,
       betaZ: parameters.weldBetaZ,
       weakerBaseMetalRunMPa: baseMetalRunMPa(parameters),
+      minimumAreaRatio: strength.weldToRibAreaRatio,
       envelope: weldEnvelope,
       critical: criticalWeld,
       selectedConsumableCompatible: selectedWeldCompatible,
+      areaCriterionPasses: weldAreaPasses,
       electrodeRecommendation,
       wireRecommendation,
     },
     passesConfiguredBolt: selectedBolt.passes,
-    passesJointGeometry: configurator.geometry.passes,
+    passesHardwareGeometry: hardwareGeometryPasses,
+    passesJointGeometry: jointGeometryPasses,
+    passesNutSections: configurator.nutSections.passes,
     selectedWeldConsumableCompatible: selectedWeldCompatible,
-    passes: selectedBolt.passes && configurator.geometry.passes && selectedWeldCompatible,
+    passesWeldAreaCriterion: weldAreaPasses,
+    passes: selectedBolt.passes
+      && jointGeometryPasses
+      && selectedWeldCompatible
+      && weldAreaPasses,
   }
 }

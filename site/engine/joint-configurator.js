@@ -9,6 +9,8 @@ import {
   suggestedWeldLegMm,
 } from './joint-hardware-catalog.js'
 import { splitJointDemandForBolt } from './joint-demand.js'
+import { checkJointNutSections } from './joint-section-check.js'
+import { resolveJointStrengthParameters } from './joint-strength-parameters.js'
 import { recommendWeldConsumable } from './weld-check.js'
 
 export const JOINT_CONFIGURATOR_MODES = Object.freeze([
@@ -22,11 +24,15 @@ export const JOINT_CONFIGURATOR_MODES = Object.freeze([
 export const AUTO_BOLT_CLASS_ORDER = Object.freeze(['8.8', '10.9', '12.9', '5.6', '5.8'])
 
 function boltEvaluationOptions(parameters, geometry, boltClass) {
+  const strength = resolveJointStrengthParameters(parameters)
   return {
     diameterMm: geometry.bolt.diameterMm,
     boltClass,
     connectionConditionFactor: parameters.connectionConditionFactor,
     shearPlanes: parameters.jointBoltShearPlanes,
+    tighteningTorqueNm: strength.jointTighteningTorqueNm,
+    nutFactor: strength.jointNutFactor,
+    preloadVariation: strength.jointPreloadVariation,
   }
 }
 
@@ -48,6 +54,10 @@ function evaluateCandidate(resultants, parameters, boltClass, diameterMm, geomet
     clearanceNutThreadMm: geometryOverrides.clearanceNutThreadMm,
     boltLengthMm: geometryOverrides.boltLengthMm,
   })
+  const strength = resolveJointStrengthParameters(parameters)
+  const nutSections = checkJointNutSections(geometry, parameters.barDiameterMm, {
+    requiredRatio: strength.jointNutSectionAreaRatio,
+  })
   const demands = demandsForGeometry(resultants, geometry)
   const evaluation = demands.length > 0
     ? evaluateBoltAcrossDemands(demands, boltEvaluationOptions(parameters, geometry, boltClass))
@@ -64,9 +74,13 @@ function evaluateCandidate(resultants, parameters, boltClass, diameterMm, geomet
     diameterMm: geometry.bolt.diameterMm,
     pitchMm: geometry.bolt.pitchMm,
     geometry,
+    nutSections,
     demands,
     evaluation,
-    passes: geometry.passes && evaluation.passes,
+    passesGeometry: geometry.passes,
+    passesNutSections: nutSections.passes,
+    passesBolt: evaluation.passes,
+    passes: geometry.passes && nutSections.passes && evaluation.passes,
   }
 }
 
@@ -81,6 +95,7 @@ function recommendationForClass(resultants, parameters, boltClass) {
         diameterMm: size.diameterMm,
         pitchMm: size.pitchMm,
         geometry: null,
+        nutSections: null,
         demands: [],
         evaluation: null,
         passes: false,
@@ -156,12 +171,14 @@ function weldConfiguration(parameters, mode, baseMetalRunMPa) {
 
 export function configureIntermoduleJoint(resultants, parameters, options = {}) {
   const mode = parameters.jointConfiguratorMode === 'manual' ? 'manual' : 'auto'
-  const recommendationsByClass = allClassRecommendations(resultants, parameters)
+  const strength = resolveJointStrengthParameters(parameters)
+  const effectiveParameters = { ...parameters, ...strength }
+  const recommendationsByClass = allClassRecommendations(resultants, effectiveParameters)
   const selected = mode === 'auto'
-    ? automaticBoltConfiguration(resultants, parameters, recommendationsByClass)
-    : manualBoltConfiguration(resultants, parameters)
+    ? automaticBoltConfiguration(resultants, effectiveParameters, recommendationsByClass)
+    : manualBoltConfiguration(resultants, effectiveParameters)
   const baseMetalRunMPa = Number(options.baseMetalRunMPa)
-  const weld = weldConfiguration(parameters, mode, baseMetalRunMPa)
+  const weld = weldConfiguration(effectiveParameters, mode, baseMetalRunMPa)
   const geometry = selected.geometry
   const resolvedParameters = {
     jointBoltDiameterMm: selected.diameterMm,
@@ -173,23 +190,27 @@ export function configureIntermoduleJoint(resultants, parameters, options = {}) 
     weldConsumableId: weld.consumableId,
     weldLegMm: weld.weldLegMm,
     weldSegmentsPerEnd: weld.segmentsPerEnd,
+    ...strength,
   }
 
   return {
-    method: 'self-configuring-two-nut-joint-v1',
+    method: 'self-configuring-two-nut-joint-v2',
     mode,
     modeLabel: mode === 'auto' ? 'Автоподбор узла' : 'Ручная конфигурация',
     selected,
     geometry,
+    nutSections: selected.nutSections,
+    strengthParameters: strength,
     weld,
     recommendationsByClass,
     resolvedParameters,
     passesGeometry: geometry.passes,
+    passesNutSections: selected.nutSections.passes,
     passesBolt: selected.evaluation.passes,
-    passes: geometry.passes && selected.evaluation.passes,
+    passes: geometry.passes && selected.nutSections.passes && selected.evaluation.passes,
     explanation: mode === 'auto'
-      ? 'Программа сама выбрала болт, проходную гайку ножки, длинную соединительную гайку, длину болта и базовые параметры сварки. Подбор начинается с класса 8.8 и повышает класс только если стандартный ряд не проходит.'
-      : 'Проверяется выбранная пользователем сборка. Соединительная гайка верхнего узла всегда имеет ту же резьбу, что и болт; гайка ножки должна иметь большую резьбу и обеспечивать свободный проход болта.',
+      ? 'Программа сама выбрала болт, проходную гайку ножки, длинную соединительную гайку, длину болта и базовые параметры сварки. Кандидат обязан одновременно пройти компоновку, минимум 2× по нетто-сечению гайки, преднатяг от момента затяжки, растяжение и срез.'
+      : 'Проверяется выбранная пользователем сборка. Соединительная гайка верхнего узла всегда имеет ту же резьбу, что и болт; гайка ножки должна иметь большую резьбу, свободный проход болта и достаточное нетто-сечение.',
   }
 }
 

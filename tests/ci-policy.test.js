@@ -90,6 +90,16 @@ test('PR CI имеет отдельный gate физического конфи
   assert.match(ci, /two-nut physical joint/i)
 })
 
+test('issue #33 имеет отдельный обязательный gate усиленной прочности и 3D-геометрии узла', () => {
+  const workflow = workflows.get('joint-strength.yml')
+  assert.ok(workflow, 'отсутствует joint-strength.yml')
+  assert.match(workflow, /name:\s*Joint strength checks/)
+  assert.match(workflow, /name:\s*Joint strength and visualization/)
+  assert.match(workflow, /npm run test:joint-strength/)
+  assert.match(workflow, /nut sections, weld area, preload, bolt shear and 3D geometry/i)
+  assert.match(workflow, /scripts\/simulate-fresh-merge\.sh/)
+})
+
 test('PR CI имеет отдельный gate аналитической статики трёх опор', () => {
   const ci = workflows.get('ci.yml')
   assert.ok(ci)
@@ -108,7 +118,7 @@ test('PR CI отдельно проверяет сценарии, справоч
   assert.match(ci, /assembly mass and single-source catalogs/i)
 })
 
-test('static-site smoke загружает интерфейс, сценарный UX и расчётные модули', () => {
+test('static-site smoke загружает интерфейс, сценарный UX и все browser-модули issue #33', () => {
   const ci = workflows.get('ci.yml')
   assert.ok(ci)
   for (const modulePath of [
@@ -133,6 +143,10 @@ test('static-site smoke загружает интерфейс, сценарны�
     'engine/connection-catalog.js',
     'engine/joint-hardware-catalog.js',
     'engine/joint-configurator.js',
+    'engine/joint-section-check.js',
+    'engine/joint-strength-parameters.js',
+    'engine/joint-visual-geometry.js',
+    'engine/bolt-preload.js',
     'engine/bolt-check.js',
     'engine/weld-check.js',
     'engine/joint-demand.js',

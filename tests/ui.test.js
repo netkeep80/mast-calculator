@@ -9,6 +9,7 @@ const usage = fs.readFileSync(new URL('../site/usage-scenarios.js', import.meta.
 const viewer = fs.readFileSync(new URL('../site/viewer.js', import.meta.url), 'utf8')
 const moduleViewer = fs.readFileSync(new URL('../site/module-viewer.js', import.meta.url), 'utf8')
 const jointViewer = fs.readFileSync(new URL('../site/joint-viewer.js', import.meta.url), 'utf8')
+const jointVisualGeometry = fs.readFileSync(new URL('../site/engine/joint-visual-geometry.js', import.meta.url), 'utf8')
 const worker = fs.readFileSync(new URL('../site/calculation-worker.js', import.meta.url), 'utf8')
 
 test('UI не позволяет вручную вводить геометрию правильного октаэдра', () => {
@@ -51,14 +52,31 @@ test('эффективный радиус и длинная гайка явля�
   assert.match(bootstrap, /topCouplingNut/)
 })
 
-test('отдельное 3D-окно показывает соединительный узел из двух гаек и болта', () => {
+test('отдельное 3D-окно показывает текстурированный узел, 4+2 ребра, контакты и сварку', () => {
   assert.match(html, /id="joint-canvas"/)
   assert.match(html, /двух гаек и болта|две гайки и болт/i)
   assert.match(jointViewer, /class JointViewer/)
-  assert.match(jointViewer, /topCouplingNut/)
-  assert.match(jointViewer, /bottomClearanceNut/)
-  assert.match(jointViewer, /Зацепление/)
+  assert.match(jointViewer, /buildJointVisualGeometry/)
+  assert.match(jointViewer, /drawTexturedFace/)
+  assert.match(jointViewer, /красный — зона углового шва/)
+  assert.match(jointViewer, /4 ребра длинной гайки/)
+  assert.match(jointViewer, /2 ребра проходной гайки/)
+  assert.match(jointVisualGeometry, /topCouplingNut/)
+  assert.match(jointVisualGeometry, /bottomClearanceNut/)
+  assert.match(jointVisualGeometry, /representativeOctahedronJointDirections/)
+  assert.match(jointVisualGeometry, /angleToFacePlaneDeg/)
+  assert.match(jointVisualGeometry, /weldStartPoint/)
   assert.match(bootstrap, /new JointViewer/)
+})
+
+test('issue #33 добавляет параметры момента затяжки, сечения гаек и эффективной площади шва', () => {
+  for (const token of [
+    'jointTighteningTorqueNm', 'jointNutFactor', 'jointPreloadVariation',
+    'jointNutSectionAreaRatio', 'weldToRibAreaRatio',
+  ]) assert.match(bootstrap, new RegExp(token))
+  assert.match(bootstrap, /F0=T\/\(K·d\)/)
+  assert.match(bootstrap, /нетто-сечение каждой гайки/i)
+  assert.match(bootstrap, /эффективная площадь шва/i)
 })
 
 test('логотип из корня репозитория подключён в шапке приложения', () => {

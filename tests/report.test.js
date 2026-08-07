@@ -19,6 +19,11 @@ const parameters = {
   windEnvelopeStepDeg: 90,
   lateralCapacityStepDeg: 60,
   jointConfiguratorMode: 'auto',
+  jointTighteningTorqueNm: 200,
+  jointNutFactor: 0.2,
+  jointPreloadVariation: 0.25,
+  jointNutSectionAreaRatio: 2,
+  weldToRibAreaRatio: 2.5,
 }
 
 const result = calculateCompleteMastWithConfiguredJoint(parameters)
@@ -61,7 +66,7 @@ test('CSV начинается с модуля и содержит усилия 
   assert.equal(csv.trim().split('\r\n').length, result.model.members.length + 1)
 })
 
-test('snapshot v8 содержит physical modules, modular solver, height capacity и разрешённый двухгаечный узел', () => {
+test('snapshot v8 содержит physical modules, modular solver, height capacity и усиленный двухгаечный узел', () => {
   const generatedAt = '2026-08-07T08:00:00.000Z'
   const buildInfo = { repository: 'netkeep80/mast-calculator', ref: 'main', sha: 'abc123', runId: '42' }
   const snapshot = createCalculationExport(result, result.parameters, generatedAt, buildInfo)
@@ -87,12 +92,22 @@ test('snapshot v8 содержит physical modules, modular solver, height capa
   assert.ok(snapshot.summary.maximumTotalTopMassKg > 0)
   assert.equal(snapshot.summary.configuredBoltDiameterMm, geometry.bolt.diameterMm)
   assert.equal(snapshot.summary.configuredBoltClass, result.connections.configurator.selected.boltClass)
-  assert.equal(snapshot.connections.method, 'two-nut-intermodule-joint-and-member-end-weld-v2')
-  assert.equal(snapshot.connections.configurator.method, 'self-configuring-two-nut-joint-v1')
+  assert.equal(snapshot.connections.method, 'two-nut-intermodule-joint-and-member-end-weld-v3')
+  assert.equal(snapshot.connections.configurator.method, 'self-configuring-two-nut-joint-v2')
   assert.equal(snapshot.connections.configurator.geometry.bottomClearanceNut.ribCount, 2)
   assert.equal(snapshot.connections.configurator.geometry.topCouplingNut.ribCount, 4)
   assert.equal(snapshot.connections.configurator.geometry.bolt.lengthMm, result.parameters.jointBoltLengthMm)
   assert.equal(snapshot.connections.jointCount, 3)
+  assert.equal(snapshot.connections.nutSections.passes, true)
+  assert.ok(snapshot.connections.nutSections.minimumRatio >= 2)
+  assert.equal(snapshot.connections.strengthParameters.jointTighteningTorqueNm, 200)
+  assert.equal(snapshot.connections.strengthParameters.jointNutFactor, 0.2)
+  assert.equal(snapshot.connections.strengthParameters.jointPreloadVariation, 0.25)
+  assert.equal(snapshot.connections.strengthParameters.weldToRibAreaRatio, 2.5)
+  assert.ok(snapshot.connections.bolt.selected.governingCheck.preload.maximumPreloadN > 0)
+  assert.ok(snapshot.connections.bolt.selected.governingDemand.shearFromInclinedForceN >= 0)
+  assert.equal(snapshot.connections.weld.minimumAreaRatio, 2.5)
+  assert.ok(snapshot.connections.weld.critical.check.requiredAreaRatio >= 2.5)
   assert.equal(snapshot.connections.weld.envelope.length, result.model.members.length * 2)
   assert.equal(snapshot.summary.verificationStatus, 'internal-passed-external-pending')
   assert.equal(snapshot.summary.verificationFailed, 0)
@@ -119,6 +134,8 @@ test('машинный JSON v8 остаётся внутренним средс�
   assert.equal(report.connections.bolt.selected.applicable, true)
   assert.equal(report.connections.configurator.geometry.bottomClearanceNut.ribCount, 2)
   assert.equal(report.connections.configurator.geometry.topCouplingNut.ribCount, 4)
+  assert.equal(report.connections.nutSections.passes, true)
+  assert.ok(report.connections.bolt.selected.governingCheck.preload.maximumPreloadN > 0)
   assert.equal(report.verification.counts.failed, 0)
 })
 
@@ -148,6 +165,9 @@ test('бумажный проект содержит global, modular, height, bo
   assert.match(html, /S = Kbb − Kbt·A⁻¹·Ktb/)
   assert.match(html, /H\(N\) = N·h/)
   assert.match(html, /tensile rupture по Rm\/γM/i)
+  assert.match(html, /Усиленная проверка соединительного узла/)
+  assert.match(html, /F0,max/)
+  assert.match(html, /Aeff,weld/)
   assert.match(html, /Паспорт верификации: как неспециалисту проверять расчёт/)
   assert.match(html, /Независимый КЭ-комплекс/)
   assert.match(html, /НЕ ПРОВЕРЕНО/)

@@ -1,6 +1,5 @@
 import {
   JOINT_CONFIGURATOR_MODES,
-  jointGeometryFromParameters,
 } from './engine/joint-configurator.js'
 import {
   buildJointHardwareGeometry,
@@ -10,6 +9,21 @@ import {
   WELD_LEG_SIZES_MM,
   WELD_SEGMENT_COUNTS,
 } from './engine/joint-hardware-catalog.js'
+import {
+  DEFAULT_NUT_FACTOR,
+  DEFAULT_PRELOAD_VARIATION,
+  DEFAULT_TIGHTENING_TORQUE_NM,
+} from './engine/bolt-preload.js'
+import { calculateBoltCapacity } from './engine/bolt-check.js'
+import {
+  checkJointNutSections,
+  DEFAULT_NUT_TO_RIB_AREA_RATIO,
+} from './engine/joint-section-check.js'
+import {
+  DEFAULT_WELD_TO_RIB_AREA_RATIO,
+  MAX_WELD_TO_RIB_AREA_RATIO,
+  MIN_WELD_TO_RIB_AREA_RATIO,
+} from './engine/weld-check.js'
 import { JointViewer } from './joint-viewer.js'
 import {
   enrichAndRenderUsageResult,
@@ -18,6 +32,54 @@ import {
 
 const $ = (selector) => document.querySelector(selector)
 const form = $('#parameters-form')
+
+function createNumericControl(name, title, attributes = {}) {
+  const label = document.createElement('label')
+  label.append(document.createTextNode(title))
+  const input = document.createElement('input')
+  input.name = name
+  input.type = 'number'
+  for (const [key, value] of Object.entries(attributes)) input.setAttribute(key, String(value))
+  label.append(input)
+  return label
+}
+
+function createSelectControl(name, title) {
+  const label = document.createElement('label')
+  label.append(document.createTextNode(title))
+  const select = document.createElement('select')
+  select.name = name
+  label.append(select)
+  return label
+}
+
+function installJointStrengthUi() {
+  const grid = document.querySelector('#joint-input-details .joint-form-grid')
+  if (grid && !form.elements.namedItem('jointTighteningTorqueNm')) {
+    grid.append(
+      createNumericControl('jointTighteningTorqueNm', 'Момент затяжки болта, Н·м', { min: 0, step: 10 }),
+      createNumericControl('jointNutFactor', 'Коэффициент затяжки K', { min: 0.05, max: 0.5, step: 0.01 }),
+      createNumericControl('jointPreloadVariation', 'Разброс преднатяга ±, доля', { min: 0, max: 0.9, step: 0.05 }),
+      createSelectControl('jointNutSectionAreaRatio', 'Минимум Anut / Arib'),
+      createSelectControl('weldToRibAreaRatio', 'Минимум Aшва / Arib'),
+    )
+    const note = document.createElement('p')
+    note.className = 'hint practical-note'
+    note.textContent = 'Затяжка учитывается как преднатяг F0=T/(K·d): увеличение момента уменьшает оставшийся растягивающий резерв болта. Нетто-сечение каждой гайки должно быть не меньше 2× сечения ребра. Эффективная площадь шва задаётся с дополнительным проектным запасом 2–3×.'
+    grid.after(note)
+  }
+
+  const visualSummary = $('#joint-visual-summary')
+  if (visualSummary && !$('#joint-strength-summary')) {
+    const strength = document.createElement('p')
+    strength.id = 'joint-strength-summary'
+    strength.className = 'material-summary joint-strength-summary'
+    visualSummary.after(strength)
+  }
+}
+
+installJointStrengthUi()
+
 const modeSelect = form.elements.namedItem('jointConfiguratorMode')
 const boltDiameter = form.elements.namedItem('jointBoltDiameterMm')
 const boltClass = form.elements.namedItem('jointBoltClass')
@@ -28,9 +90,16 @@ const effectiveRadius = form.elements.namedItem('jointEffectiveRadiusMm')
 const weldConsumable = form.elements.namedItem('weldConsumableId')
 const weldLeg = form.elements.namedItem('weldLegMm')
 const weldSegments = form.elements.namedItem('weldSegmentsPerEnd')
+const tighteningTorque = form.elements.namedItem('jointTighteningTorqueNm')
+const nutFactor = form.elements.namedItem('jointNutFactor')
+const preloadVariation = form.elements.namedItem('jointPreloadVariation')
+const nutSectionAreaRatio = form.elements.namedItem('jointNutSectionAreaRatio')
+const weldToRibAreaRatio = form.elements.namedItem('weldToRibAreaRatio')
+const barDiameter = form.elements.namedItem('barDiameterMm')
 const couplingDescription = form.elements.namedItem('jointCouplingNutDescription')
 const jointSummary = $('#joint-config-summary')
 const jointVisualSummary = $('#joint-visual-summary')
+const jointStrengthSummary = $('#joint-strength-summary')
 const optimizeButton = $('#optimize-button')
 const viewer = new JointViewer($('#joint-canvas'))
 
@@ -50,14 +119,35 @@ fillSelect(boltLength, JOINT_BOLT_LENGTHS_MM, (value) => `${value} мм`)
 fillSelect(engagement, THREAD_ENGAGEMENT_FACTORS, (value) => `${value}d`)
 fillSelect(weldLeg, WELD_LEG_SIZES_MM, (value) => `${value} мм`)
 fillSelect(weldSegments, WELD_SEGMENT_COUNTS, (value) => `${value}`)
+fillSelect(nutSectionAreaRatio, [2, 2.5, 3], (value) => `${value}× сечения ребра`)
+fillSelect(
+  weldToRibAreaRatio,
+  [MIN_WELD_TO_RIB_AREA_RATIO, DEFAULT_WELD_TO_RIB_AREA_RATIO, MAX_WELD_TO_RIB_AREA_RATIO],
+  (value) => `${value}× сечения ребра`,
+)
 modeSelect.value = 'auto'
 engagement.value = '2'
 weldLeg.value = '4'
 weldSegments.value = '3'
+tighteningTorque.value = String(DEFAULT_TIGHTENING_TORQUE_NM)
+nutFactor.value = String(DEFAULT_NUT_FACTOR)
+preloadVariation.value = String(DEFAULT_PRELOAD_VARIATION)
+nutSectionAreaRatio.value = String(DEFAULT_NUT_TO_RIB_AREA_RATIO)
+weldToRibAreaRatio.value = String(DEFAULT_WELD_TO_RIB_AREA_RATIO)
 
 function selectedNumber(element, fallback = null) {
   const value = Number(element?.value)
   return Number.isFinite(value) ? value : fallback
+}
+
+function strengthParametersFromUi() {
+  return {
+    jointTighteningTorqueNm: selectedNumber(tighteningTorque, DEFAULT_TIGHTENING_TORQUE_NM),
+    jointNutFactor: selectedNumber(nutFactor, DEFAULT_NUT_FACTOR),
+    jointPreloadVariation: selectedNumber(preloadVariation, DEFAULT_PRELOAD_VARIATION),
+    jointNutSectionAreaRatio: selectedNumber(nutSectionAreaRatio, DEFAULT_NUT_TO_RIB_AREA_RATIO),
+    weldToRibAreaRatio: selectedNumber(weldToRibAreaRatio, DEFAULT_WELD_TO_RIB_AREA_RATIO),
+  }
 }
 
 function rebuildClearanceNutOptions(preferred = null) {
@@ -99,7 +189,57 @@ function geometryText(geometry, mode = modeSelect.value) {
   const top = geometry.topCouplingNut
   const bolt = geometry.bolt
   const status = geometry.passes ? 'геометрия проходит' : 'геометрия не проходит'
-  return `${mode === 'auto' ? 'Автоподбор' : 'Ручной режим'}: болт M${bolt.diameterMm}×${bolt.lengthMm} мм; на ножке проходная гайка M${bottom.threadDiameterMm} (${bottom.ribCount} ребра, зазор по базовому внутреннему диаметру ${bottom.diametralClearanceMm.toFixed(1)} мм); верхний узел — длинная соединительная гайка M${top.threadDiameterMm}×${top.lengthMm} мм (${top.ribCount} ребра); зацепление болта ${geometry.threadEngagementMm.toFixed(0)} мм ≈ ${geometry.engagedThreadTurns.toFixed(1)} витка; ${status}.`
+  return `${mode === 'auto' ? 'Автоподбор' : 'Ручной режим'}: болт M${bolt.diameterMm}×${bolt.lengthMm} мм; на ножке проходная гайка M${bottom.threadDiameterMm} (${bottom.ribCount} ребра, зазор ${bottom.diametralClearanceMm.toFixed(1)} мм); верхний узел — длинная M${top.threadDiameterMm}×${top.lengthMm} мм (${top.ribCount} ребра); зацепление ${geometry.threadEngagementMm.toFixed(0)} мм ≈ ${geometry.engagedThreadTurns.toFixed(1)} витка; ${status}.`
+}
+
+function previewStrengthText(geometry) {
+  const strength = strengthParametersFromUi()
+  const diameter = selectedNumber(barDiameter, 12)
+  const sections = checkJointNutSections(geometry, diameter, {
+    requiredRatio: strength.jointNutSectionAreaRatio,
+  })
+  const bolt = calculateBoltCapacity({
+    diameterMm: geometry.bolt.diameterMm,
+    boltClass: boltClass.value || '8.8',
+    tighteningTorqueNm: strength.jointTighteningTorqueNm,
+    nutFactor: strength.jointNutFactor,
+    preloadVariation: strength.jointPreloadVariation,
+  })
+  const preload = bolt.preload.maximumPreloadN / 1000
+  const reserve = bolt.externalTensionReserveN == null ? null : bolt.externalTensionReserveN / 1000
+  return `Проверки issue #33: min(Anut/Arib)=${sections.minimumRatio.toFixed(2)} при требовании ≥${sections.requiredRatio.toFixed(1)}; T=${strength.jointTighteningTorqueNm.toFixed(0)} Н·м, K=${strength.jointNutFactor.toFixed(2)} → F0,max≈${preload.toFixed(1)} кН${reserve == null ? '' : `, остаток расчётного растягивающего резерва ≈${reserve.toFixed(1)} кН`}; эффективная площадь шва требуется ≥${strength.weldToRibAreaRatio.toFixed(1)}×Arib.`
+}
+
+function viewerConfiguration(geometry, result = null) {
+  return {
+    geometry,
+    barDiameterMm: Number(result?.parameters?.barDiameterMm ?? selectedNumber(barDiameter, 12)),
+    weldPhysicalLengthMm: Number(result?.connections?.weld?.critical?.check?.requiredPhysicalLengthMm ?? 0),
+  }
+}
+
+function resultStrengthText(result) {
+  const connections = result?.connections
+  if (!connections) return ''
+  const sections = connections.nutSections
+  const selected = connections.bolt?.selected
+  const check = selected?.governingCheck
+  const demand = selected?.governingDemand
+  const weld = connections.weld?.critical?.check
+  const parts = []
+  if (sections) {
+    parts.push(`нетто-сечение гаек: минимум ${sections.minimumRatio.toFixed(2)}×Arib при требовании ≥${sections.requiredRatio.toFixed(1)}×`)
+  }
+  if (check?.preload) {
+    parts.push(`затяжка ${check.preload.tighteningTorqueNm.toFixed(0)} Н·м → F0,max=${(check.preload.maximumPreloadN / 1000).toFixed(1)} кН, Upreload=${check.preloadUtilization.toFixed(3)}`)
+  }
+  if (demand) {
+    parts.push(`наклонная сила даёт прямой срез ${(demand.shearFromInclinedForceN / 1000).toFixed(2)} кН; полный Ns=${(check?.shearN / 1000 ?? 0).toFixed(2)} кН`)
+  }
+  if (weld?.minimumAreaRatio != null) {
+    parts.push(`критический шов: Aeff/Arib=${weld.requiredAreaRatio.toFixed(2)} при требовании ≥${weld.minimumAreaRatio.toFixed(1)}`)
+  }
+  return `Усиленная проверка: ${parts.join('; ')}.`
 }
 
 function syncJointPreview() {
@@ -114,10 +254,12 @@ function syncJointPreview() {
     }
     jointSummary.textContent = geometryText(geometry)
     jointVisualSummary.textContent = geometryText(geometry)
-    viewer.setConfiguration({ geometry })
+    jointStrengthSummary.textContent = previewStrengthText(geometry)
+    viewer.setConfiguration(viewerConfiguration(geometry))
   } catch (error) {
     jointSummary.textContent = error instanceof Error ? error.message : String(error)
     jointVisualSummary.textContent = jointSummary.textContent
+    jointStrengthSummary.textContent = jointSummary.textContent
   }
 }
 
@@ -137,6 +279,7 @@ function readJointUiParameters() {
     jointBoltLengthMm: selectedNumber(boltLength, geometry.bolt.lengthMm),
     jointThreadEngagementFactor: selectedNumber(engagement, geometry.threadEngagementFactor),
     jointEffectiveRadiusMm: geometry.effectiveRadiusMm,
+    ...strengthParametersFromUi(),
   }
 }
 
@@ -154,10 +297,16 @@ function synchronizeFromResult(result) {
   if (resolved.weldConsumableId) weldConsumable.value = resolved.weldConsumableId
   if (resolved.weldLegMm != null) weldLeg.value = String(resolved.weldLegMm)
   if (resolved.weldSegmentsPerEnd != null) weldSegments.value = String(resolved.weldSegmentsPerEnd)
+  tighteningTorque.value = String(resolved.jointTighteningTorqueNm ?? DEFAULT_TIGHTENING_TORQUE_NM)
+  nutFactor.value = String(resolved.jointNutFactor ?? DEFAULT_NUT_FACTOR)
+  preloadVariation.value = String(resolved.jointPreloadVariation ?? DEFAULT_PRELOAD_VARIATION)
+  nutSectionAreaRatio.value = String(resolved.jointNutSectionAreaRatio ?? DEFAULT_NUT_TO_RIB_AREA_RATIO)
+  weldToRibAreaRatio.value = String(resolved.weldToRibAreaRatio ?? DEFAULT_WELD_TO_RIB_AREA_RATIO)
   syncControlsFromGeometry(geometry, true)
   jointSummary.textContent = `${configurator.explanation} ${geometryText(geometry, configurator.mode)}`
   jointVisualSummary.textContent = jointSummary.textContent
-  viewer.setConfiguration({ geometry })
+  jointStrengthSummary.textContent = resultStrengthText(result)
+  viewer.setConfiguration(viewerConfiguration(geometry, result))
   syncMode()
 }
 
@@ -192,7 +341,11 @@ class JointAwareWorker extends NativeWorker {
 globalThis.Worker = JointAwareWorker
 
 modeSelect.addEventListener('change', syncMode)
-for (const control of [boltDiameter, boltClass, clearanceNut, boltLength, engagement, weldConsumable, weldLeg, weldSegments]) {
+for (const control of [
+  boltDiameter, boltClass, clearanceNut, boltLength, engagement,
+  weldConsumable, weldLeg, weldSegments, tighteningTorque, nutFactor,
+  preloadVariation, nutSectionAreaRatio, weldToRibAreaRatio, barDiameter,
+]) {
   control.addEventListener('change', () => {
     if (control === boltDiameter) rebuildClearanceNutOptions()
     syncJointPreview()

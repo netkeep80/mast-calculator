@@ -18,13 +18,18 @@ test('полный пользовательский расчёт содержи�
   assert.ok(result.assemblyMass.module.totalMassKg > result.assemblyMass.module.ribsMassKg)
 })
 
-test('бумажный проект содержит формулы массы сборки и аудит single-source справочников', () => {
+test('бумажный проект содержит формулы массы сборки, усиленного узла и аудит single-source справочников', () => {
   const result = calculateCompleteMastWithConfiguredJoint({
     ...DEFAULT_PARAMETERS,
-    moduleCount: 1,
+    moduleCount: 2,
     heightSearchMaxModules: 3,
     windEnvelopeEnabled: false,
     lateralCapacityStepDeg: 60,
+    jointTighteningTorqueNm: 200,
+    jointNutFactor: 0.2,
+    jointPreloadVariation: 0.25,
+    jointNutSectionAreaRatio: 2,
+    weldToRibAreaRatio: 2.5,
   })
   const html = createCalculationProjectHtml(result, result.parameters)
   assert.match(html, /Масса физической сборки и аудит справочных данных/)
@@ -32,10 +37,17 @@ test('бумажный проект содержит формулы массы �
   assert.match(html, /Aweld ≈ k²\/2/)
   assert.match(html, /Полный межмодульный узел/)
   assert.match(html, /Сваренный и закреплённый модуль/)
-  assert.match(html, /mast-calculator\/reference-data\/v1/)
+  assert.match(html, /mast-calculator\/reference-data\/v2/)
   assert.match(html, /Арматура/)
   assert.match(html, /Классы болтов/)
   assert.match(html, /Электроды и проволока/)
+  assert.match(html, /Усиленная проверка соединительного узла/)
+  assert.match(html, /Anut = Ahex − πD1²\/4/)
+  assert.match(html, /F0,nom = T\/\(K·d\)/)
+  assert.match(html, /Nt,strength = F0,max \+ Nt,external/)
+  assert.match(html, /F⊥ = F − e\(e·F\)/)
+  assert.match(html, /Aeff,weld = βf·kf·lweff ≥ kweld·Arib/)
+  assert.match(html, /NASA-STD-5020A/)
   assert.match(html, /не добавляется автоматически|обратную связь|пока/i)
   assert.doesNotMatch(html, /Полный JSON/i)
 })

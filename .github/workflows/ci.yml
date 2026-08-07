@@ -266,6 +266,10 @@ jobs:
           curl --fail --silent http://127.0.0.1:4173/engine/connection-catalog.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/joint-hardware-catalog.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/joint-configurator.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/joint-section-check.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/joint-strength-parameters.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/joint-visual-geometry.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/bolt-preload.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/bolt-check.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/weld-check.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/joint-demand.js >/dev/null

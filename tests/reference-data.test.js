@@ -21,6 +21,7 @@ import {
 test('справочник строится из тех же каталогов, которые использует расчёт', () => {
   const data = buildReferenceData()
   assert.equal(data.schema, REFERENCE_DATA_SCHEMA)
+  assert.equal(data.schema, 'mast-calculator/reference-data/v2')
   assert.equal(data.reinforcement.classes.length, Object.keys(REINFORCEMENT_CLASSES).length)
   assert.equal(data.reinforcement.diameters.length, STANDARD_DIAMETERS_MM.length)
   assert.equal(data.fasteners.classes.length, Object.keys(BOLT_PROPERTY_CLASSES).length)
@@ -58,4 +59,19 @@ test('справочник диаметров показывает вычисл�
   const d12 = data.reinforcement.diameters.find((item) => item.diameterMm === 12)
   assert.ok(d12.massPerMeterKg > 0)
   assert.ok(Math.abs(d12.areaMm2 - Math.PI * 12 ** 2 / 4) < 1e-12)
+})
+
+test('справочник v2 публикует те же проектные параметры затяжки и area-reserve, что использует узел', () => {
+  const data = buildReferenceData()
+  assert.equal(data.jointDesign.boltPreload.relation, 'T = K*F0*d')
+  assert.equal(data.jointDesign.boltPreload.defaultTighteningTorqueNm, 200)
+  assert.equal(data.jointDesign.boltPreload.defaultNutFactor, 0.2)
+  assert.equal(data.jointDesign.boltPreload.defaultPreloadVariation, 0.25)
+  assert.match(data.jointDesign.boltPreload.source, /NASA-STD-5020A/)
+  assert.equal(data.jointDesign.nutNetSection.minimumAreaRatioToSingleRib, 2)
+  assert.match(data.jointDesign.nutNetSection.source, /дополнительный геометрический критерий/i)
+  assert.equal(data.jointDesign.weldEffectiveArea.minimumAreaRatioToRib, 2)
+  assert.equal(data.jointDesign.weldEffectiveArea.defaultAreaRatioToRib, 2.5)
+  assert.equal(data.jointDesign.weldEffectiveArea.maximumSelectableAreaRatioToRib, 3)
+  assert.match(data.jointDesign.weldEffectiveArea.source, /дополнительным критерием issue #33/i)
 })

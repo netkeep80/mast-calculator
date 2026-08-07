@@ -68,7 +68,7 @@ test('боковая нагрузка круглой консоли совпад
   approximately(result.criticalForceKgf, expectedForceN / STANDARD_GRAVITY_M_S2, 1e-9)
 })
 
-test('расчёт боковой нагрузки мачты возвращает конечные первый предел и global buckling', () => {
+test('расчёт боковой нагрузки мачты строит независимые огибающие первого предела и global buckling', () => {
   const parameters = resolveCalculationParameters({
     ...DEFAULT_PARAMETERS,
     moduleCount: 1,
@@ -85,8 +85,19 @@ test('расчёт боковой нагрузки мачты возвращае
   assert.ok(result.globalBucklingForceN > 0)
   assert.ok(result.globalBucklingForceKgf > 0)
   assert.ok([0, 30, 60, 90].includes(result.directionDeg))
+  assert.ok([0, 30, 60, 90].includes(result.globalBucklingDirectionDeg))
   assert.ok(['material-strength', 'local-member-buckling', 'global-buckling'].includes(result.governingMode))
   assert.equal(result.cases.length, 4)
+
+  const minimumFirstLimit = Math.min(...result.cases.map((item) => item.criticalForceN))
+  const minimumMemberLimit = Math.min(...result.cases.map((item) => item.memberLimitForceN))
+  const minimumGlobalBuckling = Math.min(...result.cases.map((item) => item.globalBucklingForceN))
+  assert.equal(result.criticalForceN, minimumFirstLimit)
+  assert.equal(result.memberLimitForceN, minimumMemberLimit)
+  assert.equal(result.globalBucklingForceN, minimumGlobalBuckling)
+
+  const globalCase = result.cases.find((item) => item.directionDeg === result.globalBucklingDirectionDeg)
+  assert.equal(globalCase.globalBucklingForceN, result.globalBucklingForceN)
 })
 
 test('увеличение диаметра ребра увеличивает боковую несущую способность', () => {

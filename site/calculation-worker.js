@@ -1,4 +1,5 @@
 import { calculateCompleteMast } from './engine/calculate.js'
+import { augmentVerificationWithModuleChecks } from './engine/module-verification.js'
 import { selectUniformDiameter, STANDARD_DIAMETERS_MM } from './engine/optimize.js'
 
 const clamp01 = (value) => Math.min(1, Math.max(0, Number(value) || 0))
@@ -23,6 +24,12 @@ function calculationProgress(jobId, progress, start = 0, span = 1, prefix = '') 
   })
 }
 
+function addModuleVerification(result) {
+  result.verification = augmentVerificationWithModuleChecks(result.verification, result)
+  if (result.performance) result.performance.verificationInternalCheckCount = result.verification.counts.internal
+  return result
+}
+
 function summarizeOptimization(optimization) {
   return {
     recommendedDiameter: optimization.recommended?.diameter ?? null,
@@ -41,9 +48,9 @@ function summarizeOptimization(optimization) {
 }
 
 function runCalculation(jobId, parameters) {
-  const result = calculateCompleteMast(parameters, {
+  const result = addModuleVerification(calculateCompleteMast(parameters, {
     onProgress: (progress) => calculationProgress(jobId, progress),
-  })
+  }))
   self.postMessage({ type: 'result', jobId, result, optimization: null })
 }
 
@@ -77,7 +84,7 @@ function runOptimization(jobId, parameters) {
     label: `Минимальный проходящий диаметр найден после ${optimization.evaluatedCount} вариантов: Ø${diameter} мм`,
     fraction: optimizationShare,
   })
-  const result = calculateCompleteMast({ ...parameters, barDiameterMm: diameter }, {
+  const result = addModuleVerification(calculateCompleteMast({ ...parameters, barDiameterMm: diameter }, {
     onProgress: (progress) => calculationProgress(
       jobId,
       progress,
@@ -85,7 +92,7 @@ function runOptimization(jobId, parameters) {
       1 - optimizationShare,
       `Итоговый расчёт Ø${diameter} мм`,
     ),
-  })
+  }))
   postProgress(jobId, { phase: 'done', label: `Подбор завершён: Ø${diameter} мм`, fraction: 1 })
   self.postMessage({ type: 'result', jobId, result, optimization: summary })
 }

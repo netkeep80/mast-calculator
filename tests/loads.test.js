@@ -32,8 +32,6 @@ function oneMemberModel(axis = [1, 0, 0], lengthM = 2, diameterM = 0.012) {
 const quietEquipment = {
   equipmentMassKg: 0,
   equipmentWindAreaM2: 0,
-  extraHorizontalLoadN: 0,
-  extraVerticalLoadN: 0,
 }
 
 test('ветер вдоль оси цилиндрического ребра не создаёт аэродинамической нагрузки', () => {
@@ -132,8 +130,6 @@ test('вес и ветер оборудования распределяются
     equipmentMassKg: 30,
     equipmentWindAreaM2: 1,
     windDirectionDeg: 0,
-    extraHorizontalLoadN: 0,
-    extraVerticalLoadN: 0,
   }
   const loads = buildLoadCase(model, parameters)
   const expectedWind = parameters.windPressurePa * parameters.equipmentDragCoefficient * parameters.windLoadFactor
@@ -143,4 +139,44 @@ test('вес и ветер оборудования распределяются
     approximately(load[0], expectedWind / 3)
     approximately(load[2], -expectedWeight / 3)
   }
+})
+
+test('внутренняя нормированная сила передаётся отдельным API и делится между верхними узлами', () => {
+  const model = {
+    nodes: [0, 1, 2].map((id) => ({ id, position: [id, 0, 1], restrained: new Array(6).fill(false) })),
+    members: [],
+    topNodeIds: [0, 1, 2],
+  }
+  const parameters = {
+    ...DEFAULT_PARAMETERS,
+    windPressurePa: 0,
+    equipmentMassKg: 0,
+    equipmentWindAreaM2: 0,
+  }
+  const loads = buildLoadCase(model, parameters, { topPointLoadN: [12, -6, 3] })
+
+  for (const load of loads.nodalLoads) {
+    approximately(load[0], 4)
+    approximately(load[1], -2)
+    approximately(load[2], 1)
+  }
+  assert.deepEqual(loads.topPointLoadN, [12, -6, 3])
+})
+
+test('legacy extraHorizontal/extraVertical больше не влияют на пользовательский load case', () => {
+  const model = oneMemberModel([0, 0, 1], 1, 0.012)
+  const common = {
+    ...DEFAULT_PARAMETERS,
+    windPressurePa: 0,
+    equipmentMassKg: 0,
+    equipmentWindAreaM2: 0,
+  }
+  const clean = buildLoadCase(model, common)
+  const legacy = buildLoadCase(model, {
+    ...common,
+    extraHorizontalLoadN: 12345,
+    extraVerticalLoadN: 67890,
+  })
+  assert.deepEqual(legacy.totalAppliedLoad, clean.totalAppliedLoad)
+  assert.deepEqual(legacy.nodalLoads, clean.nodalLoads)
 })

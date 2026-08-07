@@ -3,7 +3,6 @@ import { buildLoadCase } from './loads.js'
 import { STANDARD_GRAVITY_M_S2 } from './lateral-capacity.js'
 import { analyzeFrame, compileFrameSystem } from './solver.js'
 
-export const WATER_DENSITY_KG_M3 = 1000
 export const STATIC_PAYLOAD_BISECTION_ITERATIONS = 18
 export const STATIC_PAYLOAD_PROGRESS_STEPS = STATIC_PAYLOAD_BISECTION_ITERATIONS + 3
 const MAX_REFERENCE_PAYLOAD_KG = 1e9
@@ -18,8 +17,6 @@ function payloadParameters(parameters, payloadMassKg, includeSelfWeight) {
     windEnvelopeEnabled: false,
     equipmentMassKg: payloadMassKg,
     equipmentWindAreaM2: 0,
-    extraHorizontalLoadN: 0,
-    extraVerticalLoadN: 0,
     iceThicknessMm: 0,
   }
 }
@@ -97,26 +94,34 @@ function reportProgress(options, completed, label, payloadMassKg = null) {
 
 function resultFromLimit(model, parameters, base, limit, ratios, reference, bounded, iterations) {
   const gammaPayload = Math.max(parameters.equipmentLoadFactor, Number.EPSILON)
-  const configuredEquivalentTopMassKg = Math.max(0, parameters.equipmentMassKg ?? 0)
-    + Math.max(0, parameters.extraVerticalLoadN ?? 0) / (STANDARD_GRAVITY_M_S2 * gammaPayload)
-  const remainingAdditionalMassKg = Math.max(0, limit.payloadMassKg - configuredEquivalentTopMassKg)
-  const waterVolumeM3 = remainingAdditionalMassKg / WATER_DENSITY_KG_M3
+  const configuredTopEquipmentMassKg = Math.max(0, Number(parameters.equipmentMassKg ?? 0))
+  const maximumTopEquipmentMassKg = limit.payloadMassKg
+  const additionalTopEquipmentMassKg = Math.max(
+    0,
+    maximumTopEquipmentMassKg - configuredTopEquipmentMassKg,
+  )
   const baseRatios = stateRatios(model, base.parameters, base.analysis)
 
   return {
-    method: 'gravity-only-top-payload-with-self-weight-v2-with-bolt',
-    forceApplication: 'вертикальная сила вниз, поровну между тремя узлами верхней треугольной грани',
+    method: 'gravity-only-top-equipment-mass-with-self-weight-v3-with-bolt',
+    forceApplication: 'масса оборудования/груза вертикально вниз, поровну между тремя узлами верхней треугольной грани',
     includedLoads: 'собственный вес мачты с коэффициентом постоянной нагрузки, искомая масса на вершине с коэффициентом веса оборудования и выбранный межмодульный болт',
-    excludedLoads: 'ветер, лёд, горизонтальные силы и прочие дополнительные нагрузки',
-    waterDensityKgM3: WATER_DENSITY_KG_M3,
-    maximumTotalTopMassKg: limit.payloadMassKg,
-    maximumNominalTopForceN: limit.payloadMassKg * STANDARD_GRAVITY_M_S2,
-    maximumDesignTopForceN: limit.payloadMassKg * STANDARD_GRAVITY_M_S2 * gammaPayload,
-    configuredEquivalentTopMassKg,
-    remainingAdditionalMassKg,
-    remainingAdditionalNominalForceN: remainingAdditionalMassKg * STANDARD_GRAVITY_M_S2,
-    equivalentWaterVolumeM3: waterVolumeM3,
-    equivalentWaterVolumeLiters: waterVolumeM3 * 1000,
+    excludedLoads: 'ветер и лёд; это отдельный gravity-only предел массы вершины',
+    maximumTopEquipmentMassKg,
+    configuredTopEquipmentMassKg,
+    additionalTopEquipmentMassKg,
+    maximumNominalTopForceN: maximumTopEquipmentMassKg * STANDARD_GRAVITY_M_S2,
+    maximumDesignTopForceN: maximumTopEquipmentMassKg * STANDARD_GRAVITY_M_S2 * gammaPayload,
+    additionalTopEquipmentNominalForceN: additionalTopEquipmentMassKg * STANDARD_GRAVITY_M_S2,
+
+    // Compatibility aliases для внутреннего snapshot/UI предыдущих версий.
+    // Они имеют тот же однозначный смысл массы и больше не включают пересчёт
+    // произвольной дополнительной вертикальной силы.
+    maximumTotalTopMassKg: maximumTopEquipmentMassKg,
+    configuredEquivalentTopMassKg: configuredTopEquipmentMassKg,
+    remainingAdditionalMassKg: additionalTopEquipmentMassKg,
+    remainingAdditionalNominalForceN: additionalTopEquipmentMassKg * STANDARD_GRAVITY_M_S2,
+
     governingMode: ratios.governingMode,
     criticalMemberId: limit.analysis.criticalMemberId,
     utilizationAtLimit: limit.analysis.maxUtilization,

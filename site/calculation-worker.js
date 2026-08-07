@@ -26,6 +26,8 @@ function calculationProgress(jobId, progress, start = 0, span = 1, prefix = '') 
 function summarizeOptimization(optimization) {
   return {
     recommendedDiameter: optimization.recommended?.diameter ?? null,
+    evaluatedCount: optimization.evaluatedCount,
+    availableCount: optimization.availableCount,
     variants: optimization.variants.map((variant) => ({
       diameter: variant.diameter,
       passesStrength: variant.passesStrength,
@@ -49,10 +51,11 @@ function runOptimization(jobId, parameters) {
   const optimizationShare = 0.78
   postProgress(jobId, {
     phase: 'optimize',
-    label: `Подбор диаметра: ${STANDARD_DIAMETERS_MM.length} стандартных вариантов`,
+    label: `Подбор диаметра: до ${STANDARD_DIAMETERS_MM.length} стандартных вариантов`,
     fraction: 0,
   })
   const optimization = selectUniformDiameter(parameters, STANDARD_DIAMETERS_MM, {
+    stopAtFirstPassing: true,
     onProgress: (event) => {
       postProgress(jobId, {
         phase: 'optimize',
@@ -69,6 +72,11 @@ function runOptimization(jobId, parameters) {
   }
 
   const diameter = optimization.recommended.diameter
+  postProgress(jobId, {
+    phase: 'optimize',
+    label: `Минимальный проходящий диаметр найден после ${optimization.evaluatedCount} вариантов: Ø${diameter} мм`,
+    fraction: optimizationShare,
+  })
   const result = calculateCompleteMast({ ...parameters, barDiameterMm: diameter }, {
     onProgress: (progress) => calculationProgress(
       jobId,

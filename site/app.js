@@ -8,13 +8,21 @@ import {
   STOCK_BAR_LENGTHS_MM,
   theoreticalCutLengthMm,
 } from './engine/catalog.js'
-import { createCalculationNoteHtml } from './engine/calculation-note.js'
+import { createCalculationProjectHtml } from './engine/calculation-project.js'
+import { calculateLateralCapacity } from './engine/lateral-capacity.js'
 import { selectUniformDiameter } from './engine/optimize.js'
 import {
   buildMaterialSummary,
   buildMemberEnvelope,
   createCalculationCsv,
 } from './engine/report.js'
+import {
+  CUSTOM_WIND_PRESET_ID,
+  getWeatherPreset,
+  WEATHER_PRESETS,
+  windPressureFromSpeedMs,
+  windSpeedFromPressurePa,
+} from './engine/weather.js'
 import { MastViewer } from './viewer.js'
 
 const form = document.querySelector('#parameters-form')
@@ -50,9 +58,10 @@ const numericFieldNames = [
   'moduleCount', 'stockBarLengthMm', 'stockBarPieces', 'barDiameterMm',
   'materialSafetyFactor', 'deadLoadFactor', 'windLoadFactor',
   'equipmentLoadFactor', 'windPressurePa', 'dragCoefficient', 'windDirectionDeg',
-  'windEnvelopeStepDeg', 'equipmentMassKg', 'equipmentWindAreaM2',
-  'equipmentDragCoefficient', 'extraHorizontalLoadN', 'extraVerticalLoadN',
-  'iceThicknessMm', 'iceDensityKgM3', 'displacementLimitMm', 'minimumBucklingFactor',
+  'windEnvelopeStepDeg', 'lateralCapacityStepDeg', 'equipmentMassKg',
+  'equipmentWindAreaM2', 'equipmentDragCoefficient', 'extraHorizontalLoadN',
+  'extraVerticalLoadN', 'iceThicknessMm', 'iceDensityKgM3', 'displacementLimitMm',
+  'minimumBucklingFactor',
 ]
 
 function populateSelect(name, values, label = String) {
@@ -69,12 +78,22 @@ populateSelect('stockBarLengthMm', STOCK_BAR_LENGTHS_MM, (value) => `${value / 1
 populateSelect('stockBarPieces', STOCK_BAR_DIVISIONS, (value) => `${value}`)
 populateSelect('barDiameterMm', STANDARD_DIAMETERS_MM, (value) => `Ø${value}`)
 populateSelect('reinforcementClass', REINFORCEMENT_CLASS_IDS, (value) => getReinforcementClass(value).label)
+populateSelect(
+  'windPresetId',
+  [CUSTOM_WIND_PRESET_ID, ...WEATHER_PRESETS.map((preset) => preset.id)],
+  (id) => {
+    const preset = getWeatherPreset(id)
+    if (preset.id === CUSTOM_WIND_PRESET_ID) return preset.label
+    return `Бофорт ${preset.beaufort}: ${preset.label} · ${preset.range}`
+  },
+)
 
 for (const name of numericFieldNames) {
   const input = form.elements.namedItem(name)
   if (input) input.value = DEFAULT_PARAMETERS[name]
 }
 form.elements.namedItem('reinforcementClass').value = DEFAULT_PARAMETERS.reinforcementClass
+form.elements.namedItem('windPresetId').value = DEFAULT_PARAMETERS.windPresetId
 form.elements.namedItem('closeTopRing').checked = DEFAULT_PARAMETERS.closeTopRing
 form.elements.namedItem('windEnvelopeEnabled').checked = DEFAULT_PARAMETERS.windEnvelopeEnabled
 
@@ -83,12 +102,29 @@ const format = (value, digits = 2) => new Intl.NumberFormat('ru-RU', {
   maximumFractionDigits: digits,
 }).format(value)
 const formatFactor = (value) => Number.isFinite(value) ? format(value, 3) : '∞'
+const formatForce = (value, digits = 1) => Number.isFinite(value) ? format(value, digits) : '∞'
 const angle = (value) => `${format(value, 0)}°`
 
 function syncWindFields() {
   const envelope = form.elements.namedItem('windEnvelopeEnabled').checked
   form.elements.namedItem('windDirectionDeg').disabled = envelope
   form.elements.namedItem('windEnvelopeStepDeg').disabled = !envelope
+}
+
+function syncWindPresetFields() {
+  const presetId = form.elements.namedItem('windPresetId').value
+  const preset = getWeatherPreset(presetId)
+  const pressureInput = form.elements.namedItem('windPressurePa')
+  const speedInput = form.elements.namedItem('windSpeedMs')
+  const isCustom = preset.id === CUSTOM_WIND_PRESET_ID
+
+  pressureInput.readOnly = !isCustom
+  if (isCustom) {
+    speedInput.value = windSpeedFromPressurePa(Number(pressureInput.value)).toFixed(2)
+  } else {
+    pressureInput.value = windPressureFromSpeedMs(preset.designSpeedMs).toFixed(1)
+    speedInput.value = preset.designSpeedMs.toFixed(1)
+  }
 }
 
 function syncFabricationFields() {
@@ -114,9 +150,16 @@ function readParameters() {
   parameters.moduleCount = Math.floor(parameters.moduleCount)
   parameters.stockBarPieces = Math.floor(parameters.stockBarPieces)
   parameters.reinforcementClass = form.elements.namedItem('reinforcementClass').value
+  parameters.windPresetId = form.elements.namedItem('windPresetId').value
   parameters.closeTopRing = form.elements.namedItem('closeTopRing').checked
   parameters.windEnvelopeEnabled = form.elements.namedItem('windEnvelopeEnabled').checked
   return resolveCalculationParameters(parameters)
+}
+
+function calculateCompleteResult(parameters) {
+  const result = calculateMast(parameters)
+  result.lateralCapacity = calculateLateralCapacity(result.model, result.parameters)
+  return result
 }
 
 function downloadText(filename, content, type) {
@@ -135,6 +178,13 @@ function exportFilename(extension) {
   const modules = lastParameters?.moduleCount ?? 'mast'
   const cutLength = lastParameters?.ribCutLengthMm ? Math.round(lastParameters.ribCutLengthMm) : ''
   return `mast-project-${modules}x-${cutLength}mm.${extension}`
+}
+
+function lateralModeLabel(mode) {
+  if (mode === 'global-buckling') return 'общая потеря устойчивости'
+  if (mode === 'local-member-buckling') return 'локальная устойчивость ребра'
+  if (mode === 'material-strength') return 'прочность материала'
+  return 'не определён'
 }
 
 function renderMemberReport(result) {
@@ -172,6 +222,7 @@ function renderMemberReport(result) {
 
 function renderResult(result) {
   const parameters = result.parameters
+  const lateral = result.lateralCapacity
   lastResult = result
   lastParameters = { ...parameters }
   exportNoteButton.disabled = false
@@ -194,6 +245,9 @@ function renderResult(result) {
   document.querySelector('#metric-wind-direction').textContent = angle(result.envelope.governing.windDirectionDeg)
   document.querySelector('#metric-critical').textContent = `№ ${strengthCase.analysis.criticalMemberId}`
   document.querySelector('#metric-residual').textContent = result.analysis.diagnostics.maximumNodeEquilibriumResidual.toExponential(2)
+  document.querySelector('#metric-lateral-capacity').textContent = `${formatForce(lateral.criticalForceKgf, 1)} кгс`
+  document.querySelector('#metric-lateral-buckling').textContent = `${formatForce(lateral.globalBucklingForceKgf, 1)} кгс`
+  document.querySelector('#metric-lateral-mode').textContent = lateralModeLabel(lateral.governingMode)
 
   document.querySelector('#metric-displacement').classList.toggle('danger', topDisplacementMm > parameters.displacementLimitMm)
   document.querySelector('#metric-utilization').classList.toggle('danger', result.envelope.maxUtilization > 1)
@@ -203,7 +257,9 @@ function renderResult(result) {
     ? `Ребро № ${critical.memberId}: N = ${format(critical.axialForceN / 1000, 3)} кН, Vmax = ${format(critical.maxShearN / 1000, 3)} кН, Mmax = ${format(critical.maxBendingNm, 2)} Н·м, σэкв = ${format(critical.equivalentStressPa / 1e6, 2)} МПа, использование = ${format(critical.utilization, 4)} при ветре ${angle(strengthCase.windDirectionDeg)}. Максимальный прогиб возникает при ${angle(displacementCase.windDirectionDeg)}, минимальный множитель общей устойчивости — при ${angle(bucklingCase.windDirectionDeg)}.`
     : 'Критическое ребро не определено.'
 
-  document.querySelector('#load-summary').textContent = `Рассмотрено направлений ветра: ${result.envelope.caseCount}. Вес стали с коэффициентом: ${format(result.loads.selfWeightN / 1000)} кН; вес льда: ${format(result.loads.iceWeightN / 1000)} кН; результирующий ветер на рёбра: ${format(result.loads.memberWindN / 1000)} кН.`
+  document.querySelector('#lateral-capacity-description').textContent = `Чистая горизонтальная сила прикладывается к вершине и распределяется поровну между тремя верхними узлами. Худшее направление ${angle(lateral.directionDeg)}: первый расчётный предел ${formatForce(lateral.criticalForceN / 1000, 3)} кН = ${formatForce(lateral.criticalForceKgf, 1)} кгс; механизм — ${lateralModeLabel(lateral.governingMode)}. Предел по ребру ${formatForce(lateral.memberLimitForceKgf, 1)} кгс, линейная общая потеря устойчивости ${formatForce(lateral.globalBucklingForceKgf, 1)} кгс. Это отдельный нормированный испытательный случай без ветра, льда, собственного веса и оборудования; реальный натурный тест должен учитывать собственный вес и геометрическую нелинейность.`
+
+  document.querySelector('#load-summary').textContent = `Погода: ${parameters.windPresetLabel}; v = ${format(parameters.windSpeedMs, 1)} м/с; q = ${format(parameters.windPressurePa, 1)} Па до γw. Рассмотрено направлений ветра: ${result.envelope.caseCount}. Вес стали с коэффициентом: ${format(result.loads.selfWeightN / 1000)} кН; вес льда: ${format(result.loads.iceWeightN / 1000)} кН; результирующий ветер на рёбра: ${format(result.loads.memberWindN / 1000)} кН.`
 
   warningsList.replaceChildren(...result.warnings.map((warning) => {
     const item = document.createElement('li')
@@ -219,7 +275,7 @@ function runCalculation() {
   calculateButton.disabled = true
   try {
     const parameters = readParameters()
-    const result = calculateMast(parameters)
+    const result = calculateCompleteResult(parameters)
     renderResult(result)
   } catch (error) {
     errorBox.textContent = error instanceof Error ? error.message : String(error)
@@ -244,8 +300,9 @@ function runOptimization() {
     }
 
     form.elements.namedItem('barDiameterMm').value = recommended.diameter
-    renderResult(recommended.result)
-    optimizationBox.textContent = `Минимальный найденный единый диаметр: ${recommended.diameter} мм. Использование ${format(recommended.result.envelope.maxUtilization, 3)}, прогиб ${format(recommended.result.envelope.maxTopDisplacementM * 1000, 2)} мм, множитель общей устойчивости ${formatFactor(recommended.result.envelope.minimumBucklingFactor)}.`
+    const complete = calculateCompleteResult({ ...parameters, barDiameterMm: recommended.diameter })
+    renderResult(complete)
+    optimizationBox.textContent = `Минимальный найденный единый диаметр: ${recommended.diameter} мм. Использование ${format(complete.envelope.maxUtilization, 3)}, прогиб ${format(complete.envelope.maxTopDisplacementM * 1000, 2)} мм, множитель общей устойчивости ${formatFactor(complete.envelope.minimumBucklingFactor)}, первый боковой предел ${formatForce(complete.lateralCapacity.criticalForceKgf, 1)} кгс, боковая общая потеря устойчивости ${formatForce(complete.lateralCapacity.globalBucklingForceKgf, 1)} кгс.`
   } catch (error) {
     errorBox.textContent = error instanceof Error ? error.message : String(error)
     errorBox.hidden = false
@@ -261,7 +318,7 @@ exportNoteButton.addEventListener('click', () => {
   const generatedAt = new Date().toISOString()
   downloadText(
     exportFilename('html'),
-    createCalculationNoteHtml(lastResult, lastParameters, generatedAt, buildInfo),
+    createCalculationProjectHtml(lastResult, lastParameters, generatedAt, buildInfo),
     'text/html;charset=utf-8',
   )
 })
@@ -270,6 +327,10 @@ exportCsvButton.addEventListener('click', () => {
   downloadText(exportFilename('csv'), createCalculationCsv(lastResult), 'text/csv;charset=utf-8')
 })
 form.elements.namedItem('windEnvelopeEnabled').addEventListener('change', syncWindFields)
+form.elements.namedItem('windPresetId').addEventListener('change', syncWindPresetFields)
+form.elements.namedItem('windPressurePa').addEventListener('input', () => {
+  if (form.elements.namedItem('windPresetId').value === CUSTOM_WIND_PRESET_ID) syncWindPresetFields()
+})
 form.elements.namedItem('stockBarLengthMm').addEventListener('change', syncFabricationFields)
 form.elements.namedItem('stockBarPieces').addEventListener('change', syncFabricationFields)
 form.elements.namedItem('reinforcementClass').addEventListener('change', syncFabricationFields)
@@ -280,5 +341,6 @@ form.addEventListener('submit', (event) => {
 })
 
 syncWindFields()
+syncWindPresetFields()
 syncFabricationFields()
 runCalculation()

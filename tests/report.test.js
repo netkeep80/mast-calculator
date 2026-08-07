@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { DEFAULT_PARAMETERS, calculateMast } from '../site/engine/calculate.js'
-import { createCalculationNoteHtml } from '../site/engine/calculation-note.js'
+import { createCalculationProjectHtml } from '../site/engine/calculation-project.js'
+import { calculateLateralCapacity } from '../site/engine/lateral-capacity.js'
 import {
   buildMaterialSummary,
   buildMemberEnvelope,
@@ -15,9 +16,11 @@ const parameters = {
   moduleCount: 1,
   windEnvelopeEnabled: true,
   windEnvelopeStepDeg: 90,
+  lateralCapacityStepDeg: 60,
 }
 
 const result = calculateMast(parameters)
+result.lateralCapacity = calculateLateralCapacity(result.model, result.parameters)
 
 test('ведомость содержит каждое ребро и frame-результаты определяющего случая', () => {
   const members = buildMemberEnvelope(result)
@@ -58,14 +61,18 @@ test('CSV содержит усилия, моменты и эквивалент�
   assert.equal(csv.trim().split('\r\n').length, result.model.members.length + 1)
 })
 
-test('внутренний snapshot v3 содержит полную frame-модель и расчётные случаи', () => {
+test('внутренний snapshot v4 содержит погоду, боковую нагрузку и полную frame-модель', () => {
   const generatedAt = '2026-08-07T08:00:00.000Z'
   const buildInfo = { repository: 'netkeep80/mast-calculator', ref: 'main', sha: 'abc123', runId: '42' }
   const snapshot = createCalculationExport(result, result.parameters, generatedAt, buildInfo)
 
-  assert.equal(snapshot.schema, 'mast-calculator/calculation-snapshot/v3')
+  assert.equal(snapshot.schema, 'mast-calculator/calculation-snapshot/v4')
   assert.equal(snapshot.software.sha, 'abc123')
   assert.equal(snapshot.summary.loadCaseCount, 4)
+  assert.equal(snapshot.summary.windPresetId, 'custom')
+  assert.ok(snapshot.summary.windSpeedMs > 0)
+  assert.ok(snapshot.summary.lateralCriticalForceKgf > 0)
+  assert.ok(snapshot.lateralCapacity.criticalForceN > 0)
   assert.equal(snapshot.model.nodes.length, result.model.nodes.length)
   assert.equal(snapshot.model.nodes[0].restrained.length, 6)
   assert.equal(snapshot.loadCases.length, result.cases.length)
@@ -83,12 +90,13 @@ test('машинный JSON остаётся внутренним средств
     '2026-08-07T08:00:00.000Z',
     { sha: 'abc123' },
   ))
-  assert.equal(report.schema, 'mast-calculator/calculation-snapshot/v3')
+  assert.equal(report.schema, 'mast-calculator/calculation-snapshot/v4')
   assert.equal(report.software.sha, 'abc123')
+  assert.ok(report.lateralCapacity.criticalForceKgf > 0)
 })
 
-test('бумажный расчётный проект содержит пошаговые формулы и идентификатор кода', () => {
-  const html = createCalculationNoteHtml(
+test('бумажный расчётный проект содержит пошаговые формулы, погоду и боковую нагрузку', () => {
+  const html = createCalculationProjectHtml(
     result,
     result.parameters,
     '2026-08-07T08:00:00.000Z',
@@ -103,19 +111,23 @@ test('бумажный расчётный проект содержит поша
   assert.match(html, /σeq = √\(σ² \+ 3τ²\)/)
   assert.match(html, /NE = π²EI\/Leff²\/γM/)
   assert.match(html, /\(K \+ λ·KG\)·φ = 0/)
+  assert.match(html, /q = ρv²\/2/)
+  assert.match(html, /Fmember = 1\/U\(1 Н\)/)
+  assert.match(html, /Flim = min\(Fmember, Fglobal\)/)
+  assert.match(html, /кгс/)
   assert.match(html, /abc123/)
 })
 
 test('бумажный расчётный проект не содержит JSON или машинного приложения', () => {
-  const html = createCalculationNoteHtml(result, result.parameters)
+  const html = createCalculationProjectHtml(result, result.parameters)
   assert.doesNotMatch(html, /Полный JSON/i)
   assert.doesNotMatch(html, /Машинное приложение/i)
-  assert.doesNotMatch(html, /calculation-snapshot\/v3/)
+  assert.doesNotMatch(html, /calculation-snapshot\/v4/)
   assert.doesNotMatch(html, /<pre>/i)
 })
 
 test('бумажный проект подставляет фактическую высоту правильного октаэдра', () => {
-  const html = createCalculationNoteHtml(result, result.parameters)
+  const html = createCalculationProjectHtml(result, result.parameters)
   const expectedHeight = result.parameters.ribCutLengthMm * Math.sqrt(2 / 3)
   assert.ok(Math.abs(result.parameters.moduleHeightMm - expectedHeight) < 1e-12)
   assert.match(html, /h = √\(a² − R²\)/)

@@ -3,13 +3,15 @@ import {
   regularOctahedronHeightMm,
   theoreticalCutLengthMm,
 } from './catalog.js'
+import { DEFAULT_LATERAL_CAPACITY_STEP_DEG } from './lateral-capacity.js'
 import { generateMastModel } from './geometry.js'
 import { buildLoadCase } from './loads.js'
 import { analyzeFrame } from './solver.js'
+import { resolveWindParameters, windSpeedFromPressurePa } from './weather.js'
 
 export const CALCULATION_METHOD = Object.freeze({
-  id: 'linear-frame-v0.5',
-  description: 'Линейная пространственная Euler-Bernoulli frame-модель с 6 степенями свободы на узел и идеальными жёсткими сварными соединениями рёбер.',
+  id: 'linear-frame-v0.6',
+  description: 'Линейная пространственная Euler-Bernoulli frame-модель с 6 степенями свободы на узел, идеальными жёсткими сварными соединениями и отдельной проверкой боковой нагрузки вершины.',
 })
 
 export const DEFAULT_PARAMETERS = Object.freeze({
@@ -36,11 +38,14 @@ export const DEFAULT_PARAMETERS = Object.freeze({
   deadLoadFactor: 1.1,
   windLoadFactor: 1.4,
   equipmentLoadFactor: 1.1,
+  windPresetId: 'custom',
   windPressurePa: 380,
+  windSpeedMs: windSpeedFromPressurePa(380),
   dragCoefficient: 1.2,
   windDirectionDeg: 0,
   windEnvelopeEnabled: true,
   windEnvelopeStepDeg: 30,
+  lateralCapacityStepDeg: DEFAULT_LATERAL_CAPACITY_STEP_DEG,
   equipmentMassKg: 20,
   equipmentWindAreaM2: 0.35,
   equipmentDragCoefficient: 1.4,
@@ -56,11 +61,12 @@ export const DEFAULT_PARAMETERS = Object.freeze({
 export function resolveCalculationParameters(parameters = {}) {
   const merged = { ...DEFAULT_PARAMETERS, ...parameters }
   const withMaterial = applyReinforcementClass(merged)
-  const ribCutLengthMm = theoreticalCutLengthMm(withMaterial.stockBarLengthMm, withMaterial.stockBarPieces)
+  const withWind = resolveWindParameters(withMaterial)
+  const ribCutLengthMm = theoreticalCutLengthMm(withWind.stockBarLengthMm, withWind.stockBarPieces)
   const moduleHeightMm = regularOctahedronHeightMm(ribCutLengthMm)
 
   return {
-    ...withMaterial,
+    ...withWind,
     ribCutLengthMm,
     triangleSideMm: ribCutLengthMm,
     moduleHeightMm,
@@ -108,6 +114,7 @@ export function calculateMast(inputParameters) {
   const warnings = [
     'Глобальный каркас рассчитан как идеальная 3D frame-модель: сварные пересечения рёбер считаются абсолютно жёсткими и неразрушаемыми. Реальные болты, гайки, резьба и сварные швы должны проверяться отдельным модулем узлов.',
     'Высота модуля вычисляется из геометрии правильного октаэдра h = a·√(2/3). Высота и нахлёст реального соединительного узла пока не учитываются.',
+    'Погодные пресеты по шкале Бофорта — удобные сценарии для сравнения. Они не заменяют нормативное ветровое районирование, порывы, коэффициенты высоты и требования СП 20.',
     'Распределённые собственный вес, лёд и ветер вводятся в frame-элементы согласованными узловыми силами и моментами. Для оценки напряжений между узлами дополнительно учитывается консервативная добавка qL²/8 к максимуму изгибающего момента.',
     'Локальная устойчивость отдельного ребра дополнительно проверяется формулой Эйлера с μ = 0,5 (идеально жёсткие концы). Общая устойчивость вычисляется линейным собственным расчётом frame-модели.',
     'Геометрическая нелинейность, начальные несовершенства, пластичность, усталость, фундамент и нормативный расчёт реальных соединений пока не реализованы.',

@@ -4,6 +4,7 @@ import { analyzeFrame } from './solver.js'
 export const STANDARD_GRAVITY_M_S2 = 9.80665
 export const DEFAULT_LATERAL_CAPACITY_STEP_DEG = 15
 const ROTATIONAL_SYMMETRY_DEG = 120
+const MIN_COMPRESSION_FOR_GLOBAL_BUCKLING_N = 1e-9
 
 function lateralDirections(stepDeg) {
   const step = Number(stepDeg)
@@ -59,12 +60,29 @@ function governingMemberLimit(analysis) {
   }
 }
 
+function meaningfulCompressionN(analysis) {
+  return Math.max(
+    0,
+    ...analysis.memberResults.map((member) => Math.max(0, -(member.maxCompressionN ?? 0))),
+  )
+}
+
 function evaluateDirection(model, parameters, directionDeg) {
   const unitParameters = pureUnitLateralParameters(parameters, directionDeg)
   const loads = buildLoadCase(model, unitParameters)
   const analysis = analyzeFrame(model, loads, unitParameters)
   const memberLimit = governingMemberLimit(analysis)
-  const globalBucklingForceN = analysis.buckling.criticalLoadFactor
+  const unitCompressionN = meaningfulCompressionN(analysis)
+
+  // K_G имеет физический смысл для потери устойчивости от предварительного
+  // сжатия. У чистой поперечно нагруженной консоли осевое сжатие теоретически
+  // равно нулю, но машинное округление может создать ~1e-15 Н и затем ложное
+  // конечное собственное значение. В таком случае глобальный buckling здесь
+  // неприменим и считается бесконечным; для решётчатой мачты боковая сила
+  // создаёт реальные растянутые/сжатые раскосы, поэтому eigen-check остаётся.
+  const globalBucklingForceN = unitCompressionN > MIN_COMPRESSION_FOR_GLOBAL_BUCKLING_N
+    ? analysis.buckling.criticalLoadFactor
+    : Number.POSITIVE_INFINITY
   const criticalForceN = Math.min(memberLimit.forceN, globalBucklingForceN)
   const governingMode = globalBucklingForceN <= memberLimit.forceN
     ? 'global-buckling'
@@ -81,6 +99,7 @@ function evaluateDirection(model, parameters, directionDeg) {
     governingMode,
     criticalMemberId: memberLimit.memberId,
     unitUtilization: memberLimit.unitUtilization,
+    unitCompressionN,
     unitTopDisplacementM: analysis.maxTopDisplacementM,
     estimatedTopDisplacementAtLimitM: Number.isFinite(criticalForceN)
       ? analysis.maxTopDisplacementM * criticalForceN

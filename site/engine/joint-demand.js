@@ -9,6 +9,7 @@ const scale3 = (value, scalar) => value.map((component) => component * scalar)
 const dot3 = (left, right) => left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
 const norm3 = (value) => Math.hypot(value[0], value[1], value[2])
 const sub3 = (left, right) => left.map((value, index) => value - right[index])
+const clampUnit = (value) => Math.max(-1, Math.min(1, value))
 
 function localToGlobal(local, axes) {
   return [0, 1, 2].map((globalAxis) => (
@@ -56,11 +57,20 @@ export function splitJointDemandForBolt(forceGlobalN, momentGlobalNm, options = 
   // Для upward member положительная проекция на +boltAxis соответствует
   // сжатию стыка: верхняя часть получает вверх реакцию нижней. Она не
   // растягивает болт. Отрицательная проекция означает разделяющее усилие.
+  const forceMagnitudeN = norm3(forceGlobalN)
   const signedAxialForceN = dot3(forceGlobalN, unitAxis)
   const directTensionN = Math.max(0, -signedAxialForceN)
   const contactCompressionN = Math.max(0, signedAxialForceN)
   const directShearVectorN = sub3(forceGlobalN, scale3(unitAxis, signedAxialForceN))
   const directShearN = norm3(directShearVectorN)
+  const cosineToAxis = forceMagnitudeN > Number.EPSILON
+    ? clampUnit(signedAxialForceN / forceMagnitudeN)
+    : 1
+  const angleToPositiveBoltAxisDeg = Math.acos(cosineToAxis) * 180 / Math.PI
+  const acuteAngleToBoltAxisDeg = Math.acos(Math.abs(cosineToAxis)) * 180 / Math.PI
+  const transverseForceFraction = forceMagnitudeN > Number.EPSILON
+    ? directShearN / forceMagnitudeN
+    : 0
   const torsionNm = Math.abs(dot3(momentGlobalNm, unitAxis))
   const bendingMomentVectorNm = sub3(momentGlobalNm, scale3(unitAxis, dot3(momentGlobalNm, unitAxis)))
   const bendingMomentNm = norm3(bendingMomentVectorNm)
@@ -71,22 +81,29 @@ export function splitJointDemandForBolt(forceGlobalN, momentGlobalNm, options = 
   // conservative without an exact contact-pressure model, however, it also
   // is not credited as relief against the prying component M/r_eff.
   const tensionN = directTensionN + momentEquivalentTensionN
+  const shearN = directShearN + torsionEquivalentShearN
 
   return {
     boltAxis: [...unitAxis],
     jointEffectiveRadiusMm: leverArmMm,
     forceGlobalN: [...forceGlobalN],
+    forceMagnitudeN,
     momentGlobalNm: [...momentGlobalNm],
     signedAxialForceN,
     directTensionN,
     contactCompressionN,
+    directShearVectorN,
     directShearN,
+    shearFromInclinedForceN: directShearN,
+    angleToPositiveBoltAxisDeg,
+    acuteAngleToBoltAxisDeg,
+    transverseForceFraction,
     bendingMomentNm,
     torsionNm,
     momentEquivalentTensionN,
     torsionEquivalentShearN,
     tensionN,
-    shearN: directShearN + torsionEquivalentShearN,
+    shearN,
   }
 }
 

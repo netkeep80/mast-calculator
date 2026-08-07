@@ -73,12 +73,22 @@ test('PR CI содержит fresh-merge simulation и три ОС', () => {
   assert.match(ci, /fail-fast:\s*false/)
 })
 
+test('PR CI имеет отдельный gate сравнения трёх независимых FEM путей', () => {
+  const ci = workflows.get('ci.yml')
+  assert.ok(ci)
+  assert.match(ci, /triple-fem:/)
+  assert.match(ci, /name:\s*Triple FEM equivalence/)
+  assert.match(ci, /npm run test:triple/)
+  assert.match(ci, /Compare global, Schur and independent dense FEM/)
+})
+
 test('static-site smoke загружает worker, module viewer и все browser-модули расчёта', () => {
   const ci = workflows.get('ci.yml')
   assert.ok(ci)
   for (const modulePath of [
     'calculation-worker.js',
     'module-viewer.js',
+    'engine/reference-frame.js',
     'engine/module-stack.js',
     'engine/module-verification.js',
     'engine/banded.js',

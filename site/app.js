@@ -8,7 +8,7 @@ import {
   STOCK_BAR_LENGTHS_MM,
   theoreticalCutLengthMm,
 } from './engine/catalog.js'
-import { createCalculationNoteHtml } from './engine/calculation-note.js'
+import { createCalculationProjectHtml } from './engine/calculation-project.js'
 import { calculateLateralCapacity } from './engine/lateral-capacity.js'
 import { selectUniformDiameter } from './engine/optimize.js'
 import {
@@ -317,7 +317,7 @@ exportNoteButton.addEventListener('click', () => {
   const generatedAt = new Date().toISOString()
   downloadText(
     exportFilename('html'),
-    createCalculationNoteHtml(lastResult, lastParameters, generatedAt, buildInfo),
+    createCalculationProjectHtml(lastResult, lastParameters, generatedAt, buildInfo),
     'text/html;charset=utf-8',
   )
 })

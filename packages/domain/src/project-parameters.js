@@ -182,6 +182,7 @@ export function flattenProjectInput(projectInput) {
 }
 
 const DEFAULT_FLAT_INPUT = flattenProjectInput(DEFAULT_PROJECT_INPUT)
+const DEFAULT_BASE_METAL_TENSILE_STRENGTH_MPA = 490
 
 /**
  * Internal resolved default used by low-level engineering tests during #61/#62.
@@ -202,7 +203,7 @@ export const DEFAULT_PARAMETERS = Object.freeze({
   effectiveLengthFactor: 0.5,
   windSpeedMs: windSpeedFromPressurePa(DEFAULT_FLAT_INPUT.windPressurePa),
   jointEffectiveRadiusMm: 18,
-  jointBaseMetalTensileStrengthMPa: 490,
+  jointBaseMetalTensileStrengthMPa: DEFAULT_BASE_METAL_TENSILE_STRENGTH_MPA,
 })
 
 function resolveFlatCalculationParameters(parameters = {}) {
@@ -215,6 +216,7 @@ function resolveFlatCalculationParameters(parameters = {}) {
     1,
     Math.min(500, Math.floor(Number(withWind.heightSearchMaxModules) || DEFAULT_FLAT_INPUT.heightSearchMaxModules)),
   )
+  const baseMetalStrength = Number(parameters.jointBaseMetalTensileStrengthMPa)
   return {
     ...withWind,
     ribCutLengthMm,
@@ -222,7 +224,9 @@ function resolveFlatCalculationParameters(parameters = {}) {
     moduleHeightMm,
     heightSearchMaxModules,
     effectiveLengthFactor: 0.5,
-    jointBaseMetalTensileStrengthMPa: withWind.tensileStrengthMPa,
+    jointBaseMetalTensileStrengthMPa: Number.isFinite(baseMetalStrength)
+      ? baseMetalStrength
+      : DEFAULT_BASE_METAL_TENSILE_STRENGTH_MPA,
   }
 }
 

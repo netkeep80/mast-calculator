@@ -9,6 +9,7 @@ export function buildLoadCase(model, parameters) {
   // распределёнными нагрузками. В nodalLoads остаются только нагрузки,
   // приложенные непосредственно к расчётным узлам (оборудование и доп. силы).
   const nodalLoads = model.nodes.map(() => [0, 0, 0])
+  const nodalMoments = model.nodes.map(() => [0, 0, 0])
   const memberDistributedLoads = model.members.map(() => [0, 0, 0])
   const memberLoadDetails = model.members.map(() => null)
 
@@ -107,6 +108,7 @@ export function buildLoadCase(model, parameters) {
 
   return {
     nodalLoads,
+    nodalMoments,
     memberDistributedLoads,
     memberLoadDetails,
     totalAppliedLoad,

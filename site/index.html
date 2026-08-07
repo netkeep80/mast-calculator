@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Расчёт модульной мачты, автоподбор соединительного узла и проверяемая пространственная модель">
+  <meta name="description" content="Расчёт модульной мачты: понятные сценарии, проверяемая FEM-модель, соединения и справочники исходных данных">
   <title>Калькулятор мачты</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -11,68 +11,132 @@
   <header class="page-header">
     <img class="brand-logo" src="./logo.jpg" alt="Логотип калькулятора мачты" onerror="if(!this.dataset.fallback){this.dataset.fallback='1';this.src='../logo.jpg'}">
     <div>
-      <p class="eyebrow">Калькулятор мачты · прототип 1.2</p>
-      <h1>Расчёт модульной мачты</h1>
-      <p class="subtitle">Октаэдрические модули ножками вниз, пространственная рамная модель, помодульная проверка и практический самоконфигурирующийся соединительный узел.</p>
+      <p class="eyebrow">Калькулятор мачты · прототип 1.3</p>
+      <h1>Что вы хотите узнать о мачте?</h1>
+      <p class="subtitle">Сначала выберите практическую задачу. Калькулятор сам покажет обязательные исходные данные, короткий ответ и только затем — формулы, FEM, соединения и подробные таблицы.</p>
     </div>
   </header>
 
   <main class="layout">
+    <section class="panel scenario-panel" aria-labelledby="scenario-heading">
+      <div class="section-heading-row">
+        <div>
+          <p class="step-label">Шаг 1</p>
+          <h2 id="scenario-heading">Выберите задачу</h2>
+          <p class="hint">Все сценарии используют одно расчётное ядро. Меняется только то, на чём интерфейс фокусирует внимание.</p>
+        </div>
+      </div>
+      <div id="usage-scenarios" class="scenario-grid">
+        <label class="scenario-card">
+          <input type="radio" name="usageScenario" value="check" checked>
+          <span class="scenario-card-title">Проверить конкретную мачту</span>
+          <span>Выдержит ли выбранная конструкция погоду и оборудование?</span>
+          <small>Главный ответ: проходит / не проходит и почему.</small>
+        </label>
+        <label class="scenario-card">
+          <input type="radio" name="usageScenario" value="design">
+          <span class="scenario-card-title">Подобрать конструкцию</span>
+          <span>Какой диаметр арматуры и узел взять?</span>
+          <small>Главный ответ: минимальный проходящий комплект.</small>
+        </label>
+        <label class="scenario-card">
+          <input type="radio" name="usageScenario" value="limits">
+          <span class="scenario-card-title">Узнать пределы</span>
+          <span>Высота, боковая сила, масса на вершине.</span>
+          <small>Главный ответ: что случится первым и при какой нагрузке.</small>
+        </label>
+        <label class="scenario-card">
+          <input type="radio" name="usageScenario" value="verify">
+          <span class="scenario-card-title">Проверить расчёт</span>
+          <span>Как получен ответ и чем он подтверждается?</span>
+          <small>Главный ответ: алгоритм, residuals, три FEM-пути и ручные проверки.</small>
+        </label>
+      </div>
+      <div class="workflow-strip" aria-label="Последовательность работы">
+        <span><b>1</b> задача</span><span>→</span><span><b>2</b> конструкция</span><span>→</span><span><b>3</b> условия</span><span>→</span><span><b>4</b> расчёт</span><span>→</span><span><b>5</b> ответ и доказательства</span>
+      </div>
+    </section>
+
     <section class="panel parameters">
-      <h2>Исходные данные</h2>
       <form id="parameters-form">
-        <h3 class="form-section-title">Изготовление модуля</h3>
-        <div class="form-grid">
+        <div class="section-heading-row">
+          <div>
+            <p class="step-label">Шаг 2</p>
+            <h2>Конструкция</h2>
+            <p class="hint">Белые поля выбирает пользователь. Серые значения вычисляются автоматически и оставлены видимыми для проверки.</p>
+          </div>
+        </div>
+
+        <div class="form-grid essential-grid">
           <label>Число модулей<input name="moduleCount" type="number" min="1" max="200" step="1"></label>
           <label>Закупочная длина прутка<select name="stockBarLengthMm"></select></label>
           <label>Разрезать пруток на частей<select name="stockBarPieces"></select></label>
-          <label>Длина ребра октаэдра, мм<input name="ribCutLengthMm" type="number" readonly></label>
-          <label>Высота октаэдра, мм<input name="moduleHeightMm" type="number" readonly></label>
-          <label>Диаметр арматуры, мм<select name="barDiameterMm"></select></label>
+          <label>Диаметр арматуры<select name="barDiameterMm"></select></label>
           <label>Класс арматуры<select name="reinforcementClass"></select></label>
         </div>
-        <p id="material-info" class="hint practical-note"></p>
-        <p class="hint practical-note"><strong>Физическая ориентация:</strong> каждый модуль устанавливается ножками вниз. Три горизонтальных ребра образуют его верхний треугольник, шесть диагональных рёбер идут к трём нижним опорам. Высота правильного октаэдра: <em>h = a·√(2/3)</em>.</p>
 
-        <h3 class="form-section-title">Соединительный узел между модулями</h3>
-        <div class="form-grid joint-form-grid">
-          <label>Режим конфигуратора<select name="jointConfiguratorMode"></select></label>
-          <label>Болт между модулями<select name="jointBoltDiameterMm"></select></label>
-          <label>Класс прочности болта<select name="jointBoltClass"></select></label>
-          <label>Гайка ножки с проходом болта<select name="jointClearanceNutThreadMm"></select></label>
-          <label>Длина болта<select name="jointBoltLengthMm"></select></label>
-          <label>Зацепление в соединительной гайке<select name="jointThreadEngagementFactor"></select></label>
-          <label>Длинная соединительная гайка<input name="jointCouplingNutDescription" type="text" readonly></label>
-          <label>Эффективный радиус узла, мм<input name="jointEffectiveRadiusMm" type="number" readonly></label>
-          <label>Сварочный материал<select name="weldConsumableId"></select></label>
-          <label>Катет углового шва<select name="weldLegMm"></select></label>
-          <label>Непрерывных участков на конец<select name="weldSegmentsPerEnd"></select></label>
-          <label>Rm металла детали узла, МПа<input name="jointBaseMetalTensileStrengthMPa" type="number" min="100" step="10"></label>
+        <div class="derived-grid" aria-label="Автоматически вычисляемая геометрия и масса">
+          <article><span>Длина ребра</span><strong><input name="ribCutLengthMm" type="number" readonly> мм</strong><small>a = Lпрутка / n</small></article>
+          <article><span>Высота модуля</span><strong><input name="moduleHeightMm" type="number" readonly> мм</strong><small>h = a·√(2/3)</small></article>
+          <article><span>Масса одного ребра</span><strong id="preview-rib-mass">—</strong><small>ρ·πd²/4·a</small></article>
         </div>
-        <p id="joint-config-summary" class="hint practical-note"></p>
-        <p class="hint practical-note"><strong>Принятая реальная сборка:</strong> к обычной гайке на конце ножки приварены два ребра; её резьба больше диаметра болта, поэтому болт проходит через неё свободно. В верхнем узле четыре ребра приварены к длинной соединительной гайке с резьбой болта, и болт ввинчивается в неё. В режиме автоподбора программа сама выбирает размеры узла и длину болта.</p>
+        <p id="material-info" class="hint practical-note"></p>
+        <p class="hint practical-note"><strong>Модуль:</strong> правильный октаэдр ножками вниз, 9 одинаковых рёбер: 3 верхнего треугольника + 6 ножек.</p>
 
-        <h3 class="form-section-title">Нагрузки и погода</h3>
+        <div class="section-heading-row form-step-heading">
+          <div>
+            <p class="step-label">Шаг 3</p>
+            <h2>Условия эксплуатации</h2>
+          </div>
+        </div>
         <div class="form-grid">
           <label>Погодный сценарий<select name="windPresetId"></select></label>
-          <label>Скорость сценария, м/с<input name="windSpeedMs" type="number" readonly></label>
-          <label>Ветровое давление, Па<input name="windPressurePa" type="number" min="0" step="1"></label>
-          <label>Аэродинамический коэффициент рёбер<input name="dragCoefficient" type="number" min="0" step="0.05"></label>
-          <label>Направление ветра, °<input name="windDirectionDeg" type="number" step="5"></label>
-          <label>Шаг огибающей, °<input name="windEnvelopeStepDeg" type="number" min="5" max="180" step="5"></label>
-          <label class="checkbox"><input name="windEnvelopeEnabled" type="checkbox"> Перебирать направления ветра</label>
-          <label>Толщина льда, мм<input name="iceThicknessMm" type="number" min="0" step="1"></label>
-          <label>Плотность льда, кг/м³<input name="iceDensityKgM3" type="number" min="0" step="10"></label>
           <label>Масса оборудования, кг<input name="equipmentMassKg" type="number" min="0" step="1"></label>
           <label>Парусная площадь, м²<input name="equipmentWindAreaM2" type="number" min="0" step="0.01"></label>
-          <label>Аэродинамический коэффициент оборудования<input name="equipmentDragCoefficient" type="number" min="0" step="0.05"></label>
-          <label>Дополнительная горизонтальная сила, Н<input name="extraHorizontalLoadN" type="number" min="0" step="10"></label>
-          <label>Дополнительная вертикальная сила вниз, Н<input name="extraVerticalLoadN" type="number" min="0" step="10"></label>
+          <label>Толщина льда, мм<input name="iceThicknessMm" type="number" min="0" step="1"></label>
         </div>
-        <p class="hint practical-note">Сценарии Бофорта переводят характерную скорость в динамическое давление <em>q = ρv²/2</em>. Это сравнительная шкала, а не замена нормативному ветровому району и сочетаниям СП 20.</p>
+        <div class="derived-inline">
+          <span>Скорость: <strong><input name="windSpeedMs" type="number" readonly> м/с</strong></span>
+          <span>Давление: <strong><input name="windPressurePa" type="number" min="0" step="1"> Па</strong></span>
+        </div>
+
+        <details class="input-details">
+          <summary>Уточнить ветер и дополнительные нагрузки</summary>
+          <div class="form-grid advanced-grid">
+            <label>Аэродинамический коэффициент рёбер<input name="dragCoefficient" type="number" min="0" step="0.05"></label>
+            <label>Направление ветра, °<input name="windDirectionDeg" type="number" step="5"></label>
+            <label>Шаг огибающей, °<input name="windEnvelopeStepDeg" type="number" min="5" max="180" step="5"></label>
+            <label class="checkbox"><input name="windEnvelopeEnabled" type="checkbox"> Перебирать направления ветра</label>
+            <label>Плотность льда, кг/м³<input name="iceDensityKgM3" type="number" min="0" step="10"></label>
+            <label>Аэродин. коэффициент оборудования<input name="equipmentDragCoefficient" type="number" min="0" step="0.05"></label>
+            <label>Доп. горизонтальная сила, Н<input name="extraHorizontalLoadN" type="number" min="0" step="10"></label>
+            <label>Доп. вертикальная сила вниз, Н<input name="extraVerticalLoadN" type="number" min="0" step="10"></label>
+          </div>
+        </details>
+
+        <details id="joint-input-details" class="input-details">
+          <summary>Соединительный узел — обычно подбирается автоматически</summary>
+          <p class="hint practical-note">В auto-режиме эти параметры являются результатом расчёта, а не обязательным вводом. Ручной режим нужен для проверки уже купленных деталей.</p>
+          <div class="form-grid joint-form-grid">
+            <label>Режим конфигуратора<select name="jointConfiguratorMode"></select></label>
+            <label>Болт между модулями<select name="jointBoltDiameterMm"></select></label>
+            <label>Класс прочности болта<select name="jointBoltClass"></select></label>
+            <label>Гайка ножки с проходом болта<select name="jointClearanceNutThreadMm"></select></label>
+            <label>Длина болта<select name="jointBoltLengthMm"></select></label>
+            <label>Зацепление в соединительной гайке<select name="jointThreadEngagementFactor"></select></label>
+            <label>Длинная соединительная гайка<input name="jointCouplingNutDescription" type="text" readonly></label>
+            <label>Эффективный радиус узла, мм<input name="jointEffectiveRadiusMm" type="number" readonly></label>
+            <label>Сварочный материал<select name="weldConsumableId"></select></label>
+            <label>Катет углового шва<select name="weldLegMm"></select></label>
+            <label>Непрерывных участков на конец<select name="weldSegmentsPerEnd"></select></label>
+            <label>Rm металла детали узла, МПа<input name="jointBaseMetalTensileStrengthMPa" type="number" min="100" step="10"></label>
+          </div>
+          <p id="joint-config-summary" class="hint practical-note"></p>
+        </details>
 
         <details class="advanced-inputs">
-          <summary>Расчётные коэффициенты и ограничения</summary>
+          <summary>Инженерные коэффициенты и ограничения</summary>
+          <p class="hint practical-note">Эти поля влияют на критерии прохождения. Менять их следует осознанно; значения по умолчанию всегда попадают в расчётный проект.</p>
           <div class="form-grid advanced-grid">
             <label>Коэффициент материала<input name="materialSafetyFactor" type="number" min="1" max="3" step="0.05"></label>
             <label>Коэффициент постоянной нагрузки<input name="deadLoadFactor" type="number" min="1" max="3" step="0.05"></label>
@@ -89,22 +153,16 @@
           </div>
         </details>
 
-        <div class="button-row">
-          <button id="calculate-button" class="primary" type="button">Выполнить расчёт</button>
+        <div class="button-row scenario-actions">
+          <button id="calculate-button" class="primary" type="button">Проверить мачту</button>
           <button id="optimize-button" class="secondary" type="button">Подобрать арматуру и узел</button>
         </div>
 
         <section id="calculation-progress" class="calculation-progress" hidden aria-live="polite" aria-atomic="true">
-          <div class="progress-title-row">
-            <strong id="progress-stage">Подготовка расчёта</strong>
-            <span id="progress-percent">0%</span>
-          </div>
+          <div class="progress-title-row"><strong id="progress-stage">Подготовка расчёта</strong><span id="progress-percent">0%</span></div>
           <progress id="progress-bar" max="100" value="0">0%</progress>
           <p id="progress-detail" class="progress-detail">Ожидание запуска…</p>
-          <div class="progress-meta">
-            <span id="progress-elapsed">Прошло: 0 с</span>
-            <span id="progress-eta">Осталось: оценивается…</span>
-          </div>
+          <div class="progress-meta"><span id="progress-elapsed">Прошло: 0 с</span><span id="progress-eta">Осталось: оценивается…</span></div>
           <button id="cancel-calculation-button" class="secondary cancel-button" type="button">Отменить расчёт</button>
         </section>
       </form>
@@ -112,12 +170,29 @@
       <p id="optimization-result" class="optimization" hidden></p>
     </section>
 
+    <section id="scenario-answer" class="panel scenario-answer" hidden aria-live="polite">
+      <div class="answer-heading">
+        <div><p class="step-label">Главный ответ</p><h2 id="scenario-answer-title">Результат</h2></div>
+        <span id="scenario-answer-status" class="answer-status">—</span>
+      </div>
+      <p id="scenario-answer-text" class="answer-text"></p>
+      <div id="scenario-key-metrics" class="key-metric-grid"></div>
+      <details id="algorithm-details" class="algorithm-details">
+        <summary>Как программа получила этот ответ?</summary>
+        <ol id="algorithm-steps" class="algorithm-steps">
+          <li><strong>Геометрия:</strong> раскрой прутка → длина ребра → правильный октаэдр → стек модулей.</li>
+          <li><strong>Нагрузки:</strong> собственный вес рёбер, лёд, ветер и оборудование переводятся в узловые и распределённые нагрузки.</li>
+          <li><strong>Каркас:</strong> 3D Euler–Bernoulli frame FEM решает K·u=F; жёсткие узлы передают N/V/T/M.</li>
+          <li><strong>Проверка:</strong> global FEM сверяется с модульным Schur solver; CI дополнительно сравнивает independent dense FEM.</li>
+          <li><strong>Соединение:</strong> из совпадающих N/V/T/M подбираются болт, две гайки и сварка.</li>
+          <li><strong>Пределы:</strong> отдельно ищутся боковая сила, статическая масса и максимальная высота.</li>
+        </ol>
+      </details>
+    </section>
+
     <section class="panel visual">
       <div class="visual-title-row">
-        <div>
-          <h2>Расчётная схема всей мачты</h2>
-          <p class="hint">Кликните по ребру, чтобы выбрать физический модуль. Выбранный модуль выделяется, а подробное окно ниже показывает передаваемые силы и моменты.</p>
-        </div>
+        <div><h2>Расчётная схема</h2><p class="hint">Клик по ребру выбирает физический модуль. Это визуальная проверка геометрии, а не отдельный расчёт.</p></div>
         <div class="viewer-controls">
           <label class="viewer-select">Модуль<select id="module-selector"></select></label>
           <label class="viewer-control"><input id="show-buckling-mode" type="checkbox"> Форма общей потери устойчивости</label>
@@ -126,117 +201,84 @@
       <canvas id="mast-canvas" aria-label="Трёхмерная расчётная схема мачты"></canvas>
     </section>
 
-    <section class="panel joint-visual">
-      <div class="visual-title-row">
-        <div>
-          <h2>Соединительный узел: две гайки и болт</h2>
-          <p class="hint">Оранжевые отрезки — два ребра ножки у проходной гайки; зелёные — четыре ребра верхнего узла у длинной соединительной гайки. Модель можно вращать мышью и масштабировать колесом.</p>
-        </div>
-      </div>
-      <canvas id="joint-canvas" aria-label="Трёхмерная схема соединительного узла из двух гаек и болта"></canvas>
-      <p id="joint-visual-summary" class="material-summary">Конфигурация узла готовится…</p>
-    </section>
-
-    <section class="panel module-visual">
-      <div class="visual-title-row">
-        <div>
-          <h2 id="module-detail-title">Подробно: выбранный модуль</h2>
-          <p class="hint">Красные стрелки — действие всего стека сверху, синие — реакция нижележащей части, коричневые — непосредственные узловые нагрузки. На рёбрах подписаны N, V и M.</p>
-        </div>
-      </div>
-      <canvas id="module-canvas" aria-label="Подробная схема выбранного модуля с силами"></canvas>
-      <p id="module-detail-summary" class="material-summary"></p>
-      <div class="module-detail-grid">
-        <div>
-          <h3>Интерфейсные силы и моменты</h3>
-          <div class="table-scroll">
-            <table class="member-table compact-table">
-              <thead><tr><th>Узел</th><th>Сторона</th><th>Fx, кН</th><th>Fy, кН</th><th>Fz, кН</th><th>Mx, Н·м</th><th>My, Н·м</th><th>Mz, Н·м</th></tr></thead>
-              <tbody id="module-interface-body"></tbody>
-            </table>
-          </div>
-        </div>
-        <div>
-          <h3>Рёбра выбранного модуля</h3>
-          <div class="table-scroll">
-            <table class="member-table compact-table">
-              <thead><tr><th>Ребро</th><th>Тип</th><th>N, кН</th><th>V, кН</th><th>T, Н·м</th><th>M, Н·м</th><th>U</th></tr></thead>
-              <tbody id="module-member-body"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <section id="results" class="panel results" hidden>
-      <h2>Огибающие результаты</h2>
-      <div class="metric-grid">
-        <article><span>Текущая высота</span><strong id="metric-height"></strong></article>
-        <article><span>Масса рёбер</span><strong id="metric-mass"></strong></article>
-        <article><span>Максимальное отклонение вершины</span><strong id="metric-displacement"></strong></article>
-        <article><span>Максимальное использование ребра</span><strong id="metric-utilization"></strong></article>
-        <article><span>Множитель общей устойчивости</span><strong id="metric-buckling"></strong></article>
-        <article><span>Определяющее направление ветра</span><strong id="metric-wind-direction"></strong></article>
-        <article><span>Критическое ребро</span><strong id="metric-critical"></strong></article>
-        <article><span>Максимальная невязка свободной степени</span><strong id="metric-residual"></strong></article>
-        <article><span>Максимальная проектная высота</span><strong id="metric-height-design"></strong></article>
-        <article><span>Модулей при проектном пределе</span><strong id="metric-height-modules"></strong></article>
-        <article><span>Предельная высота по сопротивлению</span><strong id="metric-height-ultimate"></strong></article>
-        <article><span>Нижний модуль при перегрузке</span><strong id="metric-bottom-failure"></strong></article>
-        <article><span>Первый предел боковой нагрузки</span><strong id="metric-lateral-capacity"></strong></article>
-        <article><span>Боковая сила общей потери устойчивости</span><strong id="metric-lateral-buckling"></strong></article>
-        <article><span>Боковой предел выбранного болта</span><strong id="metric-lateral-bolt"></strong></article>
-        <article><span>Механизм первого бокового предела</span><strong id="metric-lateral-mode"></strong></article>
-        <article><span>Максимальная суммарная масса на вершине</span><strong id="metric-static-payload"></strong></article>
-        <article><span>Дополнительная масса после заданного оборудования</span><strong id="metric-static-reserve"></strong></article>
-        <article><span>Эквивалентный объём воды</span><strong id="metric-water-volume"></strong></article>
-        <article><span>Механизм статического предела</span><strong id="metric-static-mode"></strong></article>
-        <article><span>Использование межмодульного болта</span><strong id="metric-bolt-utilization"></strong></article>
-        <article><span>Критический межмодульный узел</span><strong id="metric-bolt-joint"></strong></article>
-        <article><span>Максимальная длина сварки на конец</span><strong id="metric-weld-length"></strong></article>
-        <article><span>Внутренняя верификация</span><strong id="metric-verification"></strong></article>
-      </div>
+      <section class="assembly-mass-card" aria-labelledby="assembly-mass-title">
+        <div class="section-heading-row">
+          <div><h2 id="assembly-mass-title">Что реально весит изготовленная деталь?</h2><p class="hint">Производственная оценка из той же геометрии и выбранного узла. Она отделена от FEM-собственного веса рёбер — причина показана ниже.</p></div>
+        </div>
+        <div class="key-metric-grid assembly-grid">
+          <article><span>Одно ребро</span><strong id="metric-rib-mass">—</strong><small id="metric-rib-weight">—</small></article>
+          <article><span>Один полный узел со сваркой</span><strong id="metric-joint-mass">—</strong><small>2 гайки + болт + 6 сваренных концов</small></article>
+          <article><span>Сваренный и закреплённый модуль</span><strong id="metric-module-mass">—</strong><small>9 рёбер + 3 узла</small></article>
+          <article><span>Оценка всей изготовленной мачты</span><strong id="metric-fabricated-mass">—</strong><small>унифицированные модули</small></article>
+        </div>
+        <p id="assembly-mass-explanation" class="hint practical-note"></p>
+      </section>
 
-      <div class="critical-card"><h3>Определяющие проверки</h3><p id="critical-description"></p></div>
-      <div class="critical-card height-capacity-card"><h3>Максимальная высота из одинаковых модулей</h3><p id="height-capacity-description"></p></div>
-      <div class="critical-card lateral-card"><h3>Проверочная боковая нагрузка вершины</h3><p id="lateral-capacity-description"></p></div>
-      <div class="critical-card static-payload-card"><h3>Максимальная статическая нагрузка на вершине</h3><p id="static-payload-description"></p></div>
-      <div id="connection-summary-card" class="critical-card connection-card"><h3>Соединительный узел и сварные концы</h3><p id="connection-summary"></p></div>
+      <details id="all-metrics-details" class="result-details">
+        <summary>Все расчётные показатели</summary>
+        <div class="metric-grid">
+          <article><span>Текущая высота</span><strong id="metric-height"></strong></article>
+          <article><span>Масса рёбер в FEM</span><strong id="metric-mass"></strong></article>
+          <article><span>Максимальное отклонение вершины</span><strong id="metric-displacement"></strong></article>
+          <article><span>Максимальное использование ребра</span><strong id="metric-utilization"></strong></article>
+          <article><span>Множитель общей устойчивости</span><strong id="metric-buckling"></strong></article>
+          <article><span>Определяющее направление ветра</span><strong id="metric-wind-direction"></strong></article>
+          <article><span>Критическое ребро</span><strong id="metric-critical"></strong></article>
+          <article><span>Максимальная невязка свободной степени</span><strong id="metric-residual"></strong></article>
+          <article><span>Максимальная проектная высота</span><strong id="metric-height-design"></strong></article>
+          <article><span>Модулей при проектном пределе</span><strong id="metric-height-modules"></strong></article>
+          <article><span>Предельная высота по сопротивлению</span><strong id="metric-height-ultimate"></strong></article>
+          <article><span>Нижний модуль при перегрузке</span><strong id="metric-bottom-failure"></strong></article>
+          <article><span>Первый предел боковой нагрузки</span><strong id="metric-lateral-capacity"></strong></article>
+          <article><span>Боковая сила общей потери устойчивости</span><strong id="metric-lateral-buckling"></strong></article>
+          <article><span>Боковой предел выбранного болта</span><strong id="metric-lateral-bolt"></strong></article>
+          <article><span>Механизм первого бокового предела</span><strong id="metric-lateral-mode"></strong></article>
+          <article><span>Максимальная суммарная масса на вершине</span><strong id="metric-static-payload"></strong></article>
+          <article><span>Дополнительная масса после оборудования</span><strong id="metric-static-reserve"></strong></article>
+          <article><span>Эквивалентный объём воды</span><strong id="metric-water-volume"></strong></article>
+          <article><span>Механизм статического предела</span><strong id="metric-static-mode"></strong></article>
+          <article><span>Использование межмодульного болта</span><strong id="metric-bolt-utilization"></strong></article>
+          <article><span>Критический межмодульный узел</span><strong id="metric-bolt-joint"></strong></article>
+          <article><span>Максимальная длина сварки на конец</span><strong id="metric-weld-length"></strong></article>
+          <article><span>Внутренняя верификация</span><strong id="metric-verification"></strong></article>
+        </div>
+      </details>
+
+      <details id="governing-details" class="result-details">
+        <summary>Почему получился именно такой предел?</summary>
+        <div class="critical-card"><h3>Определяющая проверка текущей мачты</h3><p id="critical-description"></p></div>
+        <div class="critical-card height-capacity-card"><h3>Максимальная высота</h3><p id="height-capacity-description"></p></div>
+        <div class="critical-card lateral-card"><h3>Боковая нагрузка вершины</h3><p id="lateral-capacity-description"></p></div>
+        <div class="critical-card static-payload-card"><h3>Статическая нагрузка на вершине</h3><p id="static-payload-description"></p></div>
+        <div id="connection-summary-card" class="critical-card connection-card"><h3>Соединительный узел и сварка</h3><p id="connection-summary"></p></div>
+      </details>
+
       <div id="verification-summary-card" class="critical-card verification-card"><h3>Насколько можно доверять этому расчёту?</h3><p id="verification-summary"></p></div>
       <p id="load-summary" class="load-summary"></p>
 
       <div class="export-row">
-        <button id="export-note-button" class="secondary" type="button" disabled>Скачать расчётный проект</button>
+        <button id="export-note-button" class="secondary" type="button" disabled>Скачать бумажный расчётный проект</button>
         <button id="export-csv-button" class="secondary" type="button" disabled>CSV рёбер</button>
       </div>
 
-      <details id="connection-details" open>
-        <summary>Расчёт соединительных узлов</summary>
-        <h3>Подбор межмодульного болта</h3>
-        <div class="table-scroll">
-          <table class="member-table connection-table">
-            <thead><tr><th>Класс</th><th>Минимальный диаметр</th><th>Шаг</th><th>Использование</th><th>Определяющий узел</th><th>Ветер</th></tr></thead>
-            <tbody id="bolt-recommendations-body"></tbody>
-          </table>
-        </div>
-        <h3>Критические сварные концы</h3>
-        <p id="weld-recommendation" class="material-summary"></p>
-        <div class="table-scroll">
-          <table class="member-table connection-table">
-            <thead><tr><th>Ребро</th><th>Конец</th><th>Узел</th><th>Ветер</th><th>N, кН</th><th>V, кН</th><th>T, Н·м</th><th>M, Н·м</th><th>Расчётная длина, мм</th><th>Физическая длина, мм</th></tr></thead>
-            <tbody id="weld-results-body"></tbody>
-          </table>
-        </div>
-      </details>
-
-      <details id="verification-details" open>
-        <summary>Паспорт верификации — проверка по шагам</summary>
-        <p class="hint practical-note">Статические случаи проверяются глобальной рамной моделью, помодульной конденсацией и независимым эталонным решателем в автоматических тестах.</p>
+      <details id="verification-details" class="result-details">
+        <summary>Паспорт верификации — проверить по шагам</summary>
+        <p class="hint practical-note">Внутренние проверки подтверждают реализацию принятой модели. Внешний КЭ-комплекс, инженерная рецензия и натурные испытания не становятся зелёными автоматически.</p>
         <div id="verification-levels" class="verification-levels"></div>
         <div id="verification-checks" class="verification-checks"></div>
       </details>
 
-      <details open>
+      <details id="connection-details" class="result-details">
+        <summary>Подробный расчёт соединительных узлов</summary>
+        <h3>Подбор межмодульного болта</h3>
+        <div class="table-scroll"><table class="member-table connection-table"><thead><tr><th>Класс</th><th>Минимальный диаметр</th><th>Шаг</th><th>Использование</th><th>Определяющий узел</th><th>Ветер</th></tr></thead><tbody id="bolt-recommendations-body"></tbody></table></div>
+        <h3>Критические сварные концы</h3>
+        <p id="weld-recommendation" class="material-summary"></p>
+        <div class="table-scroll"><table class="member-table connection-table"><thead><tr><th>Ребро</th><th>Конец</th><th>Узел</th><th>Ветер</th><th>N, кН</th><th>V, кН</th><th>T, Н·м</th><th>M, Н·м</th><th>Расчётная длина, мм</th><th>Физическая длина, мм</th></tr></thead><tbody id="weld-results-body"></tbody></table></div>
+      </details>
+
+      <details class="result-details">
         <summary>Ведомость рёбер по огибающей</summary>
         <div class="member-table-controls">
           <label>Группировка<select id="member-group-mode"><option value="module" selected>По модулям</option><option value="none">Без группировки</option></select></label>
@@ -244,15 +286,58 @@
           <label>Порядок<select id="member-sort-direction"><option value="desc" selected>По убыванию</option><option value="asc">По возрастанию</option></select></label>
         </div>
         <p id="material-summary" class="material-summary"></p>
-        <div class="table-scroll">
-          <table class="member-table">
-            <thead><tr><th>Модуль</th><th>№</th><th>Тип</th><th>Узлы</th><th>Длина, мм</th><th>N, кН</th><th>V, кН</th><th>M, Н·м</th><th>σэкв, МПа</th><th>Ветер</th><th>Использование</th></tr></thead>
-            <tbody id="member-results-body"></tbody>
-          </table>
-        </div>
+        <div class="table-scroll"><table class="member-table"><thead><tr><th>Модуль</th><th>№</th><th>Тип</th><th>Узлы</th><th>Длина, мм</th><th>N, кН</th><th>V, кН</th><th>M, Н·м</th><th>σэкв, МПа</th><th>Ветер</th><th>Использование</th></tr></thead><tbody id="member-results-body"></tbody></table></div>
       </details>
 
-      <details open><summary>Ограничения текущей модели</summary><ul id="warnings"></ul></details>
+      <details class="result-details"><summary>Ограничения текущей модели</summary><ul id="warnings"></ul></details>
+    </section>
+
+    <section class="panel joint-visual detail-panel">
+      <details>
+        <summary>3D: соединительный узел</summary>
+        <p class="hint">Оранжевые отрезки — два ребра ножки; зелёные — четыре ребра верхнего узла. Модель — схема компоновки, не CAD резьбы.</p>
+        <canvas id="joint-canvas" aria-label="Трёхмерная схема соединительного узла из двух гаек и болта"></canvas>
+        <p id="joint-visual-summary" class="material-summary">Конфигурация узла готовится…</p>
+      </details>
+    </section>
+
+    <section class="panel module-visual detail-panel">
+      <details>
+        <summary id="module-detail-title">Подробно: выбранный модуль</summary>
+        <p class="hint">Красные стрелки — действие стека сверху, синие — реакция снизу, коричневые — непосредственные узловые нагрузки.</p>
+        <canvas id="module-canvas" aria-label="Подробная схема выбранного модуля с силами"></canvas>
+        <p id="module-detail-summary" class="material-summary"></p>
+        <div class="module-detail-grid">
+          <div><h3>Интерфейсные силы и моменты</h3><div class="table-scroll"><table class="member-table compact-table"><thead><tr><th>Узел</th><th>Сторона</th><th>Fx, кН</th><th>Fy, кН</th><th>Fz, кН</th><th>Mx, Н·м</th><th>My, Н·м</th><th>Mz, Н·м</th></tr></thead><tbody id="module-interface-body"></tbody></table></div></div>
+          <div><h3>Рёбра выбранного модуля</h3><div class="table-scroll"><table class="member-table compact-table"><thead><tr><th>Ребро</th><th>Тип</th><th>N, кН</th><th>V, кН</th><th>T, Н·м</th><th>M, Н·м</th><th>U</th></tr></thead><tbody id="module-member-body"></tbody></table></div></div>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel reference-panel" aria-labelledby="reference-heading">
+      <details id="reference-details">
+        <summary><span id="reference-heading">Справочники — проверить исходные значения расчёта</span></summary>
+        <p class="hint practical-note">Таблицы строятся прямо из тех же JavaScript-каталогов, которые использует solver и конфигуратор. Это не копия документации. Схема: <code id="reference-schema"></code>.</p>
+
+        <h3>Арматура: классы</h3>
+        <div class="table-scroll"><table class="member-table reference-table"><thead><tr><th>Класс</th><th>Ry, МПа</th><th>Rm, МПа</th><th>E, ГПа</th><th>ν</th><th>ρ, кг/м³</th><th>Свариваемость</th><th>Источник</th></tr></thead><tbody id="reference-rebar-classes"></tbody></table></div>
+        <h3>Арматура: диаметры</h3>
+        <div class="table-scroll"><table class="member-table reference-table"><thead><tr><th>Диаметр</th><th>A, мм²</th><th>Масса 1 м, кг</th></tr></thead><tbody id="reference-rebar-diameters"></tbody></table></div>
+
+        <h3>Болты: классы прочности</h3>
+        <div class="table-scroll"><table class="member-table reference-table"><thead><tr><th>Класс</th><th>Rbun, МПа</th><th>Rbs, МПа</th><th>Rbt, МПа</th><th>Класс гайки</th><th>Источник</th></tr></thead><tbody id="reference-bolt-classes"></tbody></table></div>
+        <h3>Болты: размеры</h3>
+        <div class="table-scroll"><table class="member-table reference-table"><thead><tr><th>Размер</th><th>Ab, мм²</th><th>Abn, мм²</th><th>s головки, мм</th><th>k головки, мм</th><th>Резьба</th></tr></thead><tbody id="reference-bolt-sizes"></tbody></table></div>
+
+        <h3>Обычные проходные гайки</h3>
+        <div class="table-scroll"><table class="member-table reference-table"><thead><tr><th>Резьба</th><th>s, мм</th><th>m, мм</th><th>Источник</th></tr></thead><tbody id="reference-regular-nuts"></tbody></table></div>
+        <h3>Длинные соединительные гайки</h3>
+        <div class="table-scroll"><table class="member-table reference-table"><thead><tr><th>Резьба</th><th>s, мм</th><th>Длина, мм</th><th>Источник</th></tr></thead><tbody id="reference-coupling-nuts"></tbody></table></div>
+
+        <h3>Электроды и сварочная проволока</h3>
+        <div class="table-scroll"><table class="member-table reference-table"><thead><tr><th>Материал</th><th>Тип</th><th>Rwun, МПа</th><th>Rwf, МПа</th><th>Материал/тип</th><th>Расчётное сопротивление</th></tr></thead><tbody id="reference-welding"></tbody></table></div>
+        <p class="hint practical-note">Доступные катеты углового шва: <strong id="reference-weld-legs"></strong>.</p>
+      </details>
     </section>
   </main>
 

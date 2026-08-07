@@ -63,17 +63,17 @@ function createV06Appendix(result) {
 <p>Для возможности прямой натурной проверки вводится отдельный нормированный расчётный случай: горизонтальная сила <strong>1 Н</strong> прикладывается к геометрической вершине и поровну распределяется между тремя узлами верхней треугольной грани. В этом специальном случае отключены ветер, лёд, собственный вес, оборудование и дополнительные нагрузки. Благодаря линейности frame-модели внутренние усилия, напряжения и перемещения от этой силы масштабируются пропорционально прикладываемой силе.</p>
 <div class="formula">
   <div class="formula-symbolic">Fmember = 1/U(1 Н)</div>
-  <div>U(1 Н) = ${number(memberUnitUtilization, 8)}</div>
+  <div>U(1 Н) = ${number(memberUnitUtilization, 8)}; худшее направление = ${number(lateral.memberLimitDirectionDeg, 0)}°</div>
   <div class="formula-result">Fmember = ${number(lateral.memberLimitForceN, 3)} Н = ${number(lateral.memberLimitForceKgf, 1)} кгс</div>
 </div>
 <div class="formula">
   <div class="formula-symbolic">Fglobal = λcr(1 Н)·1 Н</div>
-  <div>линейный eigen-buckling для единичного бокового случая</div>
+  <div>отдельная огибающая eigen-buckling; худшее направление = ${number(lateral.globalBucklingDirectionDeg, 0)}°</div>
   <div class="formula-result">Fglobal = ${number(lateral.globalBucklingForceN, 3)} Н = ${number(lateral.globalBucklingForceKgf, 1)} кгс</div>
 </div>
 <div class="formula">
   <div class="formula-symbolic">Flim = min(Fmember, Fglobal)</div>
-  <div>худшее направление = ${number(lateral.directionDeg, 0)}°</div>
+  <div>худшее направление первого предела = ${number(lateral.directionDeg, 0)}°</div>
   <div class="formula-result">Flim = ${number(lateral.criticalForceN, 3)} Н = ${number(lateral.criticalForceKgf, 1)} кгс; ${escapeHtml(modeLabel(lateral.governingMode))}</div>
 </div>
 <p>Пересчёт Н → кгс выполняется через стандартное ускорение свободного падения: <em>1 кгс = ${number(STANDARD_GRAVITY_M_S2, 5)} Н</em>. Значение в кгс удобно интерпретировать как силу от подвешенной массы в килограммах при стандартной гравитации.</p>

@@ -21,6 +21,36 @@ test('практические параметры закупки и матери
   }
 })
 
+test('UI задаёт физический межмодульный болт, класс прочности, радиус и сварочный материал', () => {
+  for (const name of ['jointBoltDiameterMm', 'jointBoltClass', 'weldConsumableId']) {
+    assert.match(html, new RegExp(`<select name="${name}">`))
+  }
+  for (const name of [
+    'jointEffectiveRadiusMm', 'weldLegMm', 'weldSegmentsPerEnd',
+    'jointBaseMetalTensileStrengthMPa', 'jointBoltShearPlanes',
+    'connectionConditionFactor', 'weldBetaF', 'weldBetaZ',
+  ]) {
+    assert.match(html, new RegExp(`name="${name}"`))
+  }
+  assert.match(app, /BOLT_DIAMETERS_MM/)
+  assert.match(app, /BOLT_PROPERTY_CLASS_IDS/)
+  assert.match(app, /WELD_CONSUMABLES/)
+})
+
+test('результаты показывают болтовой предел, критический узел и длину сварки', () => {
+  for (const id of [
+    'metric-lateral-bolt', 'metric-bolt-utilization', 'metric-bolt-joint',
+    'metric-weld-length', 'connection-summary-card', 'connection-summary',
+    'bolt-recommendations-body', 'weld-results-body', 'weld-recommendation',
+  ]) {
+    assert.match(html, new RegExp(`id="${id}"`))
+  }
+  assert.match(app, /renderConnections/)
+  assert.match(app, /characteristicRuptureN/)
+  assert.match(app, /requiredPhysicalLengthMm/)
+  assert.match(app, /boltLimitForceKgf/)
+})
+
 test('погодные явления выбираются из выпадающего списка вплоть до урагана', () => {
   assert.match(html, /<select name="windPresetId"><\/select>/)
   assert.match(app, /WEATHER_PRESETS/)
@@ -34,14 +64,16 @@ test('ручное ветровое давление сохраняется ка
   assert.match(app, /windSpeedFromPressurePa/)
 })
 
-test('интерфейс разделяет первый боковой предел и общую потерю устойчивости в кгс', () => {
+test('интерфейс разделяет первый боковой предел, общую устойчивость и болт в кгс', () => {
   assert.match(html, /id="metric-lateral-capacity"/)
   assert.match(html, /id="metric-lateral-buckling"/)
+  assert.match(html, /id="metric-lateral-bolt"/)
   assert.match(html, /Боковая сила общей потери устойчивости/)
   assert.match(html, /id="metric-lateral-mode"/)
   assert.match(html, /id="lateral-capacity-description"/)
   assert.match(worker, /calculateCompleteMast/)
   assert.match(app, /globalBucklingForceKgf/)
+  assert.match(app, /boltLimitForceKgf/)
   assert.match(app, /кгс/)
 })
 
@@ -54,6 +86,7 @@ test('интерфейс показывает статическую массу 
   assert.match(app, /maximumTotalTopMassKg/)
   assert.match(app, /remainingAdditionalMassKg/)
   assert.match(app, /equivalentWaterVolumeM3/)
+  assert.match(app, /boltUtilizationAtLimit/)
   assert.match(app, /Статическая нагрузка вершины/)
 })
 
@@ -115,6 +148,6 @@ test('результирующая таблица показывает N, V, M �
   assert.match(html, /<th>σэкв, МПа<\/th>/)
 })
 
-test('версия пользовательского прототипа обновлена до 0.9', () => {
-  assert.match(html, /прототип 0\.9/)
+test('версия пользовательского прототипа обновлена до 1.0', () => {
+  assert.match(html, /прототип 1\.0/)
 })

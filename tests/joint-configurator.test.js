@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
+import { calculateCompleteMast, DEFAULT_PARAMETERS } from '../site/engine/calculate.js'
 import { calculateCompleteMastWithConfiguredJoint } from '../site/engine/complete-calculation.js'
 import {
   buildJointHardwareGeometry,
@@ -108,15 +108,18 @@ test('ручной режим не заменяет выбранные поль�
 })
 
 test('полный расчёт фиксирует один автоматически выбранный физический узел для боковой, статической и высотной проверок', { timeout: 30_000 }, () => {
-  const result = calculateCompleteMastWithConfiguredJoint({
+  const input = {
     ...DEFAULT_PARAMETERS,
     moduleCount: 2,
     windEnvelopeEnabled: false,
     lateralCapacityStepDeg: 60,
     heightSearchMaxModules: 4,
     jointConfiguratorMode: 'auto',
-  })
+  }
+  const result = calculateCompleteMastWithConfiguredJoint(input)
+  const canonical = calculateCompleteMast(input)
   const geometry = result.connections.configurator.geometry
+
   assert.equal(result.connections.configurator.mode, 'auto')
   assert.equal(result.connections.capacityChecksUseFixedSelectedJoint, true)
   assert.equal(result.parameters.jointBoltDiameterMm, geometry.bolt.diameterMm)
@@ -126,4 +129,31 @@ test('полный расчёт фиксирует один автоматиче
   assert.equal(result.heightCapacity.fixedJointConfiguration.boltLengthMm, geometry.bolt.lengthMm)
   assert.ok(Number.isFinite(result.lateralCapacity.boltLimitForceN))
   assert.ok(Number.isFinite(result.staticPayloadCapacity.boltUtilizationAtLimit))
+
+  assert.equal(canonical.parameters.jointBoltDiameterMm, result.parameters.jointBoltDiameterMm)
+  assert.equal(canonical.parameters.jointBoltLengthMm, result.parameters.jointBoltLengthMm)
+  assert.equal(canonical.lateralCapacity.criticalForceN, result.lateralCapacity.criticalForceN)
+  assert.equal(canonical.heightCapacity.design.maximumModules, result.heightCapacity.design.maximumModules)
+})
+
+test('невалидный вручную заданный короткий болт не получает конечную боковую/статическую несущую способность как проходящий узел', { timeout: 30_000 }, () => {
+  const result = calculateCompleteMast({
+    ...DEFAULT_PARAMETERS,
+    moduleCount: 2,
+    windEnvelopeEnabled: false,
+    lateralCapacityStepDeg: 60,
+    heightSearchMaxModules: 3,
+    jointConfiguratorMode: 'manual',
+    jointBoltDiameterMm: 24,
+    jointBoltClass: '8.8',
+    jointClearanceNutThreadMm: 30,
+    jointBoltLengthMm: 70,
+    jointThreadEngagementFactor: 2,
+  })
+
+  assert.equal(result.connections.passesJointGeometry, false)
+  assert.equal(result.connections.configurator.geometry.boltLengthPasses, false)
+  assert.equal(result.lateralCapacity.boltLimitForceN, 0)
+  assert.equal(result.staticPayloadCapacity.maximumTotalTopMassKg, 0)
+  assert.equal(result.heightCapacity.design.maximumModules, 0)
 })

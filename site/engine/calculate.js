@@ -11,13 +11,17 @@ import {
 import { generateMastModel } from './geometry.js'
 import { buildLoadCase } from './loads.js'
 import { analyzeFrame, compileFrameSystem } from './solver.js'
+import {
+  calculateStaticPayloadCapacity,
+  STATIC_PAYLOAD_PROGRESS_STEPS,
+} from './static-payload-capacity.js'
 import { resolveWindParameters, windSpeedFromPressurePa } from './weather.js'
 
 const ROTATIONAL_SYMMETRY_DEG = 120
 
 export const CALCULATION_METHOD = Object.freeze({
-  id: 'linear-frame-v0.7',
-  description: 'Линейная пространственная Euler-Bernoulli frame-модель с ленточной SPD-факторизацией, generalized Lanczos для общей устойчивости и отдельной проверкой боковой нагрузки вершины.',
+  id: 'linear-frame-v0.8',
+  description: 'Линейная пространственная Euler-Bernoulli frame-модель с ленточной SPD-факторизацией, generalized Lanczos, боковой проверкой и расчётом максимальной статической массы на вершине.',
 })
 
 export const DEFAULT_PARAMETERS = Object.freeze({
@@ -88,9 +92,6 @@ export function windDirections(parameters) {
     throw new Error('Шаг перебора направлений ветра должен быть от 0 до 180°')
   }
 
-  // Сначала строим ровно ту же сетку 0..360°, что и раньше, а затем сворачиваем
-  // её по точной 120° вращательной симметрии треугольной мачты. Поэтому ни одно
-  // уникальное направление исходной сетки не теряется, а эквивалентные solve не повторяются.
   const unique = new Map()
   for (let angle = 0; angle < 360 - step / 1000; angle += step) {
     const canonical = canonicalSymmetryAngle(angle)
@@ -110,6 +111,7 @@ function createWarnings(parameters, governing, buckling) {
     'Погодные пресеты по шкале Бофорта — удобные сценарии для сравнения. Они не заменяют нормативное ветровое районирование, порывы, коэффициенты высоты и требования СП 20.',
     'Ветровая огибающая использует точную 120° вращательную симметрию треугольной расчётной модели: эквивалентные направления полной окружности не решаются повторно.',
     'Матрица упругой жёсткости собирается и факторизуется один раз для всех направлений нагрузки. Решение использует симметричную ленточную Cholesky-факторизацию, а общая устойчивость — matrix-free generalized Lanczos.',
+    'Расчёт статической массы на вершине учитывает собственный вес мачты, но сознательно исключает ветер и лёд. Он показывает гравитационный резерв, а не полную несущую способность водонапорной башни во всех сочетаниях.',
     'Геометрическая нелинейность, начальные несовершенства, пластичность, усталость, фундамент и нормативный расчёт реальных соединений пока не реализованы.',
   ]
   if (governing.analysis.diagnostics.relativeResidual > 1e-8) {
@@ -196,7 +198,7 @@ export function calculateCompleteMast(inputParameters, options = {}) {
   const model = generateMastModel(parameters)
   const directions = windDirections(parameters)
   const lateral = lateralDirections(parameters.lateralCapacityStepDeg)
-  const total = 1 + directions.length + lateral.length
+  const total = 1 + directions.length + lateral.length + STATIC_PAYLOAD_PROGRESS_STEPS
 
   options.onProgress?.({
     phase: 'compile',
@@ -231,6 +233,18 @@ export function calculateCompleteMast(inputParameters, options = {}) {
       total,
     }),
   })
+
+  const staticPayloadOffset = lateralOffset + lateral.length
+  result.staticPayloadCapacity = calculateStaticPayloadCapacity(model, parameters, {
+    frameSystem,
+    onProgress: (event) => options.onProgress?.({
+      phase: 'static-payload',
+      label: event.label,
+      completed: staticPayloadOffset + event.completed,
+      total,
+    }),
+  })
+
   result.performance = {
     linearSystemSolver: frameSystem.method,
     freeDofCount: frameSystem.freeDofs.length,
@@ -238,6 +252,7 @@ export function calculateCompleteMast(inputParameters, options = {}) {
     stiffnessFactorizationCount: frameSystem.factorizationCount,
     operationalCaseCount: directions.length,
     lateralCaseCount: lateral.length,
+    staticPayloadEvaluationCount: STATIC_PAYLOAD_PROGRESS_STEPS,
     rotationalSymmetryDeg: ROTATIONAL_SYMMETRY_DEG,
   }
   options.onProgress?.({ phase: 'done', label: 'Расчёт завершён', completed: total, total })

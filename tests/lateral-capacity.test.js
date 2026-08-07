@@ -37,7 +37,7 @@ function verticalCantileverModel({ lengthM = 2, diameterM = 0.02 } = {}) {
   }
 }
 
-test('боковая нагрузка круглой консоли совпадает с P = Ryd·W/L', () => {
+test('боковая нагрузка круглой консоли совпадает с аналитической von Mises проверкой изгиба и среза', () => {
   const lengthM = 2
   const diameterM = 0.02
   const model = verticalCantileverModel({ lengthM, diameterM })
@@ -47,15 +47,25 @@ test('боковая нагрузка круглой консоли совпад
     lateralCapacityStepDeg: 30,
   }
   const result = calculateLateralCapacity(model, parameters)
+  const areaM2 = Math.PI * diameterM ** 2 / 4
   const sectionModulusM3 = Math.PI * diameterM ** 3 / 32
-  const expectedForceN = 400e6 * sectionModulusM3 / lengthM
+  const designYieldPa = 400e6
 
-  approximately(result.criticalForceN, expectedForceN, 1e-8)
-  approximately(result.memberLimitForceN, expectedForceN, 1e-8)
+  // Для концевой силы P solver консервативно объединяет максимальное
+  // изгибное напряжение PL/W и поперечный срез 4P/(3A) по фон Мизесу:
+  // Ryd² = (P L/W)² + 3(4P/3A)².
+  const expectedForceN = designYieldPa / Math.sqrt(
+    (lengthM / sectionModulusM3) ** 2
+      + 3 * (4 / (3 * areaM2)) ** 2,
+  )
+
+  approximately(result.criticalForceN, expectedForceN, 1e-9)
+  approximately(result.memberLimitForceN, expectedForceN, 1e-9)
   assert.equal(result.governingMode, 'material-strength')
   assert.equal(result.cases.length, 4)
   assert.equal(result.symmetrySectorDeg, 120)
-  approximately(result.criticalForceKgf, expectedForceN / STANDARD_GRAVITY_M_S2, 1e-8)
+  assert.equal(result.globalBucklingForceN, Number.POSITIVE_INFINITY)
+  approximately(result.criticalForceKgf, expectedForceN / STANDARD_GRAVITY_M_S2, 1e-9)
 })
 
 test('расчёт боковой нагрузки мачты возвращает конечный положительный предел и худшее направление', () => {

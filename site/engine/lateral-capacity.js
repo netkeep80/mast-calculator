@@ -1,4 +1,7 @@
-import { selectedBoltUtilizationForAnalysis } from './connection-check.js'
+import {
+  evaluateBoltSystemForAnalysis,
+  selectedBoltUtilizationForAnalysis,
+} from './connection-check.js'
 import { buildLoadCase } from './loads.js'
 import { analyzeFrame, compileFrameSystem } from './solver.js'
 
@@ -66,6 +69,13 @@ function meaningfulCompressionN(analysis) {
   )
 }
 
+function selectedBoltExternalLoadFactor(model, analysis, parameters) {
+  const evaluation = evaluateBoltSystemForAnalysis(model, analysis, parameters)
+  if (!evaluation.applicable) return Number.POSITIVE_INFINITY
+  if (evaluation.geometry?.passes === false || evaluation.nutSections?.passes === false) return 0
+  return Math.min(...evaluation.checks.map(({ check }) => check.loadFactorToDesignLimit))
+}
+
 function governingMode(memberLimitN, globalBucklingN, boltLimitN) {
   const minimum = Math.min(memberLimitN, globalBucklingN, boltLimitN)
   if (boltLimitN <= minimum + 1e-12) return 'bolt-connection'
@@ -85,9 +95,7 @@ function evaluateDirection(model, parameters, directionDeg, frameSystem) {
     ? analysis.buckling.criticalLoadFactor
     : Number.POSITIVE_INFINITY
   const boltUnitUtilization = selectedBoltUtilizationForAnalysis(model, analysis, unitParameters)
-  const boltLimitForceN = boltUnitUtilization > Number.EPSILON
-    ? 1 / boltUnitUtilization
-    : Number.POSITIVE_INFINITY
+  const boltLimitForceN = selectedBoltExternalLoadFactor(model, analysis, unitParameters)
   const criticalForceN = Math.min(memberLimit.forceN, globalBucklingForceN, boltLimitForceN)
   const connectionOrBucklingMode = governingMode(
     memberLimit.forceN,
@@ -151,7 +159,7 @@ export function calculateLateralCapacity(model, parameters, options = {}) {
   const boltGoverning = minimumCaseBy(cases, (item) => item.boltLimitForceN)
 
   return {
-    method: 'unit-horizontal-tip-load-linear-v3-internal-fixture-with-bolt',
+    method: 'unit-horizontal-tip-load-linear-v4-fixed-preload-scaling',
     stepDeg,
     symmetrySectorDeg: ROTATIONAL_SYMMETRY_DEG,
     forceApplication: 'внутренняя нормированная сила 1 Н горизонтально, поровну между тремя узлами верхней треугольной грани',

@@ -24,8 +24,6 @@ const windStep = $('#wind-step')
 const windEnvelope = $('#wind-envelope')
 const equipmentMass = $('#equipment-mass')
 const equipmentArea = $('#equipment-area')
-const extraHorizontal = $('#extra-horizontal')
-const extraVertical = $('#extra-vertical')
 const iceThickness = $('#ice-thickness')
 const displacementLimit = $('#displacement-limit')
 const bucklingLimit = $('#buckling-limit')
@@ -151,8 +149,6 @@ function setExample() {
   windEnvelope.checked = true
   setValue(equipmentMass, DEFAULT_PARAMETERS.equipmentMassKg)
   setValue(equipmentArea, DEFAULT_PARAMETERS.equipmentWindAreaM2)
-  setValue(extraHorizontal, DEFAULT_PARAMETERS.extraHorizontalLoadN)
-  setValue(extraVertical, DEFAULT_PARAMETERS.extraVerticalLoadN)
   setValue(iceThickness, DEFAULT_PARAMETERS.iceThicknessMm)
   setValue(displacementLimit, DEFAULT_PARAMETERS.displacementLimitMm)
   setValue(bucklingLimit, DEFAULT_PARAMETERS.minimumBucklingFactor)
@@ -188,8 +184,6 @@ function readParameters() {
     windEnvelopeStepDeg: readNumber(windStep, 'Шаг огибающей', 1),
     equipmentMassKg: readNumber(equipmentMass, 'Масса оборудования', 0),
     equipmentWindAreaM2: readNumber(equipmentArea, 'Парусная площадь', 0),
-    extraHorizontalLoadN: readNumber(extraHorizontal, 'Доп. горизонтальная сила', 0),
-    extraVerticalLoadN: readNumber(extraVertical, 'Доп. вертикальная сила', 0),
     iceThicknessMm: readNumber(iceThickness, 'Толщина льда', 0),
     displacementLimitMm: readNumber(displacementLimit, 'Допустимый прогиб', 1),
     minimumBucklingFactor: readNumber(bucklingLimit, 'Минимальный λ', 1),

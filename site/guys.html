@@ -32,7 +32,7 @@
     <section class="panel">
       <p class="eyebrow">Калькулятор мачты · растяжки</p>
       <h1>Расчёт дополнительных растяжек</h1>
-      <p class="subtitle guy-note">Растяжки работают только на растяжение. Расчёт учитывает геометрию каждого троса, преднатяг, осевую жёсткость, изменение направления силы при деформации, отключение провисшего троса и реакцию узла крепления. Высота крепления автоматически привязывается к ближайшему узлу между модулями.</p>
+      <p class="subtitle guy-note">Растяжки работают только на растяжение. Расчёт учитывает геометрию каждого троса, преднатяг, осевую жёсткость, изменение направления силы при деформации, отключение полностью разгруженного троса и реакцию узла крепления. Высота крепления автоматически привязывается к ближайшему узлу между модулями.</p>
     </section>
 
     <section class="panel">
@@ -49,13 +49,12 @@
         <label class="checkbox"><input id="wind-envelope" type="checkbox"> Перебирать направления ветра</label>
         <label>Масса оборудования, кг<input id="equipment-mass" type="number" min="0" step="1"></label>
         <label>Парусная площадь, м²<input id="equipment-area" type="number" min="0" step="0.01"></label>
-        <label>Доп. горизонтальная сила, Н<input id="extra-horizontal" type="number" min="0" step="10"></label>
-        <label>Доп. вертикальная сила вниз, Н<input id="extra-vertical" type="number" min="0" step="10"></label>
         <label>Толщина льда, мм<input id="ice-thickness" type="number" min="0" step="1"></label>
         <label>Допустимое отклонение, мм<input id="displacement-limit" type="number" min="1" step="1"></label>
         <label>Минимальный λ общей устойчивости<input id="buckling-limit" type="number" min="1" step="0.1"></label>
       </div>
       <p id="mast-geometry" class="hint practical-note"></p>
+      <p class="hint practical-note">После issue #36 пользовательские произвольные силы удалены: эксплуатационная нагрузка задаётся массой и парусностью оборудования, ветром и льдом — так же, как в основном калькуляторе.</p>
     </section>
 
     <section class="panel">
@@ -91,7 +90,7 @@
 
       <h3>Огибающая по каждой растяжке</h3>
       <div class="table-scroll"><table class="member-table compact-table guy-table">
-        <thead><tr><th>Ярус</th><th>Трос</th><th>Узел</th><th>Высота, м</th><th>Анкер, м</th><th>Угол к земле</th><th>Длина, м</th><th>Tmin, кН</th><th>Tmax, кН</th><th>Рабочая, кН</th><th>Umax</th><th>Провисал</th></tr></thead>
+        <thead><tr><th>Ярус</th><th>Трос</th><th>Узел</th><th>Высота, м</th><th>Анкер, м</th><th>Угол к земле</th><th>Длина, м</th><th>Tmin, кН</th><th>Tmax, кН</th><th>Рабочая, кН</th><th>Umax</th><th>Разгружался</th></tr></thead>
         <tbody id="cable-envelope-body"></tbody>
       </table></div>
 

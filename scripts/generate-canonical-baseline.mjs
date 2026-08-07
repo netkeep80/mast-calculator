@@ -50,14 +50,14 @@ function criticalMember(analysis) {
   ), analysis.memberResults[0])
 }
 
-function projectMast(result, { fullState = false } = {}) {
+function projectMast(result) {
   const analysis = result.envelope?.governing?.analysis ?? result.analysis
   const dofs = dofVector(analysis)
   const reactions = baseReactionVector(result, analysis)
   const member = criticalMember(analysis)
   const selected = result.connections?.configurator?.selected
   const geometry = result.connections?.configurator?.geometry
-  const projection = {
+  return {
     topology: {
       modules: result.model.moduleCount,
       nodes: result.model.nodes.length,
@@ -95,12 +95,6 @@ function projectMast(result, { fullState = false } = {}) {
       criticalWeldLengthMm: finite(result.connections?.weld?.critical?.check?.requiredPhysicalLengthMm),
     },
   }
-  if (fullState) {
-    projection.state.allDofs = dofs
-    projection.state.baseReactions = reactions
-    projection.state.criticalMemberEndForces = member?.localEndForces ?? []
-  }
-  return projection
 }
 
 function projectGuyed(parameters, scenario) {
@@ -158,11 +152,13 @@ function projectComplete(result, projection) {
   }
   if (projection === 'craneBoom') {
     return {
-      maximumAdditionalPayloadKg: finite(result.craneBoomCapacity.maximumAdditionalPayloadKg),
-      maximumTotalTipMassKg: finite(result.craneBoomCapacity.maximumTotalTipMassKg),
-      selfWeightKg: finite(result.craneBoomCapacity.selfWeightKg),
+      maximumEndPayloadMassKg: finite(result.craneBoomCapacity.maximumEndPayloadMassKg),
+      additionalEndPayloadMassKg: finite(result.craneBoomCapacity.additionalEndPayloadMassKg),
+      configuredEndPayloadMassKg: finite(result.craneBoomCapacity.configuredEndPayloadMassKg),
+      boomSelfWeightN: finite(result.craneBoomCapacity.boomSelfWeightN),
+      boomSelfMassEquivalentKg: finite(result.craneBoomCapacity.boomSelfMassEquivalentKg),
       governingMode: result.craneBoomCapacity.governingMode,
-      directionDeg: finite(result.craneBoomCapacity.directionDeg),
+      governingDirectionDeg: finite(result.craneBoomCapacity.governingDirectionDeg),
     }
   }
   if (projection === 'height') {
@@ -199,8 +195,6 @@ function projectDesign(result) {
     mesh: {
       structuralMembers: mesh.statistics.structuralMembers,
       hardwareObjects: mesh.statistics.hardwareObjects,
-      vertices: mesh.positions?.length ? mesh.positions.length / 3 : null,
-      triangles: mesh.indices?.length ? mesh.indices.length / 3 : null,
     },
     obj: {
       bytes: Buffer.byteLength(obj, 'utf8'),
@@ -231,7 +225,7 @@ for (const scenario of CANONICAL_SCENARIOS) {
     continue
   }
   if (scenario.kind === 'mast') {
-    cases[scenario.id] = projectMast(calculateMast({ ...DEFAULT_PARAMETERS, ...scenario.input }), scenario)
+    cases[scenario.id] = projectMast(calculateMast({ ...DEFAULT_PARAMETERS, ...scenario.input }))
     continue
   }
   if (scenario.kind === 'guys') {

@@ -10,9 +10,9 @@
 <body>
   <header class="page-header">
     <div>
-      <p class="eyebrow">Mast Calculator · прототип 0.7</p>
+      <p class="eyebrow">Mast Calculator · прототип 0.8</p>
       <h1>Расчёт модульной мачты</h1>
-      <p class="subtitle">Правильные октаэдры, жёстко сваренный арматурный frame-каркас, быстрый ленточный solver, погодные сценарии и проверяемая боковая нагрузка вершины.</p>
+      <p class="subtitle">Правильные октаэдры, жёстко сваренный арматурный frame-каркас, быстрый ленточный solver, погодные сценарии, боковая нагрузка и максимальная статическая масса на вершине.</p>
     </div>
   </header>
 
@@ -64,7 +64,7 @@
             <label>Мин. множитель общей устойчивости<input name="minimumBucklingFactor" type="number" min="1" step="0.1"></label>
             <label>Шаг боковой проверки, °<input name="lateralCapacityStepDeg" type="number" min="5" max="60" step="5"></label>
           </div>
-          <p class="hint practical-note">Для локальной проверки ребра по Эйлеру коэффициент расчётной длины фиксирован: μ = 0,5, поскольку концы ребра в глобальной модели считаются идеально жёстко сваренными. Боковая проверка использует 120° сектор симметрии и чистую горизонтальную силу в вершине.</p>
+          <p class="hint practical-note">Для локальной проверки ребра по Эйлеру коэффициент расчётной длины фиксирован: μ = 0,5, поскольку концы ребра в глобальной модели считаются идеально жёстко сваренными. Боковая проверка использует 120° сектор симметрии. Статическая масса на вершине считается отдельно при действии собственного веса мачты, без ветра и льда; коэффициент веса оборудования применяется и к искомой массе груза.</p>
         </details>
 
         <div class="button-row">
@@ -115,6 +115,10 @@
         <article><span>Первый предел боковой нагрузки</span><strong id="metric-lateral-capacity"></strong></article>
         <article><span>Боковая сила общей потери устойчивости</span><strong id="metric-lateral-buckling"></strong></article>
         <article><span>Механизм первого бокового предела</span><strong id="metric-lateral-mode"></strong></article>
+        <article><span>Макс. суммарная масса на вершине</span><strong id="metric-static-payload"></strong></article>
+        <article><span>Доп. масса после заданного оборудования</span><strong id="metric-static-reserve"></strong></article>
+        <article><span>Эквивалентный объём воды</span><strong id="metric-water-volume"></strong></article>
+        <article><span>Механизм статического предела</span><strong id="metric-static-mode"></strong></article>
       </div>
       <div class="critical-card">
         <h3>Определяющие проверки</h3>
@@ -123,6 +127,10 @@
       <div class="critical-card lateral-card">
         <h3>Проверочная боковая нагрузка вершины</h3>
         <p id="lateral-capacity-description"></p>
+      </div>
+      <div class="critical-card static-payload-card">
+        <h3>Максимальная статическая нагрузка на вершине</h3>
+        <p id="static-payload-description"></p>
       </div>
       <p id="load-summary" class="load-summary"></p>
 

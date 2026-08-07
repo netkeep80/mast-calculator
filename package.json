@@ -1,10 +1,10 @@
 {
   "name": "mast-calculator",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check site/app.js && node --check site/viewer.js && node --check site/engine/calculate.js && node --check site/engine/solver.js && node --check site/engine/buckling.js && node --check site/engine/report.js"
+    "check": "node --check site/app.js && node --check site/viewer.js && node --check site/engine/catalog.js && node --check site/engine/calculate.js && node --check site/engine/solver.js && node --check site/engine/buckling.js && node --check site/engine/optimize.js && node --check site/engine/report.js && node --check site/engine/calculation-note.js"
   }
 }

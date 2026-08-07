@@ -3,9 +3,7 @@ name: Canonical baseline bootstrap
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened]
-  push:
-    branches: [agent/issue-51-regression-safety-net]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 permissions:

@@ -144,7 +144,7 @@ test('бумажный проект содержит формулы нагруз
   assert.match(html, /Flim = min\(Fmember, Fglobal, Fbolt\)/)
   assert.match(html, /Pdesign\(m\) = m·g·γpayload/)
   assert.match(html, /Vwater = mreserve \/ ρwater/)
-  assert.match(html, /Nt = \|Faxis\| \+ \|Mb\|\/reff/)
+  assert.match(html, /Nt = max\(0, −Faxis\) \+ \|Mb\|\/reff/)
   assert.match(html, /Nbs = Rbs·Ab·ns·γb·γc/)
   assert.match(html, /Nbt = Rbt·Abn·γc/)
   assert.match(html, /Ubolt = √\[\(Ns\/Nbs\)² \+ \(Nt\/Nbt\)²\]/)

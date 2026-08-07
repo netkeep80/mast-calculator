@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  addBandValue,
+  createSymmetricBandMatrix,
   denseToSymmetricBand,
   factorSymmetricBand,
   relativeBandResidual,
@@ -32,19 +34,15 @@ test('ленточная Cholesky-факторизация совпадает с
   assert.ok(relativeBandResidual(band, solution, rhs) < 1e-12)
 })
 
-test('ленточный solver не хранит нулевую часть квадратной матрицы', () => {
+test('ленточный solver хранит O(n·b), а не O(n²) ячеек', () => {
   const size = 1000
-  const denseEquivalentCells = size * size
-  const band = denseToSymmetricBand(Array.from({ length: size }, (_, row) => (
-    Array.from({ length: size }, (_, column) => {
-      if (row === column) return 4
-      if (Math.abs(row - column) === 1) return -1
-      return 0
-    })
-  )))
+  const band = createSymmetricBandMatrix(size, 1)
+  for (let row = 0; row < size; row += 1) {
+    addBandValue(band, row, row, 4)
+    if (row > 0) addBandValue(band, row, row - 1, -1)
+  }
   const storedCells = band.rows.reduce((sum, row) => sum + row.length, 0)
 
-  assert.equal(band.bandwidth, 1)
   assert.equal(storedCells, size * 2)
-  assert.ok(storedCells < denseEquivalentCells / 100)
+  assert.ok(storedCells < size * size / 100)
 })

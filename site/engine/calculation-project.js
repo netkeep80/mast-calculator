@@ -23,6 +23,18 @@ const modeLabel = (mode) => {
   return 'не определён'
 }
 
+const verificationStatusLabel = (status) => {
+  if (status === 'pass') return 'ПРОЙДЕНО'
+  if (status === 'fail') return 'ОШИБКА'
+  return 'НЕ ПРОВЕРЕНО'
+}
+
+const verificationStatusMark = (status) => {
+  if (status === 'pass') return '✓'
+  if (status === 'fail') return '✗'
+  return '○'
+}
+
 function lateralRows(lateral) {
   return lateral.cases.map((item) => `
     <tr>
@@ -34,7 +46,7 @@ function lateralRows(lateral) {
     </tr>`).join('')
 }
 
-function createV08Appendix(result) {
+function createLoadAppendix(result) {
   const p = result.parameters
   const lateral = result.lateralCapacity
   const staticPayload = result.staticPayloadCapacity
@@ -114,6 +126,69 @@ function createV08Appendix(result) {
 </section>`
 }
 
+function verificationCheckHtml(check) {
+  const formula = check.formula
+    ? `<div class="formula"><div class="formula-symbolic">${escapeHtml(check.formula)}</div>${check.substitution ? `<div>${escapeHtml(check.substitution)}</div>` : ''}${Number.isFinite(check.expected) ? `<div class="formula-result">ожидается ${number(check.expected, 10)}${check.unit ? ` ${escapeHtml(check.unit)}` : ''}; программа ${number(check.actual, 10)}${check.unit ? ` ${escapeHtml(check.unit)}` : ''}</div>` : ''}</div>`
+    : ''
+  const evidence = check.evidence ? `<p><strong>Контрольное значение:</strong> ${escapeHtml(check.evidence)}</p>` : ''
+  return `
+<article>
+<h4>${verificationStatusMark(check.status)} ${escapeHtml(check.title)} — ${verificationStatusLabel(check.status)}</h4>
+<p>${escapeHtml(check.explanation)}</p>
+${formula}
+${evidence}
+<p><strong>Как проверить самому:</strong> ${escapeHtml(check.howToCheck)}</p>
+</article>`
+}
+
+function createVerificationAppendix(result) {
+  const verification = result.verification
+  if (!verification) throw new Error('Для бумажного проекта не сформирован паспорт верификации')
+
+  const levels = verification.levels.map((level) => `
+<tr>
+<td>${level.number}</td>
+<td>${escapeHtml(level.title)}</td>
+<td>${verificationStatusMark(level.status)} ${verificationStatusLabel(level.status)}</td>
+<td>${escapeHtml(level.description)}</td>
+</tr>`).join('')
+
+  const internalChecks = verification.checks.filter((check) => check.level <= 4)
+    .map(verificationCheckHtml).join('')
+  const externalChecks = verification.checks.filter((check) => check.level >= 5)
+    .map(verificationCheckHtml).join('')
+
+  return `
+<section class="page-break">
+<h2>11. Паспорт верификации: как неспециалисту проверять расчёт</h2>
+<p><strong>${escapeHtml(verification.headline)}</strong></p>
+<p>${escapeHtml(verification.explanation)}</p>
+<p>Главный принцип: сложный FEM-ответ нельзя сделать понятным простой фразой «доверьтесь программе». Вместо этого доказательства раскладываются по уровням. Первые четыре уровня программа может воспроизводимо проверять сама и показывает численные подстановки, которые можно повторить на обычном калькуляторе. Последние уровни намеренно остаются незелёными, пока не появится независимое подтверждение.</p>
+
+<table>
+<thead><tr><th>Уровень</th><th>Что проверяется</th><th>Статус</th><th>Смысл</th></tr></thead>
+<tbody>${levels}</tbody>
+</table>
+
+<p>Итог автоматической части: пройдено ${verification.counts.passed}, ошибок ${verification.counts.failed}, внешне не подтверждено ${verification.counts.notVerified}. Статус <strong>«внутренняя проверка пройдена» не означает «конструкция доказанно безопасна»</strong>: он означает только, что реализованная математическая модель прошла перечисленные внутренние контроли.</p>
+
+<h3>11.1. Шаги, которые можно повторить самому</h3>
+${internalChecks}
+
+<h3>11.2. Что программа принципиально не может подтвердить сама</h3>
+${externalChecks}
+
+<h3>11.3. Правило принятия результата</h3>
+<ol>
+<li>Если хотя бы один внутренний пункт имеет статус «ОШИБКА» — не использовать расчёт до устранения причины.</li>
+<li>Если уровни 1–4 зелёные — считать подтверждённой только внутреннюю согласованность реализации.</li>
+<li>Для инженерного проекта перевести уровень 5 в подтверждённый статус: сторонний FEM + рецензия инженера с сохранёнными исходными материалами.</li>
+<li>Для серийной или ответственной реальной конструкции добавить безопасную программу натурных измерений/испытаний уровня 6.</li>
+</ol>
+<p class="notice"><strong>Почему это полезно неспециалисту.</strong> Неспециалист не обязан проверять сотни коэффициентов глобальной матрицы. Он может независимо проверить исходные размеры, массу и нагрузки, увидеть замыкание сил и моментов, затем повторить несколько эталонных задач с ответом в одну формулу и убедиться, что быстрый solver совпадает с отдельным reference-алгоритмом. После этого остаётся честно видимая граница доверия — внешняя модель и физическая конструкция.</p>
+</section>`
+}
+
 export function createCalculationProjectHtml(
   result,
   parameters = result?.parameters,
@@ -121,7 +196,8 @@ export function createCalculationProjectHtml(
   buildInfo = {},
 ) {
   const base = createBaseCalculationNoteHtml(result, parameters, generatedAt, buildInfo)
-  const appendix = createV08Appendix(result)
+  const loadAppendix = createLoadAppendix(result)
+  const verificationAppendix = createVerificationAppendix(result)
   if (!base.includes('</body>')) throw new Error('Базовый расчётный проект имеет некорректную HTML-структуру')
-  return base.replace('</body>', `${appendix}\n</body>`)
+  return base.replace('</body>', `${loadAppendix}\n${verificationAppendix}\n</body>`)
 }

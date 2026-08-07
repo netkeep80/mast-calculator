@@ -77,6 +77,18 @@ test('PR CI содержит fresh-merge simulation и три ОС', () => {
   assert.match(ci, /fail-fast:\s*false/)
 })
 
+test('static-site smoke загружает новые погодные и боковые browser modules', () => {
+  const ci = workflows.get('ci.yml')
+  assert.ok(ci)
+  for (const modulePath of [
+    'engine/weather.js',
+    'engine/lateral-capacity.js',
+    'engine/calculation-project.js',
+  ]) {
+    assert.ok(ci.includes(modulePath), `ci.yml smoke не проверяет ${modulePath}`)
+  }
+})
+
 test('Pages deploy использует официальные актуальные actions и не отменяет начатую публикацию', () => {
   const pages = workflows.get('pages.yml')
   assert.ok(pages)

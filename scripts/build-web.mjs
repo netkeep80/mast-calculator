@@ -1,18 +1,24 @@
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
 const root = process.cwd()
 const output = path.join(root, '_site')
 const webSource = path.join(root, 'apps', 'web')
-const packagesSource = path.join(root, 'packages')
+const compiledPackages = path.join(root, '.build', 'packages')
 
 if (!fs.existsSync(webSource)) throw new Error('apps/web not found')
-if (!fs.existsSync(packagesSource)) throw new Error('packages not found')
+
+execFileSync(process.execPath, ['scripts/build-core.mjs'], {
+  cwd: root,
+  stdio: 'inherit',
+})
+if (!fs.existsSync(compiledPackages)) throw new Error('.build/packages not found after TypeScript emit')
 
 fs.rmSync(output, { recursive: true, force: true })
 fs.mkdirSync(output, { recursive: true })
 fs.cpSync(webSource, path.join(output, 'apps', 'web'), { recursive: true })
-fs.cpSync(packagesSource, path.join(output, 'packages'), { recursive: true })
+fs.cpSync(compiledPackages, path.join(output, 'packages'), { recursive: true })
 
 const logo = path.join(root, 'logo.jpg')
 if (fs.existsSync(logo)) {
@@ -31,4 +37,4 @@ for (const entry of fs.readdirSync(webSource, { withFileTypes: true })) {
   fs.writeFileSync(path.join(output, entry.name), rootHtml(source))
 }
 
-console.log(`Web build ready: ${path.relative(root, output)} (apps/web + packages, no bundler)`)
+console.log(`Web build ready: ${path.relative(root, output)} (apps/web + TypeScript-emitted packages)`)

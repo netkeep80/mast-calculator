@@ -80,33 +80,71 @@ function inverseTimesMatrix(lower, matrix) {
   return result
 }
 
+const multiply3Vector = (matrix, vector) => [
+  matrix[0][0] * vector[0] + matrix[0][1] * vector[1] + matrix[0][2] * vector[2],
+  matrix[1][0] * vector[0] + matrix[1][1] * vector[1] + matrix[1][2] * vector[2],
+  matrix[2][0] * vector[0] + matrix[2][1] * vector[1] + matrix[2][2] * vector[2],
+]
+
+function localUniformLoadVector(distributedLocal, length) {
+  const [qx, qy, qz] = distributedLocal
+  const vector = zeros(12)
+  vector[0] = qx * length / 2
+  vector[6] = qx * length / 2
+  vector[1] = qy * length / 2
+  vector[5] = qy * length ** 2 / 12
+  vector[7] = qy * length / 2
+  vector[11] = -qy * length ** 2 / 12
+  vector[2] = qz * length / 2
+  vector[4] = -qz * length ** 2 / 12
+  vector[8] = qz * length / 2
+  vector[10] = qz * length ** 2 / 12
+  return vector
+}
+
+function transformVectorToGlobal(local, transform) {
+  return Array.from({ length: local.length }, (_, globalRow) => (
+    local.reduce((sum, value, localRow) => sum + transform[localRow][globalRow] * value, 0)
+  ))
+}
+
 function assembleModuleStiffness(module, memberGeometry) {
   const dofs = [
     ...interfaceDofs(module.bottomNodeIds),
     ...interfaceDofs(module.topNodeIds),
   ]
   const localByGlobal = new Map(dofs.map((dof, index) => [dof, index]))
-  const stiffness = zeroMatrix(MODULE_DOF_COUNT)
+  const stiffnessRaw = zeroMatrix(MODULE_DOF_COUNT)
+  const loadGeometry = []
 
   for (const memberId of module.memberIds) {
     const geometry = memberGeometry[memberId]
     if (!geometry) throw new Error(`Модуль ${module.number}: отсутствует геометрия ребра ${memberId}`)
+    loadGeometry.push({
+      memberId,
+      dofs: [...geometry.dofs],
+      rotation: geometry.rotation.map((row) => [...row]),
+      transform: geometry.transform.map((row) => [...row]),
+      lengthM: geometry.lengthM,
+    })
     for (let row = 0; row < geometry.dofs.length; row += 1) {
       const localRow = localByGlobal.get(geometry.dofs[row])
       if (localRow == null) throw new Error(`Ребро ${memberId} выходит за границы модуля ${module.number}`)
       for (let column = 0; column < geometry.dofs.length; column += 1) {
         const localColumn = localByGlobal.get(geometry.dofs[column])
         if (localColumn == null) throw new Error(`Ребро ${memberId} выходит за границы модуля ${module.number}`)
-        stiffness[localRow][localColumn] += geometry.globalStiffness[row][column]
+        stiffnessRaw[localRow][localColumn] += geometry.globalStiffness[row][column]
       }
     }
   }
 
+  const stiffness = symmetrize(stiffnessRaw)
   return {
     ...module,
     dofs,
     localByGlobal,
-    stiffness: symmetrize(stiffness),
+    loadGeometry,
+    stiffness,
     ...partitionModuleMatrix(stiffness),
   }
 }
@@ -119,9 +157,8 @@ export function compileModuleStack(model, memberGeometry) {
   const stages = new Array(modules.length)
   let upperCondensedStiffness = zeroMatrix(INTERFACE_DOF_COUNT)
 
-  // Static condensation is performed from the free top toward the rigid
-  // foundation. Each stage replaces the entire already-processed upper stack
-  // by an exact 18-DOF stiffness at the current module's top interface.
+  // TOP -> DOWN. The already processed upper stack is represented exactly by
+  // an 18-DOF Schur stiffness at the three top nodes of the next module.
   for (let index = modules.length - 1; index >= 0; index -= 1) {
     const module = modules[index]
     const interfaceMatrix = symmetrize(addMatrices(module.ktt, upperCondensedStiffness))
@@ -159,32 +196,32 @@ function addModuleEntry(target, module, globalDegree, value) {
 }
 
 function ownerModuleIndex(model, node) {
-  const level = Number.isInteger(node.level) ? node.level : Math.round(node.id / 3)
+  const level = Number.isInteger(node.level) ? node.level : Math.floor(node.id / 3)
   if (level <= 0) return 0
   return Math.min(model.moduleCount - 1, level - 1)
 }
 
-function buildModuleLoadVectors(model, stack, loadCase, memberLoads) {
+function buildModuleLoadVectors(model, stack, loadCase) {
   const loads = stack.modules.map(() => zeros(MODULE_DOF_COUNT))
 
+  // Every member belongs to exactly one physical module. Distributed loads
+  // are converted to the same consistent nodal vector as the global solver.
   for (const module of stack.modules) {
     const target = loads[module.index]
-    for (const memberId of module.memberIds) {
-      const geometryLoad = memberLoads[memberId]
-      const globalEquivalent = geometryLoad?.globalEquivalentLoad
-      const geometryDofs = geometryLoad?.dofs
-      if (!globalEquivalent || !geometryDofs) {
-        throw new Error(`Модуль ${module.number}: отсутствует эквивалентная нагрузка ребра ${memberId}`)
-      }
-      for (let index = 0; index < geometryDofs.length; index += 1) {
-        addModuleEntry(target, module, geometryDofs[index], globalEquivalent[index])
+    for (const geometry of module.loadGeometry) {
+      const distributedGlobal = loadCase.memberDistributedLoads?.[geometry.memberId] ?? [0, 0, 0]
+      const distributedLocal = multiply3Vector(geometry.rotation, distributedGlobal)
+      const localEquivalent = localUniformLoadVector(distributedLocal, geometry.lengthM)
+      const globalEquivalent = transformVectorToGlobal(localEquivalent, geometry.transform)
+      for (let index = 0; index < geometry.dofs.length; index += 1) {
+        addModuleEntry(target, module, geometry.dofs[index], globalEquivalent[index])
       }
     }
   }
 
-  // Direct nodal load at an interface is owned exactly once: by the module
-  // immediately below this interface. This makes the sum of module vectors
-  // exactly equal to the original global load vector without double counting.
+  // A direct nodal load at a shared interface is owned exactly once: by the
+  // module immediately below it. Therefore module vectors sum to the original
+  // global load vector without double counting an interface.
   for (const node of model.nodes) {
     const moduleIndex = ownerModuleIndex(model, node)
     const module = stack.modules[moduleIndex]
@@ -217,15 +254,16 @@ function resultant(actions) {
   }), { forceN: [0, 0, 0], momentNm: [0, 0, 0] })
 }
 
-export function solveModuleStack(model, stack, loadCase, memberLoads) {
+export function solveModuleStack(model, stack, loadCase) {
   if (!stack) throw new Error('Для модульного решения отсутствует скомпилированный стек')
-  const moduleLoads = buildModuleLoadVectors(model, stack, loadCase, memberLoads)
+  const moduleLoads = buildModuleLoadVectors(model, stack, loadCase)
   const condensedLoads = new Array(stack.modules.length)
   const upperLoads = new Array(stack.modules.length)
   let upperCondensedLoad = zeros(INTERFACE_DOF_COUNT)
 
-  // TOP -> DOWN: condense actual load of every already processed upper module
-  // into an equivalent 18-DOF load acting on the top nodes of the module below.
+  // TOP -> DOWN: the load of every upper module is condensed into the three
+  // top nodes of the module immediately below. This is the exact linear Schur
+  // complement, not a hand-made sum of vertical forces.
   for (let index = stack.modules.length - 1; index >= 0; index -= 1) {
     const module = stack.modules[index]
     const stage = stack.stages[index]
@@ -240,8 +278,8 @@ export function solveModuleStack(model, stack, loadCase, memberLoads) {
     upperCondensedLoad = condensedLoad
   }
 
-  // The bottom interface is the ideal rigid foundation: u0 = 0. Once all
-  // upper stacks are condensed, displacements are recovered BOTTOM -> TOP.
+  // Bottom interface is the ideal rigid foundation: u0 = 0. After the top
+  // stack is condensed, interface displacements are recovered BOTTOM -> TOP.
   const interfaces = Array.from({ length: model.moduleCount + 1 }, () => zeros(INTERFACE_DOF_COUNT))
   for (let index = 0; index < stack.modules.length; index += 1) {
     const module = stack.modules[index]
@@ -269,6 +307,9 @@ export function solveModuleStack(model, stack, loadCase, memberLoads) {
   const moduleStates = stack.modules.map((module, index) => {
     const displacement = [...interfaces[index], ...interfaces[index + 1]]
     const load = moduleLoads[index]
+    // K_module*u - f_module is the actual external interface action required
+    // to equilibrate this isolated module. At its top this is exactly the
+    // force/moment applied by the entire stack above it.
     const residual = subtractVectors(matrixVectorMultiply(module.stiffness, displacement), load)
     const bottomResidual = residual.slice(0, INTERFACE_DOF_COUNT)
     const topResidual = residual.slice(INTERFACE_DOF_COUNT)

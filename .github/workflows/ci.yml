@@ -115,6 +115,32 @@ jobs:
       - name: Check two-nut physical joint and automatic configuration
         run: npm run test:joint
 
+  support-statics:
+    name: Support reaction statics
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: check-${{ github.workflow }}-${{ github.ref }}-support-statics
+      cancel-in-progress: true
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Simulate fresh merge with latest base
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/simulate-fresh-merge.sh
+      - name: Use Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+      - name: Check analytical three-support reaction oracles
+        run: npm run test:statics
+
   test:
     name: Tests (${{ matrix.os }})
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false

@@ -1,4 +1,5 @@
 import { evaluateBoltAcrossDemands } from './bolt-check.js'
+import { maximumModuleDiameterMm } from './diameter-profile.js'
 import {
   applyResolvedJointParameters,
   configureIntermoduleJoint,
@@ -69,7 +70,8 @@ export function evaluateBoltSystemForAnalysis(model, analysis, parameters, metad
   const strength = resolveJointStrengthParameters(parameters)
   const effectiveParameters = { ...parameters, ...strength }
   const geometry = jointGeometryFromParameters(effectiveParameters)
-  const nutSections = checkJointNutSections(geometry, effectiveParameters.barDiameterMm, {
+  const referenceBarDiameterMm = maximumModuleDiameterMm(effectiveParameters)
+  const nutSections = checkJointNutSections(geometry, referenceBarDiameterMm, {
     requiredRatio: strength.jointNutSectionAreaRatio,
   })
   effectiveParameters.jointEffectiveRadiusMm = geometry.effectiveRadiusMm
@@ -85,6 +87,7 @@ export function evaluateBoltSystemForAnalysis(model, analysis, parameters, metad
       governingCheck: null,
       geometry,
       nutSections,
+      referenceBarDiameterMm,
     }
   }
   const evaluation = evaluateBoltAcrossDemands(demands, boltOptions(effectiveParameters))
@@ -93,6 +96,7 @@ export function evaluateBoltSystemForAnalysis(model, analysis, parameters, metad
     demands,
     geometry,
     nutSections,
+    referenceBarDiameterMm,
     ...evaluation,
     passes: geometry.passes && nutSections.passes && evaluation.passes,
   }
@@ -219,10 +223,11 @@ export function calculateConnectionChecks(result) {
     standard: 'СП 16.13330.2017 + ISO/ГОСТ геометрия + torque-preload T=KFd + проектные criteria issue #33/#19',
     physicalSplit: 'На ножке верхнего модуля два ребра приварены к проходной гайке с резьбой большего диаметра. Болт свободно проходит через неё и ввинчивается в длинную соединительную гайку верхнего узла нижнего модуля, к которой приварены четыре ребра.',
     boltModel: 'Сила наклонных верхних рёбер раскладывается на осевую и поперечную к болту составляющие; момент добавляет M/reff. В auto момент затяжки ограничивается по расчётной растягивающей способности конкретного диаметра, ручной режим сохраняет заданный момент.',
-    nutSectionModel: 'Нетто-площадь шестигранника за вычетом базового отверстия обязана быть не меньше заданного кратного сечения одного ребра; по умолчанию 2×.',
-    weldModel: 'Каждый конец ребра проверяется по совпадающему N/V/T/M. Номинальное throat дополнительно умножается на явный service-retention factor сварной зоны issue #19; это консервативный параметрический reserve model, а не универсальный физический закон календарного старения.',
+    nutSectionModel: 'Нетто-площадь шестигранника за вычетом базового отверстия обязана быть не меньше заданного кратного сечения одного ребра; для смешанного профиля используется максимальный диаметр ребра мачты.',
+    weldModel: 'Каждый конец ребра проверяется по совпадающему N/V/T/M и фактическому диаметру этого ребра. Номинальное throat дополнительно умножается на явный service-retention factor сварной зоны issue #19; это консервативный параметрический reserve model, а не универсальный физический закон календарного старения.',
     jointCount: result.model.moduleCount > 1 ? 3 * (result.model.moduleCount - 1) : 0,
     jointDemandCount: jointDemands.length,
+    referenceBarDiameterMm: maximumModuleDiameterMm(parameters),
     jointResultants,
     jointDemands,
     configurator,

@@ -247,6 +247,22 @@ function interfaceActions(nodeIds, vector) {
   })
 }
 
+function directInterfaceActions(nodeIds, loadCase) {
+  return nodeIds.map((nodeId) => ({
+    nodeId,
+    forceN: [...(loadCase.nodalLoads?.[nodeId] ?? [0, 0, 0])],
+    momentNm: [...(loadCase.nodalMoments?.[nodeId] ?? [0, 0, 0])],
+  }))
+}
+
+function addInterfaceActions(left, right) {
+  return left.map((action, index) => ({
+    nodeId: action.nodeId,
+    forceN: addVectors(action.forceN, right[index]?.forceN ?? [0, 0, 0]),
+    momentNm: addVectors(action.momentNm, right[index]?.momentNm ?? [0, 0, 0]),
+  }))
+}
+
 function resultant(actions) {
   return actions.reduce((sum, action) => ({
     forceN: sum.forceN.map((value, axis) => value + action.forceN[axis]),
@@ -307,13 +323,17 @@ export function solveModuleStack(model, stack, loadCase) {
   const moduleStates = stack.modules.map((module, index) => {
     const displacement = [...interfaces[index], ...interfaces[index + 1]]
     const load = moduleLoads[index]
-    // K_module*u - f_module is the actual external interface action required
-    // to equilibrate this isolated module. At its top this is exactly the
-    // force/moment applied by the entire stack above it.
+    // K_module*u - f_module gives only the neighbouring-structure interface
+    // action because direct nodal loads owned by this module are already in
+    // f_module. For the user-facing top-boundary load we must add those direct
+    // loads back explicitly; otherwise a one-module mast with a 1 t payload
+    // incorrectly reports zero load on its top face.
     const residual = subtractVectors(matrixVectorMultiply(module.stiffness, displacement), load)
     const bottomResidual = residual.slice(0, INTERFACE_DOF_COUNT)
     const topResidual = residual.slice(INTERFACE_DOF_COUNT)
-    const topAppliedFromAbove = interfaceActions(module.topNodeIds, topResidual)
+    const topStructuralFromAbove = interfaceActions(module.topNodeIds, topResidual)
+    const topDirectApplied = directInterfaceActions(module.topNodeIds, loadCase)
+    const topAppliedFromAbove = addInterfaceActions(topStructuralFromAbove, topDirectApplied)
     const bottomReactionFromBelow = interfaceActions(module.bottomNodeIds, bottomResidual)
     return {
       moduleIndex: module.index,
@@ -321,8 +341,12 @@ export function solveModuleStack(model, stack, loadCase) {
       bottomNodeIds: [...module.bottomNodeIds],
       topNodeIds: [...module.topNodeIds],
       memberIds: [...module.memberIds],
+      topStructuralFromAbove,
+      topDirectApplied,
       topAppliedFromAbove,
       bottomReactionFromBelow,
+      topStructuralResultantFromAbove: resultant(topStructuralFromAbove),
+      topDirectResultant: resultant(topDirectApplied),
       topResultantFromAbove: resultant(topAppliedFromAbove),
       bottomResultantFromBelow: resultant(bottomReactionFromBelow),
       bottomDisplacement: [...interfaces[index]],
@@ -334,7 +358,10 @@ export function solveModuleStack(model, stack, loadCase) {
   let interfaceScale = 1
   for (let index = 0; index < moduleStates.length - 1; index += 1) {
     const upper = moduleStates[index + 1].bottomReactionFromBelow
-    const lower = moduleStates[index].topAppliedFromAbove
+    // Closure is an internal-interface check and therefore intentionally uses
+    // only the neighbouring structural action, without a direct nodal load
+    // that could be owned by the lower module at the same interface.
+    const lower = moduleStates[index].topStructuralFromAbove
     for (let node = 0; node < INTERFACE_NODE_COUNT; node += 1) {
       const pair = [
         ...lower[node].forceN.map((value, axis) => value + upper[node].forceN[axis]),

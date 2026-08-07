@@ -83,13 +83,18 @@ export function buildLoadCase(model, parameters) {
     distributedResultant = add3(distributedResultant, scale3(distributed, lengthM))
   }
 
+  // equipmentMassKg is a physical mass. It is converted to a design force by
+  // m*g*equipmentLoadFactor. extra*LoadN fields are already forces in newtons
+  // and therefore are not multiplied by the equipment factor a second time.
   const equipmentWeightN = parameters.equipmentMassKg * GRAVITY * parameters.equipmentLoadFactor
   const equipmentWindN = parameters.windPressurePa
     * parameters.equipmentDragCoefficient
     * parameters.equipmentWindAreaM2
     * parameters.windLoadFactor
-  const horizontalN = equipmentWindN + parameters.extraHorizontalLoadN
-  const verticalN = equipmentWeightN + parameters.extraVerticalLoadN
+  const extraHorizontalLoadN = Number(parameters.extraHorizontalLoadN ?? 0)
+  const extraVerticalLoadN = Number(parameters.extraVerticalLoadN ?? 0)
+  const horizontalN = equipmentWindN + extraHorizontalLoadN
+  const verticalN = equipmentWeightN + extraVerticalLoadN
 
   const topCount = Math.max(model.topNodeIds.length, 1)
   for (const nodeId of model.topNodeIds) {
@@ -117,7 +122,12 @@ export function buildLoadCase(model, parameters) {
     selfWeightN,
     iceWeightN,
     memberWindN,
+    equipmentWeightN,
     equipmentWindN,
+    extraHorizontalLoadN,
+    extraVerticalLoadN,
+    topHorizontalLoadN: horizontalN,
+    topVerticalLoadN: verticalN,
     windDirectionDeg: parameters.windDirectionDeg,
   }
 }

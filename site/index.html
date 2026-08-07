@@ -109,9 +109,10 @@
             <label class="checkbox"><input name="windEnvelopeEnabled" type="checkbox"> Перебирать направления ветра</label>
             <label>Плотность льда, кг/м³<input name="iceDensityKgM3" type="number" min="0" step="10"></label>
             <label>Аэродин. коэффициент оборудования<input name="equipmentDragCoefficient" type="number" min="0" step="0.05"></label>
-            <label>Доп. горизонтальная сила, Н<input name="extraHorizontalLoadN" type="number" min="0" step="10"></label>
-            <label>Доп. вертикальная сила вниз, Н<input name="extraVerticalLoadN" type="number" min="0" step="10"></label>
+            <label>Доп. горизонтальная сила (уже как сила), Н<input name="extraHorizontalLoadN" type="number" min="0" step="10"></label>
+            <label>Доп. вертикальная сила вниз (уже как сила), Н<input name="extraVerticalLoadN" type="number" min="0" step="10"></label>
           </div>
+          <p class="hint practical-note"><strong>Не задавайте одну и ту же нагрузку дважды.</strong> «Масса оборудования» — физическая масса: программа переводит её в расчётный вес по формуле m·g·γ оборудования. «Доп. вертикальная сила» — уже готовая сила в ньютонах, например натяжение или иное внешнее усилие; коэффициент веса оборудования к ней повторно не применяется.</p>
         </details>
 
         <details id="joint-input-details" class="input-details">
@@ -304,7 +305,7 @@
     <section class="panel module-visual detail-panel">
       <details>
         <summary id="module-detail-title">Подробно: выбранный модуль</summary>
-        <p class="hint">Красные стрелки — действие стека сверху, синие — реакция снизу, коричневые — непосредственные узловые нагрузки.</p>
+        <p class="hint">Красные стрелки — только действие вышестоящих модулей, коричневые — внешняя нагрузка непосредственно на верхней грани, синие — реакция снизу. Строка «нагрузка на верхнюю грань» складывает красную и коричневую составляющие.</p>
         <canvas id="module-canvas" aria-label="Подробная схема выбранного модуля с силами"></canvas>
         <p id="module-detail-summary" class="material-summary"></p>
         <div class="module-detail-grid">

@@ -27,7 +27,7 @@ const jointInputDetails = $('#joint-input-details')
 const SCENARIOS = Object.freeze({
   check: {
     label: 'Проверить мачту',
-    description: 'Проверяется выбранная конструкция при заданной погоде и оборудовании.',
+    description: 'Проверяется выбранная конструкция при заданной погоде и массе оборудования.',
   },
   design: {
     label: 'Подобрать конструкцию',
@@ -35,7 +35,7 @@ const SCENARIOS = Object.freeze({
   },
   limits: {
     label: 'Рассчитать пределы',
-    description: 'В фокусе максимальная высота, боковая сила и масса на вершине.',
+    description: 'В фокусе максимальная высота, масса на вершине и грузоподъёмность горизонтальной стрелы.',
   },
   verify: {
     label: 'Рассчитать и проверить',
@@ -46,6 +46,64 @@ const SCENARIOS = Object.freeze({
 const format = (value, digits = 2) => Number.isFinite(Number(value))
   ? new Intl.NumberFormat('ru-RU', { maximumFractionDigits: digits }).format(value)
   : '—'
+
+function closestMetricArticle(id) {
+  return document.querySelector(id)?.closest('article') ?? null
+}
+
+function removeLegacyForceControl(name) {
+  const element = form?.elements.namedItem(name)
+  element?.closest('label')?.remove()
+}
+
+function setMetricLabel(id, text) {
+  const article = closestMetricArticle(id)
+  const caption = article?.querySelector('span')
+  if (caption) caption.textContent = text
+}
+
+function installIssue36Ui() {
+  // Эти поля раньше позволяли задавать ту же физическую нагрузку вторым способом.
+  // Issue #36 оставляет одну пользовательскую вертикальную величину — массу груза.
+  removeLegacyForceControl('extraHorizontalLoadN')
+  removeLegacyForceControl('extraVerticalLoadN')
+
+  const equipment = form?.elements.namedItem('equipmentMassKg')
+  if (equipment?.closest('label')) {
+    const label = equipment.closest('label')
+    for (const node of [...label.childNodes]) {
+      if (node.nodeType === Node.TEXT_NODE) node.textContent = ''
+    }
+    label.prepend(document.createTextNode('Уже установленная масса на вершине, кг'))
+  }
+
+  for (const details of document.querySelectorAll('details.input-details')) {
+    const summary = details.querySelector(':scope > summary')
+    if (summary?.textContent.includes('Уточнить ветер и дополнительные нагрузки')) {
+      summary.textContent = 'Уточнить ветер и параметры среды'
+      for (const note of details.querySelectorAll('.practical-note')) {
+        if (/не задавайте одну и ту же нагрузку дважды/i.test(note.textContent)) note.remove()
+      }
+    }
+  }
+
+  setMetricLabel('#metric-lateral-capacity', 'Чистый поперечный предел')
+  setMetricLabel('#metric-static-payload', 'Максимальная масса на вершине')
+  setMetricLabel('#metric-static-reserve', 'Сколько ещё можно добавить сверху')
+  const waterArticle = closestMetricArticle('#metric-water-volume')
+  if (waterArticle) waterArticle.hidden = true
+
+  const lateralCardTitle = document.querySelector('.lateral-card h3')
+  if (lateralCardTitle) lateralCardTitle.textContent = 'Поперечный unit-load и горизонтальная стрела'
+  const staticCardTitle = document.querySelector('.static-payload-card h3')
+  if (staticCardTitle) staticCardTitle.textContent = 'Масса груза на вершине вертикальной мачты'
+
+  const eyebrow = document.querySelector('.page-header .eyebrow')
+  if (eyebrow) eyebrow.textContent = 'Калькулятор мачты · прототип 1.4'
+  document.body.dataset.issue36StaticLoadModel = 'top-mass-only'
+}
+
+installIssue36Ui()
 
 function selectedScenario() {
   return document.querySelector('input[name="usageScenario"]:checked')?.value ?? 'check'
@@ -107,7 +165,7 @@ function renderDesignScenario(result) {
   scenarioTitle.textContent = 'Текущий подобранный комплект конструкции'
   scenarioStatus.textContent = currentCriteria(result).passes ? 'КОМПЛЕКТ ПРОХОДИТ' : 'НУЖЕН ПОДБОР'
   scenarioStatus.className = `answer-status ${currentCriteria(result).passes ? 'answer-pass' : 'answer-warn'}`
-  scenarioText.textContent = `Для автоматического поиска минимального проходящего варианта используйте кнопку «Подобрать конструкцию». После подбора здесь показывается уже фактически рассчитанный комплект, а не исходные значения формы.`
+  scenarioText.textContent = 'Для автоматического поиска минимального проходящего варианта используйте кнопку «Подобрать конструкцию». После подбора здесь показывается уже фактически рассчитанный комплект, а не исходные значения формы.'
   scenarioMetrics.replaceChildren(
     metricCard('Арматура', `Ø${format(result.parameters.barDiameterMm, 0)} ${result.parameters.reinforcementClass}`, `ребро ${format(result.parameters.ribCutLengthMm, 1)} мм`),
     metricCard('Болт', bolt ? `M${bolt.diameterMm}×${format(bolt.lengthMm, 0)} ${result.parameters.jointBoltClass}` : '—', bottom ? `проходная гайка M${bottom.threadDiameterMm}` : ''),
@@ -118,17 +176,18 @@ function renderDesignScenario(result) {
 
 function renderLimitsScenario(result) {
   const lateral = result.lateralCapacity
+  const boom = result.craneBoomCapacity
   const payload = result.staticPayloadCapacity
   const height = result.heightCapacity
   scenarioTitle.textContent = 'Пределы выбранного типа мачты'
   scenarioStatus.textContent = 'ПРЕДЕЛЫ РАССЧИТАНЫ'
   scenarioStatus.className = 'answer-status answer-info'
-  scenarioText.textContent = 'Это специальные предельные сценарии. Они отвечают не на вопрос «пройдёт ли текущая эксплуатация», а на вопрос «что наступит первым при увеличении высоты или нагрузки». '
+  scenarioText.textContent = 'Для вертикальной мачты показывается максимальная масса на вершине. Для горизонтальной стрелы выполняется отдельный расчёт: собственный вес арматурных рёбер действует поперёк стрелы и вместе с концевым грузом расходует её несущую способность. Чистый unit-load предел остаётся отдельной верификационной величиной.'
   scenarioMetrics.replaceChildren(
     metricCard('Проектная высота', `${height.design.bounded ? '' : '≥ '}${format(height.design.maximumHeightM, 2)} м`, `${height.design.maximumModules} модулей`),
-    metricCard('Боковая сила', `${format(lateral.criticalForceKgf, 1)} кгс`, `механизм: ${lateral.governingMode}`),
-    metricCard('Масса на вершине', `${format(payload.maximumTotalTopMassKg, 1)} кг`, `дополнительно ${format(payload.remainingAdditionalMassKg, 1)} кг`),
-    metricCard('Вода', `${format(payload.equivalentWaterVolumeM3, 3)} м³`, `${format(payload.equivalentWaterVolumeLiters, 0)} л`),
+    metricCard('Горизонтальная стрела', `${format(boom?.maximumEndPayloadMassKg, 1)} кг`, `собственный вес арматурной стрелы ≈ ${format(boom?.boomSelfMassEquivalentKg, 1)} кг; без динамики подъёма`),
+    metricCard('Максимум на вершине', `${format(payload.maximumTopEquipmentMassKg ?? payload.maximumTotalTopMassKg, 1)} кг`, 'суммарная масса оборудования/груза'),
+    metricCard('Можно добавить', `${format(payload.additionalTopEquipmentMassKg ?? payload.remainingAdditionalMassKg, 1)} кг`, `уже задано ${format(payload.configuredTopEquipmentMassKg ?? result.parameters.equipmentMassKg, 1)} кг; чистый lateral upper bound ${format(lateral.criticalForceKgf, 1)} кгс`),
   )
 }
 
@@ -140,7 +199,7 @@ function renderVerifyScenario(result) {
     : 'Внутренняя проверка расчёта пройдена'
   scenarioStatus.textContent = verification?.counts?.failed > 0 ? 'ЕСТЬ ОШИБКИ' : 'ВНУТРЕННЕ ПРОВЕРЕНО'
   scenarioStatus.className = `answer-status ${verification?.counts?.failed > 0 ? 'answer-fail' : 'answer-pass'}`
-  scenarioText.textContent = `Зелёная внутренняя проверка означает согласованность принятой математической модели, но не внешнюю сертификацию реальной мачты. Независимый сторонний FEM, инженерная рецензия и натурные испытания остаются отдельными уровнями.`
+  scenarioText.textContent = 'Зелёная внутренняя проверка означает согласованность принятой математической модели, но не внешнюю сертификацию реальной мачты. Независимый сторонний FEM, инженерная рецензия и натурные испытания остаются отдельными уровнями.'
   scenarioMetrics.replaceChildren(
     metricCard('Паспорт', `${verification?.counts?.passed ?? 0} пройдено`, `${verification?.counts?.notVerified ?? 0} внешних/ручных пунктов ожидают подтверждения`),
     metricCard('Global ↔ Schur', modular?.relativeDisplacementDifference?.toExponential(2) ?? '—', 'relative DOF difference'),
@@ -162,6 +221,31 @@ function renderScenarioResult(result) {
   referenceDetails.open = scenario === 'verify'
   allMetricsDetails.open = false
   governingDetails.open = scenario === 'limits'
+}
+
+function renderIssue36DetailedResult(result) {
+  const lateral = result?.lateralCapacity
+  const boom = result?.craneBoomCapacity
+  const payload = result?.staticPayloadCapacity
+  if (!lateral || !payload) return
+
+  const maximum = payload.maximumTopEquipmentMassKg ?? payload.maximumTotalTopMassKg
+  const remaining = payload.additionalTopEquipmentMassKg ?? payload.remainingAdditionalMassKg
+  const configured = payload.configuredTopEquipmentMassKg ?? result.parameters?.equipmentMassKg ?? 0
+
+  const staticDescription = $('#static-payload-description')
+  if (staticDescription) {
+    staticDescription.textContent = `Gravity-only расчёт вертикальной мачты: максимальная суммарная масса оборудования/груза на вершине ${format(maximum, 1)} кг. Уже задано ${format(configured, 1)} кг, поэтому до первого расчётного предела можно добавить ещё ${format(remaining, 1)} кг. Ветер и лёд в этой специальной предельной задаче отключены.`
+  }
+  const lateralDescription = $('#lateral-capacity-description')
+  if (lateralDescription) {
+    const boomText = boom
+      ? ` Отдельная модель горизонтальной стрелы включает поперечный собственный вес арматурных рёбер ≈ ${format(boom.boomSelfMassEquivalentKg, 1)} кг и даёт максимальный концевой груз ${format(boom.maximumEndPayloadMassKg, 1)} кг в определяющем направлении ${format(boom.governingDirectionDeg, 0)}°.`
+      : ''
+    lateralDescription.textContent = `Чистый поперечный unit-load предел вершины ${format(lateral.criticalForceKgf, 1)} кгс рассчитан без собственного веса, погоды и оборудования и служит reference upper bound.${boomText} Для реального подъёмного механизма дополнительно нужны динамика, узел поворота/опирания, трос и нормативные коэффициенты.`
+  }
+  const waterArticle = closestMetricArticle('#metric-water-volume')
+  if (waterArticle) waterArticle.hidden = true
 }
 
 function renderAssemblyMass(result) {
@@ -229,5 +313,9 @@ export function enrichAndRenderUsageResult(result) {
   }
   globalThis.__mastLastUsageResult = result
   renderScenarioResult(result)
+  // app.js является владельцем базового render pass и регистрирует собственный
+  // Worker-listener после bootstrap. Microtask гарантирует, что упрощённые
+  // формулировки issue #36 применятся уже после старого совместимого render pass.
+  queueMicrotask(() => renderIssue36DetailedResult(result))
   return result
 }

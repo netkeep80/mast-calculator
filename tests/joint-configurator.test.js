@@ -125,13 +125,16 @@ test('полный расчёт фиксирует один автоматиче
   const result = calculateCompleteMastWithConfiguredJoint(input)
   const canonical = calculateCompleteMast(input)
   const geometry = result.connections.configurator.geometry
+  const selected = result.connections.configurator.selected
 
   assert.equal(result.connections.configurator.mode, 'auto')
   assert.equal(result.connections.capacityChecksUseFixedSelectedJoint, true)
   assert.equal(result.parameters.jointBoltDiameterMm, geometry.bolt.diameterMm)
   assert.equal(result.parameters.jointBoltLengthMm, geometry.bolt.lengthMm)
   assert.equal(result.parameters.jointClearanceNutThreadMm, geometry.bottomClearanceNut.threadDiameterMm)
-  assert.equal(result.parameters.jointTighteningTorqueNm, 200)
+  assert.equal(selected.requestedTighteningTorqueNm, 200)
+  assert.equal(result.parameters.jointTighteningTorqueNm, selected.tighteningTorqueNm)
+  assert.ok(result.parameters.jointTighteningTorqueNm <= 200)
   assert.equal(result.parameters.jointNutFactor, 0.2)
   assert.equal(result.parameters.jointPreloadVariation, 0.25)
   assert.equal(result.parameters.jointNutSectionAreaRatio, 2)
@@ -145,6 +148,7 @@ test('полный расчёт фиксирует один автоматиче
 
   assert.equal(canonical.parameters.jointBoltDiameterMm, result.parameters.jointBoltDiameterMm)
   assert.equal(canonical.parameters.jointBoltLengthMm, result.parameters.jointBoltLengthMm)
+  assert.equal(canonical.parameters.jointTighteningTorqueNm, result.parameters.jointTighteningTorqueNm)
   assert.equal(canonical.lateralCapacity.criticalForceN, result.lateralCapacity.criticalForceN)
   assert.equal(canonical.heightCapacity.design.maximumModules, result.heightCapacity.design.maximumModules)
 })

@@ -2,6 +2,7 @@ import {
   getWeldConsumable,
   WELD_CONSUMABLES,
 } from './connection-catalog.js'
+import { calculateWeldServiceDegradation } from './weld-service-degradation.js'
 
 export const DEFAULT_WELD_BETA_F = 0.7
 export const DEFAULT_WELD_BETA_Z = 1.0
@@ -20,6 +21,37 @@ const positive = (value, name) => {
 function optionalPositive(value, name) {
   if (value == null) return null
   return positive(value, name)
+}
+
+function serviceDegradationForOptions(options) {
+  const explicitlyConfigured = [
+    options.serviceYears,
+    options.initialStiffnessRetention,
+    options.annualStiffnessLossRate,
+    options.minimumStiffnessRetention,
+  ].some((value) => value != null)
+
+  if (!explicitlyConfigured) {
+    return {
+      ...calculateWeldServiceDegradation({
+        serviceYears: 0,
+        initialStiffnessRetention: 1,
+        annualStiffnessLossRate: 0,
+        minimumStiffnessRetention: 1,
+      }),
+      configured: false,
+    }
+  }
+
+  return {
+    ...calculateWeldServiceDegradation({
+      serviceYears: options.serviceYears,
+      initialStiffnessRetention: options.initialStiffnessRetention,
+      annualStiffnessLossRate: options.annualStiffnessLossRate,
+      minimumStiffnessRetention: options.minimumStiffnessRetention,
+    }),
+    configured: true,
+  }
 }
 
 export function equivalentCircularWeldDemandN({
@@ -59,10 +91,19 @@ export function calculateMinimumWeldLength(demand, options) {
     ...demand,
     weldGroupRadiusMm,
   })
+  const serviceDegradation = serviceDegradationForOptions(options)
 
+  // effectiveThroatMm остаётся номинальным геометрическим горлом. Для
+  // расчётного сопротивления и area-reserve issue #19 использует отдельное
+  // service-adjusted горло, но только когда lifecycle-параметры явно переданы
+  // connection-layer. Низкоуровневая нормативная функция без них остаётся
+  // backward-compatible и возвращает номинальную проверку.
   const effectiveThroatMm = betaF * weldLegMm
-  const weldMetalResistancePerMmN = effectiveThroatMm * consumable.rwfMPa * gammaC
-  const fusionResistancePerMmN = betaZ * weldLegMm * rwzMPa * gammaC
+  const serviceAdjustedEffectiveThroatMm = effectiveThroatMm
+    * serviceDegradation.stiffnessRetentionFactor
+  const weldMetalResistancePerMmN = serviceAdjustedEffectiveThroatMm * consumable.rwfMPa * gammaC
+  const fusionResistancePerMmN = betaZ * weldLegMm
+    * serviceDegradation.stiffnessRetentionFactor * rwzMPa * gammaC
   const requiredByWeldMetalMm = equivalent.equivalentConditionalForceN
     / Math.max(weldMetalResistancePerMmN, Number.EPSILON)
   const requiredByFusionMm = equivalent.equivalentConditionalForceN
@@ -88,7 +129,7 @@ export function calculateMinimumWeldLength(demand, options) {
   const requiredThroatAreaMm2 = memberAreaMm2 == null ? 0 : requestedAreaRatio * memberAreaMm2
   const requiredByAreaRatioMm = memberAreaMm2 == null
     ? 0
-    : requiredThroatAreaMm2 / Math.max(effectiveThroatMm, Number.EPSILON)
+    : requiredThroatAreaMm2 / Math.max(serviceAdjustedEffectiveThroatMm, Number.EPSILON)
 
   const requiredEffectiveLengthMm = Math.max(
     requiredByWeldMetalMm,
@@ -96,7 +137,8 @@ export function calculateMinimumWeldLength(demand, options) {
     codeMinimumEffectiveMm,
     requiredByAreaRatioMm,
   )
-  const requiredEffectiveAreaMm2 = effectiveThroatMm * requiredEffectiveLengthMm
+  const nominalRequiredEffectiveAreaMm2 = effectiveThroatMm * requiredEffectiveLengthMm
+  const requiredEffectiveAreaMm2 = serviceAdjustedEffectiveThroatMm * requiredEffectiveLengthMm
   const requiredAreaRatio = memberAreaMm2 == null
     ? null
     : requiredEffectiveAreaMm2 / memberAreaMm2
@@ -108,7 +150,7 @@ export function calculateMinimumWeldLength(demand, options) {
     : null
   const providedEffectiveAreaMm2 = providedEffectiveLengthMm == null
     ? null
-    : effectiveThroatMm * providedEffectiveLengthMm
+    : serviceAdjustedEffectiveThroatMm * providedEffectiveLengthMm
   const providedAreaRatio = memberAreaMm2 == null || providedEffectiveAreaMm2 == null
     ? null
     : providedEffectiveAreaMm2 / memberAreaMm2
@@ -131,6 +173,8 @@ export function calculateMinimumWeldLength(demand, options) {
     betaF,
     betaZ,
     effectiveThroatMm,
+    serviceAdjustedEffectiveThroatMm,
+    serviceDegradation,
     connectionConditionFactor: gammaC,
     weldGroupRadiusMm,
     ...equivalent,
@@ -144,6 +188,7 @@ export function calculateMinimumWeldLength(demand, options) {
     requiredThroatAreaMm2,
     requiredByAreaRatioMm,
     requiredEffectiveLengthMm,
+    nominalRequiredEffectiveAreaMm2,
     requiredEffectiveAreaMm2,
     requiredAreaRatio,
     requiredPhysicalLengthMm,
@@ -156,10 +201,10 @@ export function calculateMinimumWeldLength(demand, options) {
     providedPasses: providedUtilization == null ? null : providedUtilization <= 1,
     areaCriterion: memberAreaMm2 == null
       ? null
-      : `Aweld,eff / Arib >= ${requestedAreaRatio}`,
+      : `Aweld,service / Arib >= ${requestedAreaRatio}`,
     areaCriterionSource: memberAreaMm2 == null
       ? null
-      : 'Issue #33: дополнительный проектный запас 2–3×; эффективная площадь определяется через throat×length.',
+      : 'Issue #33 area-reserve + issue #19 service degradation: проектные консервативные критерии, не универсальный нормативный закон старения.',
   }
 }
 

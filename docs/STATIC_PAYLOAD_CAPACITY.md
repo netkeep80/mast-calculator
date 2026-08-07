@@ -1,6 +1,8 @@
-# Максимальная статическая нагрузка на вершине
+# Максимальная масса оборудования/груза на вершине
 
-Расчёт из issue #11 оценивает, какую **суммарную массу груза на верхней треугольной грани** может нести мачта. Начиная с прототипа 1.0 этот предел учитывает не только frame members и global buckling, но и выбранный межмодульный болт.
+Расчёт отвечает на один практический вопрос: **какую суммарную массу можно разместить на верхней треугольной грани вертикальной мачты и сколько килограммов ещё остаётся до первого расчётного предела**.
+
+Issue #36 намеренно убирает второй способ задания той же физики через произвольную «дополнительную вертикальную силу». В пользовательской модели остаётся одна величина — масса оборудования/груза на вершине.
 
 ## Что именно считается
 
@@ -9,17 +11,49 @@
 ```text
 включено:
   собственный вес арматурного каркаса
-  искомая вертикальная масса на вершине
+  искомая суммарная масса оборудования/груза на вершине
   проверка выбранного межмодульного болта
 
 исключено:
   ветер
   лёд
-  горизонтальные силы
-  дополнительные нагрузки обычного погодного case
 ```
 
 Собственный вес не обнуляется. Искомая масса прикладывается вертикально вниз поровну между тремя верхними nodes.
+
+## Пользовательский смысл результата
+
+Основные величины:
+
+```text
+maximumTopEquipmentMassKg
+  максимальная суммарная масса на верхней грани
+
+configuredTopEquipmentMassKg
+  масса, уже введённая пользователем как установленное оборудование/груз
+
+additionalTopEquipmentMassKg
+  сколько ещё килограммов можно добавить до первого расчётного предела
+```
+
+```text
+additionalTopEquipmentMassKg = max(
+  0,
+  maximumTopEquipmentMassKg - configuredTopEquipmentMassKg
+)
+```
+
+Для совместимости внутренних snapshot/UI предыдущих версий пока сохраняются aliases `maximumTotalTopMassKg`, `configuredEquivalentTopMassKg` и `remainingAdditionalMassKg`, но они больше не включают пересчёт произвольной дополнительной силы.
+
+## Почему больше нет отдельного объёма воды
+
+Эквивалентный объём воды не является самостоятельной расчётной задачей конструкции. Если кому-то нужен такой пересчёт, он непосредственно получается из массы:
+
+```text
+V = m / rho
+```
+
+Поэтому issue #36 удаляет `equivalentWaterVolumeM3`, `equivalentWaterVolumeLiters` и `waterDensityKgM3` из результата статической грузоподъёмности и из пользовательского интерфейса. Это уменьшает число метрик без потери конструктивной информации.
 
 ## Коэффициенты
 
@@ -40,7 +74,7 @@ UI показывает nominal mass в kg; проверки выполняют�
 
 ## Почему нельзя просто масштабировать 1 кг
 
-Без self weight линейная модель даёт чистые reference-пределы:
+Без self weight линейная модель даёт reference-пределы:
 
 ```text
 m_member,pure = 1/U_member(1 kg)
@@ -59,7 +93,7 @@ U_bolt(m) <= 1
 lambda_cr(m) >= 1
 ```
 
-`U_bolt(m)` вычисляется из coincident end actions того же gravity load case: на каждом внутреннем стыке два upward members формируют один bolt demand. Подробности physical split и формул: [`CONNECTIONS.md`](CONNECTIONS.md).
+`U_bolt(m)` вычисляется из coincident end actions того же gravity load case. Подробности physical split и формул: [`CONNECTIONS.md`](CONNECTIONS.md).
 
 Global buckling остаётся:
 
@@ -108,49 +142,29 @@ bolt-connection
 self-weight-overlimit
 ```
 
-Результат дополнительно хранит:
+## Отдельная горизонтальная стрела
+
+Вертикальную массу вершины нельзя смешивать с поперечной работой той же конструкции. Issue #36 поэтому содержит две отдельные поперечные задачи:
+
+1. [`LATERAL_CAPACITY_WEATHER_VALIDATION.md`](LATERAL_CAPACITY_WEATHER_VALIDATION.md) — чистый `1 Н` unit-load без собственного веса, нужен как verification/reference upper bound;
+2. [`CRANE_BOOM_CAPACITY.md`](CRANE_BOOM_CAPACITY.md) — горизонтальная стрела, где собственный вес арматурных members повёрнут в поперечное направление и вместе с концевым грузом расходует несущую способность.
+
+Основной результат второго расчёта:
 
 ```text
-boltUtilizationAtLimit
-baseBoltUtilization
-purePayloadReference.boltLimitKg
+craneBoomCapacity.maximumEndPayloadMassKg
 ```
 
-## Уже установленное оборудование
+Он содержательнее простого `Flateral/g`, потому что уже учитывает изгиб от собственного веса горизонтально ориентированной арматурной стрелы. При этом он всё ещё не является паспортной SWL: пока нет динамики подъёма, троса/лебёдки, шарнира, специальных crane-code factors и fabrication mass hardware/weld в FEM.
 
-`maximumTotalTopMassKg` — maximum total equivalent mass at top.
+## Что вертикальный результат не учитывает
 
-Существующая vertical load переводится в mass:
-
-```text
-m_existing = equipmentMassKg
-           + extraVerticalLoadN/(g*equipmentLoadFactor)
-```
-
-Remaining reserve:
-
-```text
-m_remaining = max(0, m_max - m_existing)
-```
-
-## Эквивалентный объём воды
-
-```text
-rho_water = 1000 kg/m³
-Vwater = m_remaining/rho_water
-```
-
-UI показывает kg, m³ и liters. Масса самого бака должна входить в `equipmentMassKg` либо вычитаться отдельно.
-
-## Что результат не учитывает
-
-`maximumTotalTopMassKg` нельзя трактовать как готовую паспортную грузоподъёмность водонапорной башни.
+`maximumTopEquipmentMassKg` нельзя трактовать как готовую нормативную грузоподъёмность сооружения.
 
 Не учтены:
 
-- wind area/moment самого бака;
-- eccentricity центра тяжести;
-- sloshing/dynamic water effects;
+- eccentricity центра тяжести верхнего груза;
+- динамика/удар при подвешивании груза;
 - P-Delta/geometric nonlinearity;
 - initial imperfections;
 - finite stiffness реального стыка;
@@ -158,8 +172,6 @@ UI показывает kg, m³ и liters. Масса самого бака до
 - exact weld group geometry;
 - foundation;
 - нормативные load combinations.
-
-**Сам выбранный межмодульный болт на tension/shear/combined action уже входит в предел 1.0.** Остальные механизмы реального узла требуют дополнительных размеров и перечислены в [`CONNECTIONS.md`](CONNECTIONS.md).
 
 ## Regression checks
 
@@ -169,10 +181,11 @@ UI показывает kg, m³ и liters. Масса самого бака до
 - self weight в special case;
 - safe side binary search;
 - `U_member<=1`, `U_bolt<=1`, `lambda_cr>=1` на сохранённом пределе;
-- правильный вычет existing vertical load;
-- conversion mass -> water volume;
+- вычет только уже заданной массы оборудования;
+- отсутствие water-specific полей результата;
+- отсутствие влияния legacy `extraVerticalLoadN`;
 - независимость gravity-only результата от wind/ice;
 - рост payload capacity с увеличением rebar diameter;
-- рост bolt reference limit при усилении bolt specification;
-- finite `boltUtilizationAtLimit` в 40-module regression;
 - progress до 100%.
+
+Отдельный `tests/crane-boom-capacity.test.js` проверяет горизонтальную стрелу и её собственный вес.

@@ -21,6 +21,25 @@ function rows(items, values) {
   })
 }
 
+function ensureMetricThreadReference(root, data) {
+  const details = root.querySelector('#reference-details')
+  if (!details || details.querySelector('#reference-metric-threads')) return
+  const section = document.createElement('section')
+  section.id = 'reference-metric-threads'
+  section.innerHTML = `
+    <h3>Стандартный ряд метрической резьбы</h3>
+    <p class="hint practical-note">Полный выбранный коммерческий coarse-thread ряд ISO 262:2023 от M1 до M100. Это геометрический справочник резьбы; только отдельное подмножество имеет Ab/Abn и расчётные сопротивления в текущей модели болтов СП 16.</p>
+    <div class="table-scroll"><table class="member-table reference-table">
+      <thead><tr><th>Резьба</th><th>Крупный шаг, мм</th><th>Стандарт</th></tr></thead>
+      <tbody id="reference-metric-thread-rows"></tbody>
+    </table></div>`
+  details.append(section)
+  section.querySelector('#reference-metric-thread-rows')?.replaceChildren(...rows(
+    data.fasteners.metricCoarseThreads,
+    (item) => [item.designation, format(item.pitchMm, 2), item.standard],
+  ))
+}
+
 function ensureJointDesignReference(root, data) {
   const details = root.querySelector('#reference-details')
   if (!details || details.querySelector('#reference-joint-design')) return
@@ -30,17 +49,19 @@ function ensureJointDesignReference(root, data) {
   const preload = data.jointDesign.boltPreload
   const nut = data.jointDesign.nutNetSection
   const weld = data.jointDesign.weldEffectiveArea
+  const service = data.jointDesign.weldServiceDegradation
   section.innerHTML = `
     <h3>Проектные критерии соединительного узла</h3>
     <div class="table-scroll"><table class="member-table reference-table">
       <thead><tr><th>Проверка</th><th>Принято</th><th>Формула / источник</th></tr></thead>
       <tbody>
-        <tr><td>Преднатяг болта от момента</td><td>T=${format(preload.defaultTighteningTorqueNm, 0)} Н·м; K=${format(preload.defaultNutFactor, 2)}; разброс ±${format(preload.defaultPreloadVariation * 100, 0)}%</td><td>${preload.relation}. ${preload.source}</td></tr>
+        <tr><td>Преднатяг болта от момента</td><td>T=${format(preload.defaultTighteningTorqueNm, 0)} Н·м; K=${format(preload.defaultNutFactor, 2)}; разброс ±${format(preload.defaultPreloadVariation * 100, 0)}%; auto ≤${format(preload.autoMaximumPreloadUtilization * 100, 0)}% Nbt</td><td>${preload.relation}. ${preload.source}</td></tr>
         <tr><td>Нетто-сечение гайки</td><td>не менее ${format(nut.minimumAreaRatioToSingleRib, 1)}× площади одного ребра</td><td>${nut.relation}. ${nut.source}</td></tr>
         <tr><td>Эффективная площадь шва</td><td>${format(weld.minimumAreaRatioToRib, 1)}…${format(weld.maximumSelectableAreaRatioToRib, 1)}× Arib; по умолчанию ${format(weld.defaultAreaRatioToRib, 1)}×</td><td>${weld.relation}. ${weld.source}</td></tr>
+        <tr><td>Ресурс сварной зоны</td><td>${format(service.defaultServiceYears, 0)} лет; η0=${format(service.defaultInitialStiffnessRetention, 3)}; r=${format(service.defaultAnnualStiffnessLossRate * 100, 3)}%/год; ηmin=${format(service.defaultMinimumStiffnessRetention, 2)}</td><td>${service.model}. ${service.source}</td></tr>
       </tbody>
     </table></div>
-    <p class="hint practical-note"><strong>Важно:</strong> коэффициенты 2× для гайки и 2–3× для шва — дополнительные консервативные критерии этого проекта. Они не подменяют проверки резьбы, смятия, prying и силовой расчёт шва.</p>`
+    <p class="hint practical-note"><strong>Важно:</strong> area-reserve, ограничение auto-preload и service degradation являются прозрачными консервативными критериями проекта. Они не подменяют проверки резьбы, смятия, prying, усталости, коррозии и фактический контроль сварных соединений.</p>`
   details.append(section)
 }
 
@@ -131,6 +152,7 @@ export function renderReferenceCatalogs(root = document) {
 
   const schema = root.querySelector('#reference-schema')
   if (schema) schema.textContent = data.schema
+  ensureMetricThreadReference(root, data)
   ensureJointDesignReference(root, data)
   return data
 }

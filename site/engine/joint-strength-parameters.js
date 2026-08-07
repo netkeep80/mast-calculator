@@ -9,6 +9,12 @@ import {
   MAX_WELD_TO_RIB_AREA_RATIO,
   MIN_WELD_TO_RIB_AREA_RATIO,
 } from './weld-check.js'
+import {
+  DEFAULT_WELD_ANNUAL_STIFFNESS_LOSS_RATE,
+  DEFAULT_WELD_INITIAL_STIFFNESS_RETENTION,
+  DEFAULT_WELD_MINIMUM_STIFFNESS_RETENTION,
+  DEFAULT_WELD_SERVICE_YEARS,
+} from './weld-service-degradation.js'
 
 const finiteOr = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback
 
@@ -28,11 +34,30 @@ export function resolveJointStrengthParameters(parameters = {}) {
   if (weldAreaRatio < MIN_WELD_TO_RIB_AREA_RATIO || weldAreaRatio > MAX_WELD_TO_RIB_AREA_RATIO) {
     throw new Error(`Запас эффективной площади шва должен быть ${MIN_WELD_TO_RIB_AREA_RATIO}…${MAX_WELD_TO_RIB_AREA_RATIO}× сечения ребра`)
   }
+
+  const weldServiceYears = Math.max(0, finiteOr(parameters.weldServiceYears, DEFAULT_WELD_SERVICE_YEARS))
+  const weldInitialStiffnessRetention = finiteOr(
+    parameters.weldInitialStiffnessRetention,
+    DEFAULT_WELD_INITIAL_STIFFNESS_RETENTION,
+  )
+  const weldAnnualStiffnessLossRate = finiteOr(
+    parameters.weldAnnualStiffnessLossRate,
+    DEFAULT_WELD_ANNUAL_STIFFNESS_LOSS_RATE,
+  )
+  const weldMinimumStiffnessRetention = finiteOr(
+    parameters.weldMinimumStiffnessRetention,
+    DEFAULT_WELD_MINIMUM_STIFFNESS_RETENTION,
+  )
+
   return {
     jointTighteningTorqueNm: tighteningTorqueNm,
     jointNutFactor: nutFactor,
     jointPreloadVariation: preloadVariation,
     jointNutSectionAreaRatio: nutSectionRatio,
     weldToRibAreaRatio: weldAreaRatio,
+    weldServiceYears,
+    weldInitialStiffnessRetention,
+    weldAnnualStiffnessLossRate,
+    weldMinimumStiffnessRetention,
   }
 }

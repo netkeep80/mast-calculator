@@ -16,6 +16,10 @@ import { analyzeFrame, compileFrameSystem } from '../site/engine/solver.js'
 
 const flatten = (values) => values.flatMap((value) => value)
 const maxAbs = (values) => Math.max(0, ...values.map((value) => Math.abs(value)))
+const pointLoadAt = (forceN, directionDeg, verticalDownN = 0) => {
+  const radians = directionDeg * Math.PI / 180
+  return [forceN * Math.cos(radians), forceN * Math.sin(radians), -verticalDownN]
+}
 
 function assertCloseVector(actual, expected, label, relativeTolerance, absoluteTolerance) {
   assert.equal(actual.length, expected.length, `${label}: разная длина векторов`)
@@ -54,7 +58,7 @@ function memberForceVector(globalAnalysis) {
   return globalAnalysis.memberResults.flatMap((member) => member.localEndForces)
 }
 
-function runThreeWays(overrides, { compareBuckling = false } = {}) {
+function runThreeWays(overrides, { compareBuckling = false, topPointLoadN = [0, 0, 0] } = {}) {
   const parameters = resolveCalculationParameters({
     ...DEFAULT_PARAMETERS,
     windPresetId: 'custom',
@@ -62,7 +66,7 @@ function runThreeWays(overrides, { compareBuckling = false } = {}) {
     ...overrides,
   })
   const model = generateMastModel(parameters)
-  const loads = buildLoadCase(model, parameters)
+  const loads = buildLoadCase(model, parameters, { topPointLoadN })
 
   const globalSystem = compileFrameSystem(model, parameters)
   const global = analyzeFrame(model, loads, parameters, globalSystem)
@@ -145,82 +149,81 @@ test('1 модуль: собственный вес совпадает трем�
     windPressurePa: 0,
     equipmentMassKg: 0,
     equipmentWindAreaM2: 0,
-    extraHorizontalLoadN: 0,
-    extraVerticalLoadN: 0,
     iceThicknessMm: 0,
   }, { compareBuckling: true })
   assertTripleStaticIdentity(state)
   assertBucklingIdentity(state)
 })
 
-test('2 модуля: косой ветер, оборудование и узловая нагрузка совпадают тремя путями', () => {
+test('2 модуля: косой ветер, оборудование и внутренняя узловая fixture-нагрузка совпадают тремя путями', () => {
+  const directionDeg = 17
   const state = runThreeWays({
     moduleCount: 2,
-    windDirectionDeg: 17,
+    windDirectionDeg: directionDeg,
     windPressurePa: 420,
     equipmentMassKg: 31,
     equipmentWindAreaM2: 0.47,
     equipmentDragCoefficient: 1.25,
-    extraHorizontalLoadN: 730,
-    extraVerticalLoadN: 260,
-  }, { compareBuckling: true })
+  }, {
+    compareBuckling: true,
+    topPointLoadN: pointLoadAt(730, directionDeg, 260),
+  })
   assertTripleStaticIdentity(state)
   assertBucklingIdentity(state)
 })
 
-test('4 модуля: лёд + ветер + вертикальная нагрузка совпадают, включая λcr', () => {
+test('4 модуля: лёд + ветер + внутренняя вертикальная fixture-нагрузка совпадают, включая λcr', () => {
+  const directionDeg = 43
   const state = runThreeWays({
     moduleCount: 4,
-    windDirectionDeg: 43,
+    windDirectionDeg: directionDeg,
     windPressurePa: 610,
     iceThicknessMm: 9,
     iceDensityKgM3: 900,
     equipmentMassKg: 42,
     equipmentWindAreaM2: 0.58,
-    extraHorizontalLoadN: 410,
-    extraVerticalLoadN: 850,
-  }, { compareBuckling: true })
+  }, {
+    compareBuckling: true,
+    topPointLoadN: pointLoadAt(410, directionDeg, 850),
+  })
   assertTripleStaticIdentity(state)
   assertBucklingIdentity(state)
 })
 
-test('7 модулей: чистая большая боковая сила совпадает по DOF, реакциям и N/V/T/M', () => {
+test('7 модулей: чистая большая внутренняя боковая fixture-сила совпадает по DOF, реакциям и N/V/T/M', () => {
+  const directionDeg = 71
   const state = runThreeWays({
     moduleCount: 7,
-    windDirectionDeg: 71,
+    windDirectionDeg: directionDeg,
     windPressurePa: 0,
     equipmentMassKg: 0,
     equipmentWindAreaM2: 0,
-    extraHorizontalLoadN: 3200,
-    extraVerticalLoadN: 0,
     iceThicknessMm: 0,
-  })
+  }, { topPointLoadN: pointLoadAt(3200, directionDeg) })
   assertTripleStaticIdentity(state)
 })
 
-test('10 модулей: эксплуатационная комбинация совпадает тремя путями', () => {
+test('10 модулей: эксплуатационная комбинация и внутренняя fixture-нагрузка совпадают тремя путями', () => {
+  const directionDeg = 29
   const state = runThreeWays({
     moduleCount: 10,
-    windDirectionDeg: 29,
+    windDirectionDeg: directionDeg,
     windPressurePa: 380,
     iceThicknessMm: 4,
     equipmentMassKg: 20,
     equipmentWindAreaM2: 0.35,
-    extraHorizontalLoadN: 180,
-    extraVerticalLoadN: 120,
-  })
+  }, { topPointLoadN: pointLoadAt(180, directionDeg, 120) })
   assertTripleStaticIdentity(state)
 })
 
 test('12 модулей: расчёт реального масштаба текущей мачты совпадает тремя путями', { timeout: 20_000 }, () => {
+  const directionDeg = 37
   const state = runThreeWays({
     moduleCount: 12,
-    windDirectionDeg: 37,
+    windDirectionDeg: directionDeg,
     windPressurePa: 380,
     equipmentMassKg: 20,
     equipmentWindAreaM2: 0.35,
-    extraHorizontalLoadN: 250,
-    extraVerticalLoadN: 200,
-  })
+  }, { topPointLoadN: pointLoadAt(250, directionDeg, 200) })
   assertTripleStaticIdentity(state)
 })

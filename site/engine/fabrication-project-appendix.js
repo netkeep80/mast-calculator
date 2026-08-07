@@ -63,6 +63,29 @@ function jointStrengthAppendix(result, data) {
 <p class="equation-note">Torque-preload relation: ${escapeHtml(data.jointDesign.boltPreload.source)}. Коэффициент площади шва 2–3× и минимум 2× для нетто-сечения гайки являются дополнительными консервативными критериями этого проекта, а не цитатой нормы.</p>`
 }
 
+function craneBoomAppendix(result) {
+  const boom = result.craneBoomCapacity
+  const pure = result.lateralCapacity
+  if (!boom) return '<p>Расчёт горизонтальной стрелы в данном результате отсутствует.</p>'
+  return `
+<h3>14.7. Горизонтальная стрела: собственный вес и концевой груз</h3>
+<p>Issue #36 добавляет отдельную задачу, отличную от чистого unit-load теста. Та же пространственная frame-модель мысленно поворачивается горизонтально: гравитация арматурных рёбер становится поперечной распределённой нагрузкой, а груз прикладывается к трём узлам конца стрелы.</p>
+<div class="formula">
+  <div class="formula-symbolic">qg = ρ·A·g·γg</div>
+  <div class="formula-result">собственный вес арматурной стрелы = ${number(boom.boomSelfWeightN / 1000, 3)} кН ≈ ${number(boom.boomSelfMassEquivalentKg, 2)} кг массы при g₀</div>
+</div>
+<div class="formula">
+  <div class="formula-symbolic">Pend(m) = m·g·γpayload</div>
+  <div class="formula-symbolic">Utotal = max(Umember, Ubolt, 1/λcr) ≤ 1</div>
+  <div class="formula-result">максимальный концевой груз = ${number(boom.maximumEndPayloadMassKg, 2)} кг; направление ${number(boom.governingDirectionDeg, 0)}°; механизм ${escapeHtml(boom.governingMode)}</div>
+</div>
+<div class="formula">
+  <div class="formula-symbolic">reference upper bound: Flateral/g₀</div>
+  <div class="formula-result">чистый unit-load без собственного веса = ${number(pure?.idealizedCraneBoomPayloadKg ?? pure?.criticalForceKgf, 2)} кг; расчёт стрелы с собственным весом = ${number(boom.maximumEndPayloadMassKg, 2)} кг</div>
+</div>
+<p class="notice"><strong>Граница модели.</strong> В горизонтальной стреле учтён поперечный собственный вес арматурных members, но пока не добавлена отдельная fabrication mass метизов/сварки, не моделируются динамика подъёма, рывок, трос, барабан, шарнир/поворотный узел, ветер/лёд и специальные нормативные коэффициенты грузоподъёмного механизма. Результат не является паспортной SWL крана.</p>`
+}
+
 export function createFabricationAndReferenceAppendix(result) {
   const mass = result.assemblyMass ?? calculateAssemblyMass(result)
   const data = buildReferenceData()
@@ -110,6 +133,7 @@ export function createFabricationAndReferenceAppendix(result) {
 <table><thead><tr><th>Материал</th><th>Тип</th><th>Rwun</th><th>Rwf</th><th>Источник</th></tr></thead><tbody>${weldRows(data)}</tbody></table>
 <p>Полный справочник диаметров, Ab/Abn, обычных и длинных гаек доступен в браузерном интерфейсе и формируется тем же <code>buildReferenceData()</code>.</p>
 ${jointStrengthAppendix(result, data)}
+${craneBoomAppendix(result)}
 </section>
 ${createEskdConstructionDocumentation(result)}`
 }

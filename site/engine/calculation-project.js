@@ -32,9 +32,17 @@ function createLoadAppendix(result) {
   const lateral = result.lateralCapacity
   const staticPayload = result.staticPayloadCapacity
   if (!lateral || !staticPayload) throw new Error('Для бумажного проекта отсутствуют специальные предельные расчёты')
+  const maximumTopMassKg = staticPayload.maximumTopEquipmentMassKg ?? staticPayload.maximumTotalTopMassKg
+  const configuredTopMassKg = staticPayload.configuredTopEquipmentMassKg
+    ?? staticPayload.configuredEquivalentTopMassKg
+    ?? p.equipmentMassKg
+    ?? 0
+  const additionalTopMassKg = staticPayload.additionalTopEquipmentMassKg
+    ?? staticPayload.remainingAdditionalMassKg
+  const cranePayloadKg = lateral.idealizedCraneBoomPayloadKg ?? lateral.criticalForceKgf
   return `
 <section class="page-break">
-<h2>10. Погода, боковая и статическая нагрузки вершины</h2>
+<h2>10. Погода и два предела нагрузки вершины</h2>
 <h3>10.1. Погодный сценарий</h3>
 <p>Выбран сценарий: <strong>${escapeHtml(p.windPresetLabel)}</strong>. Для сценариев Бофорта скорость переводится в динамическое давление:</p>
 <div class="formula">
@@ -44,8 +52,8 @@ function createLoadAppendix(result) {
 </div>
 <p class="equation-note">Бофорт здесь является сравнительным сценарием, а не заменой нормативному ветровому району и сочетаниям СП 20.</p>
 
-<h3>10.2. Чистая боковая сила вершины</h3>
-<p>Специальный unit-load case прикладывает к верхней треугольной грани горизонтальную результирующую 1 Н, отключая собственный вес, лёд, ветер и оборудование.</p>
+<h3>10.2. Поперечный предел вершины / идеализированная консольная стрела</h3>
+<p>Специальный unit-load case передаёт через внутренний test-fixture API горизонтальную результирующую 1 Н на верхнюю треугольную грань. Собственный вес, лёд, ветер и оборудование отключены; пользовательских полей произвольной дополнительной силы для этой проверки не требуется.</p>
 <div class="formula">
   <div class="formula-symbolic">Fmember = 1/Umember(1 Н)</div>
   <div class="formula-result">${number(lateral.memberLimitForceN, 3)} Н = ${number(lateral.memberLimitForceKgf, 1)} кгс</div>
@@ -62,22 +70,27 @@ function createLoadAppendix(result) {
   <div class="formula-symbolic">Flim = min(Fmember, Fglobal, Fbolt)</div>
   <div class="formula-result">Flim = ${number(lateral.criticalForceN, 3)} Н = ${number(lateral.criticalForceKgf, 1)} кгс; ${escapeHtml(modeLabel(lateral.governingMode))}; направление ${number(lateral.directionDeg, 0)}°</div>
 </div>
-<p>1 кгс = ${number(STANDARD_GRAVITY_M_S2, 5)} Н.</p>
+<div class="formula">
+  <div class="formula-symbolic">mcrane,ideal = Flim / g0</div>
+  <div class="formula-result">${number(cranePayloadKg, 1)} кг эквивалентного концевого поперечного груза при g0=${number(STANDARD_GRAVITY_M_S2, 5)} м/с²</div>
+</div>
+<p class="equation-note">Это оценка идеализированной консольной стрелы. Собственный вес горизонтально ориентированной стрелы в unit-load case исключён, поэтому число не является паспортной грузоподъёмностью крана.</p>
 
-<h3>10.3. Максимальная статическая масса на вершине</h3>
-<p>Gravity-only search сохраняет собственный вес и прикладывает пробную массу к трём верхним узлам. Ветер и лёд выключены.</p>
+<h3>10.3. Максимальная масса оборудования/груза на вершине вертикальной мачты</h3>
+<p>Gravity-only search сохраняет собственный вес и прикладывает пробную массу к трём верхним узлам. Ветер и лёд выключены. Issue #36 оставляет одну пользовательскую вертикальную величину — массу на вершине.</p>
 <div class="formula">
   <div class="formula-symbolic">Pdesign(m) = m·g·γpayload</div>
-  <div class="formula-result">mmax = ${number(staticPayload.maximumTotalTopMassKg, 2)} кг; Pdesign = ${number(staticPayload.maximumDesignTopForceN / 1000, 3)} кН</div>
+  <div class="formula-result">mmax = ${number(maximumTopMassKg, 2)} кг; Pdesign = ${number(staticPayload.maximumDesignTopForceN / 1000, 3)} кН</div>
+</div>
+<div class="formula">
+  <div class="formula-symbolic">madd = max(0, mmax − mconfigured)</div>
+  <div class="formula-result">mconfigured = ${number(configuredTopMassKg, 2)} кг; можно добавить ${number(additionalTopMassKg, 2)} кг</div>
 </div>
 <div class="formula">
   <div class="formula-symbolic">Umember(m) ≤ 1; Ubolt(m) ≤ 1; λcr(m) ≥ 1</div>
   <div class="formula-result">Umember=${number(staticPayload.utilizationAtLimit, 5)}, Ubolt=${number(staticPayload.boltUtilizationAtLimit, 5)}, λcr=${number(staticPayload.bucklingFactorAtLimit, 5)}; ${escapeHtml(modeLabel(staticPayload.governingMode))}</div>
 </div>
-<div class="formula">
-  <div class="formula-symbolic">Vwater = mreserve / ρwater</div>
-  <div class="formula-result">${number(staticPayload.equivalentWaterVolumeM3, 4)} м³ = ${number(staticPayload.equivalentWaterVolumeLiters, 1)} л при ρwater=${number(staticPayload.waterDensityKgM3, 0)} кг/м³</div>
-</div>
+<p class="equation-note">Отдельный вывод эквивалентного объёма воды удалён: при необходимости объём непосредственно пересчитывается из массы и выбранной плотности.</p>
 </section>`
 }
 

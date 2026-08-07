@@ -32,8 +32,6 @@ function staticsParameters(overrides = {}) {
     windPressurePa: 0,
     equipmentMassKg: 0,
     equipmentWindAreaM2: 0,
-    extraHorizontalLoadN: 0,
-    extraVerticalLoadN: 0,
     iceThicknessMm: 0,
     windEnvelopeEnabled: false,
     ...overrides,
@@ -95,11 +93,16 @@ function forceToMoveReactionResultant(weightN, gravityCenter, target, topHeightM
 }
 
 function solveOracleCase(model, parameters, horizontalForceN = 0, directionDeg = 0) {
+  const radians = directionDeg * Math.PI / 180
+  const topPointLoadN = [
+    horizontalForceN * Math.cos(radians),
+    horizontalForceN * Math.sin(radians),
+    0,
+  ]
   const loadCase = buildLoadCase(model, {
     ...parameters,
-    extraHorizontalLoadN: horizontalForceN,
     windDirectionDeg: directionDeg,
-  })
+  }, { topPointLoadN })
   const global = analyzeFrame(model, loadCase, parameters)
   const reference = analyzeIndependentDenseFrame(
     model,
@@ -160,7 +163,7 @@ test('статика опор: без ветра три нижних узла н
   assertTwoSolversMatch(global, reference, model, oracle.weightN)
 })
 
-test('статика опор: сила F = W·e/H выводит результирующую на противоположное ребро и даёт 0, 1/2, 1/2', () => {
+test('статика опор: внутренняя сила F = W·e/H выводит результирующую на противоположное ребро и даёт 0, 1/2, 1/2', () => {
   const parameters = staticsParameters()
   const model = pointSupportModel(parameters)
   const oracle = independentSelfWeightOracle(model, parameters)
@@ -199,7 +202,7 @@ test('статика опор: сила F = W·e/H выводит результ
   assertTwoSolversMatch(global, reference, model, oracle.weightN)
 })
 
-test('статика опор: сила F = W·R/H выводит результирующую в один нижний узел и даёт W, 0, 0', () => {
+test('статика опор: внутренняя сила F = W·R/H выводит результирующую в один нижний узел и даёт W, 0, 0', () => {
   const parameters = staticsParameters()
   const model = pointSupportModel(parameters)
   const oracle = independentSelfWeightOracle(model, parameters)

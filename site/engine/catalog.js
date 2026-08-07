@@ -1,7 +1,9 @@
 export const STOCK_BAR_LENGTHS_MM = Object.freeze([11800, 12000])
 
+// Issue #36: изготовителю может понадобиться любой целочисленный раскрой
+// закупочного прутка от одного цельного ребра до 48 равных заготовок.
 export const STOCK_BAR_DIVISIONS = Object.freeze(
-  Array.from({ length: 17 }, (_, index) => index + 8),
+  Array.from({ length: 48 }, (_, index) => index + 1),
 )
 
 // Практический ряд наиболее распространённых номинальных диаметров из
@@ -58,6 +60,7 @@ export function theoreticalCutLengthMm(stockBarLengthMm, stockBarPieces) {
   const stockLength = positiveNumber(stockBarLengthMm, 'Закупочная длина арматуры')
   const pieces = positiveNumber(stockBarPieces, 'Количество частей')
   if (!Number.isInteger(pieces)) throw new Error('Количество частей должно быть целым числом')
+  if (pieces > 48) throw new Error('Количество частей должно быть от 1 до 48')
   return stockLength / pieces
 }
 

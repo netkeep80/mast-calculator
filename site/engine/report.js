@@ -364,6 +364,7 @@ export function createCalculationExport(
   const members = buildMemberEnvelope(result)
   const lateralCapacity = exportLateralCapacity(result.lateralCapacity)
   const staticPayloadCapacity = exportStaticPayloadCapacity(result.staticPayloadCapacity)
+  const craneBoomCapacity = result.craneBoomCapacity ? clonePlain(result.craneBoomCapacity) : null
   const heightCapacity = result.heightCapacity ? clonePlain(result.heightCapacity) : null
   const verification = exportVerification(result.verification)
   const connections = exportConnections(result.connections)
@@ -374,7 +375,7 @@ export function createCalculationExport(
   const criticalWeld = connections?.weld?.critical
 
   return {
-    schema: 'mast-calculator/calculation-snapshot/v8',
+    schema: 'mast-calculator/calculation-snapshot/v9',
     generatedAt,
     software: {
       method: result.method ?? null,
@@ -417,11 +418,20 @@ export function createCalculationExport(
       lateralBoltLimitForceKgf: lateralCapacity?.boltLimitForceKgf ?? null,
       lateralGoverningMode: lateralCapacity?.governingMode ?? null,
       lateralDirectionDeg: lateralCapacity?.directionDeg ?? null,
+      maximumTopEquipmentMassKg: staticPayloadCapacity?.maximumTopEquipmentMassKg ?? null,
+      configuredTopEquipmentMassKg: staticPayloadCapacity?.configuredTopEquipmentMassKg ?? null,
+      additionalTopEquipmentMassKg: staticPayloadCapacity?.additionalTopEquipmentMassKg ?? null,
       maximumTotalTopMassKg: staticPayloadCapacity?.maximumTotalTopMassKg ?? null,
       remainingAdditionalTopMassKg: staticPayloadCapacity?.remainingAdditionalMassKg ?? null,
-      equivalentWaterVolumeM3: staticPayloadCapacity?.equivalentWaterVolumeM3 ?? null,
       staticPayloadBoltUtilization: staticPayloadCapacity?.boltUtilizationAtLimit ?? null,
       staticPayloadGoverningMode: staticPayloadCapacity?.governingMode ?? null,
+      craneBoomMaximumEndPayloadMassKg: craneBoomCapacity?.maximumEndPayloadMassKg ?? null,
+      craneBoomConfiguredEndPayloadMassKg: craneBoomCapacity?.configuredEndPayloadMassKg ?? null,
+      craneBoomAdditionalEndPayloadMassKg: craneBoomCapacity?.additionalEndPayloadMassKg ?? null,
+      craneBoomSelfWeightN: craneBoomCapacity?.boomSelfWeightN ?? null,
+      craneBoomSelfMassEquivalentKg: craneBoomCapacity?.boomSelfMassEquivalentKg ?? null,
+      craneBoomDirectionDeg: craneBoomCapacity?.governingDirectionDeg ?? null,
+      craneBoomGoverningMode: craneBoomCapacity?.governingMode ?? null,
       configuredBoltDiameterMm: resolvedParameters.jointBoltDiameterMm,
       configuredBoltClass: resolvedParameters.jointBoltClass,
       configuredBoltUtilization: selectedBolt?.utilization ?? 0,
@@ -448,6 +458,7 @@ export function createCalculationExport(
     loadCases: result.cases.map(exportLoadCase),
     lateralCapacity,
     staticPayloadCapacity,
+    craneBoomCapacity,
     heightCapacity,
     connections,
     verification,

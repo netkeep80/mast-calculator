@@ -80,7 +80,11 @@ export function evaluateBoltSystemForAnalysis(model, analysis, parameters, metad
 }
 
 export function selectedBoltUtilizationForAnalysis(model, analysis, parameters) {
-  return evaluateBoltSystemForAnalysis(model, analysis, parameters).utilization
+  const evaluation = evaluateBoltSystemForAnalysis(model, analysis, parameters)
+  if (!evaluation.applicable) return 0
+  return evaluation.geometry?.passes === false
+    ? Number.POSITIVE_INFINITY
+    : evaluation.utilization
 }
 
 function buildOperationalJointResultants(result) {

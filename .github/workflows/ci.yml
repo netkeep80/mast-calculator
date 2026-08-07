@@ -141,6 +141,32 @@ jobs:
       - name: Check analytical three-support reaction oracles
         run: npm run test:statics
 
+  usage-ux:
+    name: Usage scenarios and reference catalogs
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: check-${{ github.workflow }}-${{ github.ref }}-usage-ux
+      cancel-in-progress: true
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Simulate fresh merge with latest base
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/simulate-fresh-merge.sh
+      - name: Use Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+      - name: Check user scenarios, assembly mass and single-source catalogs
+        run: npm run test:ux
+
   test:
     name: Tests (${{ matrix.os }})
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
@@ -213,15 +239,23 @@ jobs:
           fi
 
           grep --quiet '<title>Калькулятор мачты</title>' /tmp/mast-calculator-index.html
+          grep --quiet 'Проверить конкретную мачту' /tmp/mast-calculator-index.html
+          grep --quiet 'Справочники — проверить исходные значения расчёта' /tmp/mast-calculator-index.html
           curl --fail --silent http://127.0.0.1:4173/logo.jpg >/dev/null
           curl --fail --silent http://127.0.0.1:4173/app-bootstrap.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/app.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/usage-scenarios.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/usage-style.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/usage.css >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/reference-catalog.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/calculation-worker.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/viewer.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/module-viewer.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/joint-viewer.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/calculate.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/complete-calculation.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/assembly-mass.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/reference-data.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/solver.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/reference-frame.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/module-stack.js >/dev/null

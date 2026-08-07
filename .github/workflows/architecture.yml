@@ -46,6 +46,8 @@ jobs:
         run: npm run build:core
       - name: Import emitted application API
         run: node --input-type=module -e "await import('./.build/packages/application/index.js')"
+      - name: Run complete regression against emitted runtime
+        run: npm run test:emitted
       - name: Test runtime contract validation
         run: npm run test:contracts
       - name: Test architecture audit tooling

@@ -72,7 +72,7 @@ test('интерфейс показывает многоуровневый па�
   assert.match(html, /сторонний КЭ-комплекс/)
   assert.match(app, /renderVerification/)
   assert.match(app, /Как проверить самому/)
-  assert.match(app, /not-verified/)
+  assert.match(app, /не проверено/)
 })
 
 test('тяжёлый расчёт вынесен из main thread в модульный Web Worker', () => {

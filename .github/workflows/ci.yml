@@ -12,8 +12,6 @@ permissions:
   contents: read
 
 env:
-  # Set Git's initial branch before actions/checkout invokes git init. This
-  # avoids dependence on runner defaults and mirrors the link-foundation templates.
   GIT_CONFIG_COUNT: '1'
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
@@ -155,6 +153,11 @@ jobs:
           curl --fail --silent http://127.0.0.1:4173/engine/banded.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/buckling.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/weather.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/connection-catalog.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/bolt-check.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/weld-check.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/joint-demand.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/engine/connection-check.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/lateral-capacity.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/static-payload-capacity.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/engine/verification.js >/dev/null

@@ -1,6 +1,8 @@
 name: Foundation 52 member engineering split
 
 on:
+  push:
+    branches: [agent/issue-52-headless-core]
   pull_request:
     branches: [main]
     types: [synchronize, ready_for_review]
@@ -16,7 +18,7 @@ jobs:
   split:
     # This one-shot migration intentionally runs while the PR is draft so the
     # permanent regression matrix can stay quiet until the source split lands.
-    if: github.head_ref == 'agent/issue-52-headless-core'
+    if: github.ref == 'refs/heads/agent/issue-52-headless-core' || github.head_ref == 'agent/issue-52-headless-core'
     permissions:
       contents: write
     runs-on: ubuntu-latest

@@ -102,7 +102,7 @@
         </div>
 
         <details class="input-details">
-          <summary>Уточнить ветер и дополнительные нагрузки</summary>
+          <summary>Уточнить ветер и параметры среды</summary>
           <div class="form-grid advanced-grid">
             <label>Аэродинамический коэффициент рёбер<input name="dragCoefficient" type="number" min="0" step="0.05"></label>
             <label>Направление ветра, °<input name="windDirectionDeg" type="number" step="5"></label>
@@ -110,10 +110,7 @@
             <label class="checkbox"><input name="windEnvelopeEnabled" type="checkbox"> Перебирать направления ветра</label>
             <label>Плотность льда, кг/м³<input name="iceDensityKgM3" type="number" min="0" step="10"></label>
             <label>Аэродин. коэффициент оборудования<input name="equipmentDragCoefficient" type="number" min="0" step="0.05"></label>
-            <label>Доп. горизонтальная сила (уже как сила), Н<input name="extraHorizontalLoadN" type="number" min="0" step="10"></label>
-            <label>Доп. вертикальная сила вниз (уже как сила), Н<input name="extraVerticalLoadN" type="number" min="0" step="10"></label>
           </div>
-          <p class="hint practical-note"><strong>Не задавайте одну и ту же нагрузку дважды.</strong> «Масса оборудования» — физическая масса: программа переводит её в расчётный вес по формуле m·g·γ оборудования. «Доп. вертикальная сила» — уже готовая сила в ньютонах, например натяжение или иное внешнее усилие; коэффициент веса оборудования к ней повторно не применяется.</p>
         </details>
 
         <details id="joint-input-details" class="input-details">
@@ -131,7 +128,6 @@
             <label>Сварочный материал<select name="weldConsumableId"></select></label>
             <label>Катет углового шва<select name="weldLegMm"></select></label>
             <label>Непрерывных участков на конец<select name="weldSegmentsPerEnd"></select></label>
-            <label>Rm металла детали узла, МПа<input name="jointBaseMetalTensileStrengthMPa" type="number" min="100" step="10"></label>
           </div>
           <p id="joint-config-summary" class="hint practical-note"></p>
         </details>

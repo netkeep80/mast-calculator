@@ -14,6 +14,7 @@ import { calculateStaticPayloadCapacity } from '../packages/engineering/index.js
 const usageSource = fs.readFileSync(new URL('../apps/web/usage-scenarios.js', import.meta.url), 'utf8')
 const loadsSource = fs.readFileSync(new URL('../packages/structural-analysis/src/loads.js', import.meta.url), 'utf8')
 const completeSource = fs.readFileSync(new URL('../packages/application/src/complete-calculation.js', import.meta.url), 'utf8')
+const htmlSource = fs.readFileSync(new URL('../apps/web/index.html', import.meta.url), 'utf8')
 
 test('issue #36: раскрой содержит каждый целый вариант 1…48', () => {
   assert.deepEqual(STOCK_BAR_DIVISIONS, Array.from({ length: 48 }, (_, index) => index + 1))
@@ -102,9 +103,10 @@ test('issue #36: полный пользовательский расчёт до
   assert.doesNotMatch(completeSource, /result\.craneBoomCapacity\s*=/)
 })
 
-test('issue #36: браузерный сценарный слой удаляет две дополнительные силы, скрывает воду и показывает стрелу', () => {
-  assert.match(usageSource, /removeLegacyForceControl\('extraHorizontalLoadN'\)/)
-  assert.match(usageSource, /removeLegacyForceControl\('extraVerticalLoadN'\)/)
+test('issue #36: пользовательская форма физически не содержит legacy сил и по-прежнему показывает стрелу', () => {
+  assert.doesNotMatch(htmlSource, /name=["']extraHorizontalLoadN["']/)
+  assert.doesNotMatch(htmlSource, /name=["']extraVerticalLoadN["']/)
+  assert.doesNotMatch(usageSource, /removeLegacyForceControl/)
   assert.match(usageSource, /metric-water-volume/)
   assert.match(usageSource, /waterArticle\.hidden = true/)
   assert.doesNotMatch(usageSource, /equivalentWaterVolumeM3/)

@@ -55,11 +55,6 @@ function closestMetricArticle(id) {
   return document.querySelector(id)?.closest('article') ?? null
 }
 
-function removeLegacyForceControl(name) {
-  const element = form?.elements.namedItem(name)
-  element?.closest('label')?.remove()
-}
-
 function setMetricLabel(id, text) {
   const article = closestMetricArticle(id)
   const caption = article?.querySelector('span')
@@ -67,9 +62,6 @@ function setMetricLabel(id, text) {
 }
 
 function installIssue36Ui() {
-  removeLegacyForceControl('extraHorizontalLoadN')
-  removeLegacyForceControl('extraVerticalLoadN')
-
   const equipment = form?.elements.namedItem('equipmentMassKg')
   if (equipment?.closest('label')) {
     const label = equipment.closest('label')
@@ -77,16 +69,6 @@ function installIssue36Ui() {
       if (node.nodeType === Node.TEXT_NODE) node.textContent = ''
     }
     label.prepend(document.createTextNode('Уже установленная масса на вершине, кг'))
-  }
-
-  for (const details of document.querySelectorAll('details.input-details')) {
-    const summary = details.querySelector(':scope > summary')
-    if (summary?.textContent.includes('Уточнить ветер и дополнительные нагрузки')) {
-      summary.textContent = 'Уточнить ветер и параметры среды'
-      for (const note of details.querySelectorAll('.practical-note')) {
-        if (/не задавайте одну и ту же нагрузку дважды/i.test(note.textContent)) note.remove()
-      }
-    }
   }
 
   setMetricLabel('#metric-lateral-capacity', 'Чистый поперечный предел')

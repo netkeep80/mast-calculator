@@ -1,49 +1,62 @@
 # Архитектура расчётного ядра
 
-Документ фиксирует архитектуру прототипа 0.7: границы между пользовательским вводом, геометрией, global 3D frame FEM, оптимизированным численным solver, Web Worker, отчётностью и будущим расчётом физических соединений.
+Статус: архитектура прототипа 0.9.
+
+Документ фиксирует границы между практическим вводом, геометрией, global 3D frame FEM, оптимизированным solver, специальными предельными cases, многоуровневой верификацией, Web Worker и отчётностью.
 
 ## 1. Общий поток
 
 ```text
-Практический ввод
+Practical input
   stock / cutting / diameter / material / weather / loads
-        │
-        ▼
+        |
+        v
 Parameter resolution
   a = Lstock/nparts
   h = a*sqrt(2/3)
   material catalogue
   weather preset -> v -> q
-        │
-        ▼
+        |
+        v
 Regular-octahedron geometry
-        │
-        ▼
+        |
+        v
 compileFrameSystem()
   element geometry + transforms
   free DOF map
   symmetric band K
   Cholesky(K) once
-        │
-        ├──────────── operational wind cases
-        │               build F -> solve -> N/V/T/M -> KG -> buckling
-        │
-        └──────────── lateral unit-load cases
-                        same K -> solve -> member/global limits
-        │
-        ▼
+        |
+        +---- operational wind cases
+        |       build F -> solve -> N/V/T/M -> KG -> buckling
+        |
+        +---- lateral unit-load cases
+        |       same K -> solve -> member/global limits
+        |
+        +---- static top-payload search
+        |       same K -> self weight + trial mass -> solve/buckling
+        |
+        v
+buildVerificationPassport(result)
+  simple formulas
+  equilibrium/residuals
+  known-answer frame problems
+  dense/reference cross-checks
+  explicit external pending levels
+        |
+        v
 Worker result
-        ├── UI / viewer
-        ├── CSV
-        ├── printable project
-        └── internal snapshot
+        +-- UI / 3D viewer
+        +-- CSV
+        +-- printable project + verification appendix
+        +-- internal CalculationSnapshot v6
 ```
 
-Main thread браузера не выполняет FEM.
+Main thread браузера не выполняет FEM solve.
 
-## 2. Fabrication и material model
+## 2. Parameter/material boundary
 
-Пользователь задаёт:
+Пользовательские fabrication inputs:
 
 ```js
 {
@@ -54,13 +67,13 @@ Main thread браузера не выполняет FEM.
 }
 ```
 
-Пока:
+До отдельной fabrication model:
 
 ```text
 ribCutLengthMm = stockBarLengthMm/stockBarPieces
 ```
 
-Каталог материала централизованно задаёт:
+Material catalogue централизованно задаёт:
 
 ```text
 E
@@ -72,11 +85,11 @@ weldability
 standard
 ```
 
-Будущая fabrication model должна отдельно учитывать kerf, trim, overlap и физическую геометрию соединительного узла.
+`resolveCalculationParameters()` всегда заново выводит `ribCutLengthMm`, `triangleSideMm`, `moduleHeightMm` и фиксирует `effectiveLengthFactor=0.5` для текущей fixed-fixed идеализации.
 
-## 3. Weather model
+## 3. Weather boundary
 
-`weather.js` разрешает UI-сценарий в механические параметры:
+`weather.js` разрешает UI selection в:
 
 ```js
 {
@@ -88,14 +101,14 @@ standard
 }
 ```
 
-Для Beaufort preset:
+Для preset:
 
 ```text
 q = rho_air*v²/2
 rho_air = 1.225 kg/m³
 ```
 
-Остальной solver работает с `windPressurePa` и не зависит от способа его выбора.
+Mechanical solver получает уже `windPressurePa` и не зависит от способа выбора погоды.
 
 ## 4. Geometry
 
@@ -106,9 +119,9 @@ R = a/sqrt(3)
 h = a*sqrt(2/3)
 ```
 
-Каждый уровень содержит три узла. Соседние уровни повёрнуты на 60°.
+Каждый уровень содержит три узла; соседние уровни повёрнуты на 60°.
 
-Один модуль:
+Один module:
 
 ```text
 3 horizontal members
@@ -116,7 +129,7 @@ h = a*sqrt(2/3)
 = 9 members
 ```
 
-Frame node:
+Node:
 
 ```js
 {
@@ -126,11 +139,11 @@ Frame node:
 }
 ```
 
-Нижние три узла полностью заделаны.
+Нижние три nodes полностью заделаны.
 
 ## 5. Frame element
 
-На узел:
+На node:
 
 ```text
 [ux, uy, uz, rx, ry, rz]
@@ -159,13 +172,15 @@ GJ/L
 2EI/L
 ```
 
-Переход в global coordinates:
+Coordinate transform:
 
 ```text
 Ke = T^T*ke*T
 ```
 
-## 6. Distributed loads
+Идеальные joints не имеют moment releases.
+
+## 6. Loads
 
 `buildLoadCase()` разделяет:
 
@@ -175,23 +190,23 @@ nodalMoments[nodeId]
 memberDistributedLoads[memberId]
 ```
 
-Собственный вес, лёд и ветер являются distributed member loads.
+Self weight, ice and member wind являются distributed loads.
 
-Для равномерной поперечной нагрузки consistent load vector содержит `qL/2` и `qL²/12`.
+Для uniform transverse load consistent local vector учитывает `qL/2` и `qL²/12`.
 
-Ветровая нагрузка цилиндрического member:
+Wind vector цилиндрического member:
 
 ```text
 qwind = p*cd*dout*gamma_w*(ew - ex*(ex dot ew))
 ```
 
-Компонента вдоль оси цилиндра исключается.
+Осевая компонента потока исключается.
 
-## 7. Почему K ленточная
+## 7. Symmetric band K
 
-Member связывает узлы одного уровня либо двух соседних уровней. При последовательной нумерации уровней ненулевые коэффициенты глобальной `K` находятся около главной диагонали.
+Текущая топология соединяет nodes одного либо двух соседних уровней. При level-order numbering глобальная stiffness matrix имеет ограниченную полуширину.
 
-Для 40 модулей:
+40 modules:
 
 ```text
 123 nodes
@@ -200,42 +215,7 @@ Member связывает узлы одного уровня либо двух �
 half-bandwidth = 35
 ```
 
-Поэтому основной solver использует symmetric band storage вместо `n×n` dense matrix.
-
-## 8. compileFrameSystem
-
-`compileFrameSystem(model, parameters)` отделяет неизменную механику модели от меняющихся load cases.
-
-Один раз вычисляются:
-
-```text
-member lengths
-local axes
-T
-A, I, J, G
-ke / Ke
-free DOF map
-bandwidth
-Kfree
-Cholesky(Kfree)
-total mass
-```
-
-Ключевой invariant полного расчёта одной геометрии:
-
-```text
-stiffnessFactorizationCount = 1
-```
-
-## 9. Symmetric band Cholesky
-
-Основной linear-system solver:
-
-```text
-symmetric-band-cholesky
-```
-
-Сложности:
+Основной solver использует symmetric band storage:
 
 ```text
 storage       O(n*b)
@@ -243,36 +223,52 @@ factorization O(n*b²)
 solve         O(n*b)
 ```
 
-После factorization каждый новый load case требует только assembly RHS и forward/back substitution.
+## 8. compileFrameSystem
 
-`tests/banded.test.js` сравнивает banded solve с существующим dense reference.
+Один раз на геометрию рассчитываются:
 
-## 10. Static load case
+```text
+member length/local axes
+T
+A/I/J/G
+ke/Ke
+free DOF map
+bandwidth
+Kfree
+Cholesky(Kfree)
+total mass
+```
 
-Для каждого case:
+Invariant complete calculation:
+
+```text
+stiffnessFactorizationCount = 1
+```
+
+Все subsequent load cases переиспользуют factorization.
+
+## 9. Static solve
+
+Для каждого load case:
 
 ```text
 assemble F
 solve K*u = F
-recover member local end actions
+recover local member end actions
 recover reactions
 build KG from axial forces
 solve generalized buckling
 ```
 
-Member end vector:
+Member local end vector:
 
 ```text
 fend = ke*ue - feq
 ```
 
-содержит:
+содержит `N, Vy, Vz, T, My, Mz`.
 
-```text
-N, Vy, Vz, T, My, Mz
-```
-
-Напряжения:
+Stress recovery:
 
 ```text
 sigma_N = |N|/A
@@ -286,20 +282,20 @@ tau = sqrt(tau_T² + tau_V²)
 sigma_eq = sqrt(sigma² + 3*tau²)
 ```
 
-Для distributed transverse load дополнительно учитывается внутренний максимум порядка `q_perp*L²/8`.
+Для transverse distributed load дополнительно учитывается internal bending allowance порядка `q_perp*L²/8`.
 
-## 11. Local Euler check
+## 10. Local Euler check
 
 ```text
 Leff = mu*L
-N_E = pi²*E*I/Leff²/gamma_M
 mu = 0.5
+N_E = pi²*E*I/Leff²/gamma_M
 eta_member = max(eta_stress, eta_Euler)
 ```
 
-Это текущая упругая инженерная проверка, а не полный нормативный member buckling design.
+Это текущая elastic engineering check, не полный СП 16 member design.
 
-## 12. Global buckling
+## 11. Global buckling
 
 Исходная задача:
 
@@ -307,7 +303,7 @@ eta_member = max(eta_stress, eta_Euler)
 (K + lambda*KG)*phi = 0
 ```
 
-Эквивалентный operator:
+Рабочий matrix-free operator:
 
 ```text
 A(v) = solve(K, -KG*v)
@@ -317,70 +313,38 @@ lambda = 1/mu
 
 Явный `K^-1` не строится.
 
-Generalized Lanczos работает в `K`-inner product:
+Generalized Lanczos работает в `K`-inner product и использует повторную ортогонализацию.
 
-```text
-<x,y>_K = x^T*K*y
-```
-
-и использует повторную K-ортогонализацию.
-
-Критерий остановки — фактическая невязка исходной задачи:
+Критерий сходимости обязательно включает actual generalized residual:
 
 ```text
 r = (K + lambda*KG)*phi
 ```
 
-а не только внутренняя Ritz-оценка.
+Сохраняются `criticalLoadFactor`, mode translations/rotations, residual/eigenResidual and iterations.
 
-Сохраняются:
+## 12. Wind envelope и 120° symmetry
 
-```text
-criticalLoadFactor
-mode
-rotations
-residual
-eigenResidual
-iterations
-```
+Полная пользовательская сетка `0..360` сначала строится без изменений, затем canonical angles сворачиваются modulo 120° и удаляются только точные физически эквивалентные duplicates.
 
-`tests/buckling.test.js` сравнивает fast generalized Lanczos с dense reference на малой задаче.
-
-## 13. Wind envelope и 120° symmetry
-
-Треугольная идеальная модель имеет rotational period 120°.
-
-Алгоритм:
-
-1. строит прежнюю полную пользовательскую сетку `0..360`;
-2. приводит углы modulo 120°;
-3. удаляет только совпадающие canonical angles;
-4. считает уникальные cases.
-
-Default step 30°:
+Default 30°:
 
 ```text
 12 full-circle samples -> 4 solves
 0, 30, 60, 90 degrees
 ```
 
-Step 45°:
+Optimization не имеет права терять уникальное направление исходной сетки.
 
-```text
-0, 15, 30, 45, 60, 75, 90, 105
-```
+## 13. Lateral capacity
 
-Таким образом optimization не теряет направления исходной discretization.
-
-## 14. Lateral capacity
-
-Проверочный normalized case:
+Normalized special case:
 
 ```text
 F0 = 1 N horizontal at top
 ```
 
-В нём отключаются gravity, wind, ice, equipment и extra loads.
+В нём отключены gravity, wind, ice, equipment and extra loads.
 
 Из линейности:
 
@@ -390,13 +354,146 @@ Fglobal = lambda_cr(F0)*1 N
 Flim = min(Fmember, Fglobal)
 ```
 
-`Fmember`, `Fglobal` и `Flim` имеют независимые direction envelopes.
+`Fmember`, `Fglobal`, `Flim` строят independent direction envelopes.
 
-Lateral cases используют тот же compiled elastic system, что и эксплуатационные cases.
+## 14. Static top payload capacity
 
-## 15. Web Worker
+Этот special case, наоборот, сохраняет self weight и прикладывает trial mass вертикально к top nodes.
 
-Browser boundary:
+Для каждого `m`:
+
+```text
+Pdesign = m*g*equipmentLoadFactor
+U_member(m)
+lambda_cr(m)
+```
+
+Pass condition:
+
+```text
+U_member <= 1
+lambda_cr >= 1
+```
+
+Pure 1 kg case без self weight используется только для initial upper bound. Финальное значение уточняется binary search уже с self weight.
+
+Все trial cases используют то же `K` и его единственную Cholesky factorization.
+
+## 15. Verification layer
+
+`site/engine/verification.js` не является ещё одним FEM solver. Он читает готовый complete result и формирует **evidence passport**.
+
+```text
+result
+  -> buildVerificationPassport(result)
+       -> level 1: simple independent formulas
+       -> level 2: equilibrium + residuals
+       -> level 3: known-answer production-solver benchmarks
+       -> level 4: different numerical algorithms/reference
+       -> level 5: external FEM + expert review = pending
+       -> level 6: physical validation = pending
+```
+
+### 15.1. Level 1 — derived inputs and easy quantities
+
+Проверяются независимо от UI display:
+
+```text
+a = L0/n
+h = a*sqrt(2/3)
+actual H from node coordinates
+member count
+actual member lengths
+steel mass from Lsum*A*rho
+self weight from m*g*gamma_g
+wind pressure from rho_air*v²/2
+```
+
+Для numeric checks сохраняются:
+
+```js
+{
+  actual,
+  expected,
+  tolerance,
+  relativeError,
+  formula,
+  substitution,
+  howToCheck
+}
+```
+
+### 15.2. Level 2 — equation/physics closure
+
+Паспорт агрегирует worst-case diagnostics по operational cases:
+
+```text
+global force closure
+moment closure
+linear residual
+free DOF equilibrium residual
+buckling residual
+```
+
+Эти проверки отвечают на вопрос «удовлетворяет ли найденное решение собранной задаче и законам равновесия?», но не на вопрос «правильно ли сформулирована реальная задача?».
+
+### 15.3. Level 3 — runtime known-answer frame checks
+
+При `calculateCompleteMast()` тем же production `analyzeFrame()` решаются небольшие модели:
+
+```text
+axial bar:        delta = FL/(EA)
+cantilever:       delta = PL³/(3EI)
+cantilever angle: theta = PL²/(2EI)
+```
+
+Это self-test именно production frame element, а не копия формулы из report renderer.
+
+### 15.4. Level 4 — cross-algorithm checks
+
+Рабочий banded Cholesky сравнивается с отдельным dense Gaussian solver на одной SPD system.
+
+Рабочий banded/Lanczos buckling и dense reference решают diagonal generalized eigenproblem с analytical `lambda_cr=2`.
+
+Purpose: ловить ошибки fast numerical path, не выдавая cross-algorithm agreement за proof полной physical model.
+
+### 15.5. Levels 5–6 are intentionally pending
+
+Программный код не может сам сделать независимыми собственные результаты. Поэтому следующие checks создаются с status `not-verified`:
+
+```text
+external FEM
+expert engineering review
+physical validation
+```
+
+UI и paper report обязаны показывать это явно.
+
+### 15.6. Passport status
+
+Если есть любой internal fail:
+
+```text
+verification.status = failed
+```
+
+Если levels 1–4 pass, а внешние остаются pending:
+
+```text
+verification.status = internal-passed-external-pending
+```
+
+Это означает internal verification, а не validation реальной конструкции.
+
+Подробности: [`VERIFICATION_FOR_NON_SPECIALISTS.md`](VERIFICATION_FOR_NON_SPECIALISTS.md).
+
+## 16. Verification anti-false-green
+
+`tests/verification.test.js` содержит negative regression: рассчитанная total steel mass намеренно меняется на 5%, passport перестраивается, и `steel-mass` обязан стать `fail`.
+
+Таким образом CI проверяет не только happy path, но и способность verification layer обнаруживать controlled inconsistency.
+
+## 17. Web Worker boundary
 
 ```text
 Main thread                     Worker
@@ -404,7 +501,7 @@ Main thread                     Worker
 form                            calculateCompleteMast
 progress UI       <----------   progress messages
 3D viewer         <----------   result/error
-report export                   selectUniformDiameter
+paper/CSV export                selectUniformDiameter
 ```
 
 Main thread не импортирует FEM solve API.
@@ -415,9 +512,7 @@ Cancel:
 worker.terminate()
 ```
 
-поэтому остановка не зависит от точки, в которой находится eigen-итерация.
-
-## 16. Progress contract
+## 18. Progress contract
 
 Core callback:
 
@@ -430,61 +525,48 @@ Core callback:
 }
 ```
 
-Phases:
+Major phases:
 
 ```text
 compile
 wind
 lateral
+static-payload
 done
 ```
 
-Worker преобразует это в `fraction`. UI показывает percent, stage, detail, elapsed, ETA и cancel.
+Verification analytical/reference micro-checks выполняются после основных cases; их стоимость мала относительно полного FEM search и они не изменяют `K` мачты.
 
-ETA оценивается как:
+## 19. Diameter optimization
 
-```text
-elapsed*(1-progress)/progress
-```
+Standard diameters проверяются по возрастанию. Первый candidate, проходящий по strength/displacement/global buckling, является минимальным искомым. После выбора выполняется complete calculation, который добавляет lateral capacity, static payload и verification passport.
 
-Это estimate по крупным завершённым cases, а не гарантированное время.
+## 20. Reporting boundary
 
-## 17. Diameter optimization
-
-Диаметры сортируются по возрастанию.
-
-Первый candidate, который проходит одновременно:
-
-```text
-strength
-displacement
-global buckling
-```
-
-является минимальным искомым, поэтому более крупные diameters по умолчанию не рассчитываются.
-
-Reference/debug mode `stopAtFirstPassing: false` позволяет просчитать весь список.
-
-После выбора выполняется полный final calculation, включая lateral capacity.
-
-## 18. Reporting boundary
-
-UI, CSV и printable project читают уже рассчитанные results.
+UI, CSV and printable project читают уже рассчитанные results.
 
 Report renderer не должен:
 
 - повторно решать FEM;
-- создавать альтернативную механическую модель;
+- создавать альтернативную mechanical model;
 - менять solver values;
-- округлять числа до проверок.
+- использовать отдельные скрытые формулы для определения результата.
 
-Internal `CalculationSnapshot v4` предназначен для regression/debug, не для бумажного отчёта.
+Paper project добавляет verification appendix из того же `result.verification`.
 
-## 19. Physical joint boundary
+Internal snapshot:
 
-Global FEM по-прежнему считает соединения идеальными и жёсткими.
+```text
+mast-calculator/calculation-snapshot/v6
+```
 
-Будущий joint layer получает связанный demand одного load case:
+и включает full verification evidence. JSON остаётся internal regression/debug artifact.
+
+## 21. Physical joint boundary
+
+Global FEM продолжает считать joints ideal rigid.
+
+Будущий joint layer получает correlated demand одного load case:
 
 ```js
 {
@@ -494,11 +576,11 @@ Global FEM по-прежнему считает соединения идеал�
 }
 ```
 
-Нельзя комбинировать независимые максимумы разных cases в физически несуществующий vector.
+Нельзя смешивать maxima разных load cases в физически несуществующий vector.
 
-## 20. Diagnostics
+## 22. Diagnostics
 
-Каждый solve сохраняет:
+Каждый solve сохраняет минимум:
 
 ```text
 relativeResidual
@@ -508,37 +590,35 @@ stiffnessBandwidth
 stiffnessFactorizationCount
 maximumNodeEquilibriumResidual
 globalMomentResidual
-buckling residual
-buckling eigenResidual
-buckling iterations
+buckling residual/eigenResidual/iterations
 ```
 
-Плохая диагностика должна приводить к warning, а не молча считаться надёжным результатом.
+Плохая диагностика должна приводить к warning/verification fail, а не молча считаться надёжным результатом.
 
-## 21. Verification
+## 23. Verification pyramid
 
-Analytical/reference tests:
+Автоматизированные evidence layers:
 
-- axial `FL/EA`;
-- cantilever `PL³/(3EI)`;
-- rotation `PL²/(2EI)`;
-- fixed-fixed `qL/2`, `qL²/12`;
-- lateral von Mises limit;
-- banded solve vs dense;
-- generalized Lanczos vs dense.
+```text
+analytical formulas
+physical equilibrium
+known-answer production-solver cases
+fast-vs-reference algorithms
+structural invariants/regressions
+40-module performance/residual regression
+```
 
-Structural invariants:
+Внешние layers, которые остаются вне самого приложения:
 
-- force/moment equilibrium;
-- equal octahedron edges;
-- alternating geometry;
-- coordinate rotation invariance;
-- Beaufort 0..12;
-- solid-rod sanity bands;
-- exact symmetry reduction;
-- one K factorization per complete geometry.
+```text
+independent FEM cross-check
+engineering review
+physical validation
+```
 
-## 22. 40-module performance regression
+Это разграничение является архитектурным требованием, а не только текстом документации.
+
+## 24. 40-module regression
 
 Обязательный CI case:
 
@@ -549,36 +629,45 @@ bandwidth <= 35
 factorizations = 1
 wind cases = 4
 lateral cases = 8
+static payload evaluations = fixed bounded count
 static residual < 1e-8
 node equilibrium residual < 1e-8
 buckling residual < 1e-5
+verification.failed = 0
+verification levels 1..4 = PASS
+runtime < generous CI guard
 ```
 
-Финальное GitHub-hosted Ubuntu измерение 2026-08-07:
+Performance guard предназначен для обнаружения возврата к minute-scale dense behavior, а не для гарантии конкретного времени на любом компьютере.
+
+## 25. Independent engineering verification
+
+Внутренние analytical/reference checks не заменяют external FEM cross-check.
+
+Для external verification должны быть сохранены reference models с одинаковыми:
 
 ```text
-1078.3 ms
+coordinates/topology
+restraints/releases
+E/nu/A/I/J
+loads and units
 ```
 
-CI performance guard = 20 s, чтобы избежать hardware-dependent flaky tests и при этом ловить возврат к minute-scale dense behavior.
-
-## 23. Независимая инженерная верификация
-
-Внутренние analytical/dense cross-checks не заменяют внешний FEM cross-check.
-
-До использования как окончательного design tool необходимы reference models независимого КЭ-комплекса с допусками по:
+и сравнены:
 
 ```text
-displacements
-reactions
+displacements/rotations
+reactions/moments
 N/V/T/M
 stresses
 buckling eigenvalues/modes
 ```
 
-## 24. CI
+Engineering review постановки является отдельным evidence item.
 
-Расчётное изменение считается завершённым только после:
+## 26. CI completion rule
+
+Расчётное изменение считается готовым только после:
 
 ```text
 syntax + maintainability
@@ -590,6 +679,4 @@ secret scan
 static-site smoke
 ```
 
-Static smoke проверяет выдачу `app.js`, `calculation-worker.js`, `solver.js`, `banded.js`, `buckling.js`, weather/lateral/report modules и CSS.
-
-Подробный performance design: [`PERFORMANCE_AND_PROGRESS.md`](PERFORMANCE_AND_PROGRESS.md).
+Static smoke обязан проверять выдачу `verification.js` вместе с Worker, solver, banded/buckling, weather/lateral/static-payload/report modules и CSS.

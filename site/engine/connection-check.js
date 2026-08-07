@@ -69,13 +69,13 @@ export function evaluateBoltSystemForAnalysis(model, analysis, parameters, metad
       geometry,
     }
   }
+  const evaluation = evaluateBoltAcrossDemands(demands, boltOptions(effectiveParameters))
   return {
     applicable: true,
     demands,
     geometry,
-    ...evaluateBoltAcrossDemands(demands, boltOptions(effectiveParameters)),
-    passes: geometry.passes
-      && evaluateBoltAcrossDemands(demands, boltOptions(effectiveParameters)).passes,
+    ...evaluation,
+    passes: geometry.passes && evaluation.passes,
   }
 }
 

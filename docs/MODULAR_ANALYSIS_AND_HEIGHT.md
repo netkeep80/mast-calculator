@@ -1,6 +1,6 @@
 # Помодульный расчёт, визуализация и предельная высота
 
-Статус: расчётная архитектура прототипа 1.1, issue #18.
+Статус: расчётная архитектура прототипа 1.1, дополненная исправлением issue #32.
 
 ## 1. Физическая ориентация одинакового модуля
 
@@ -172,7 +172,7 @@ global eigen-buckling -> full mast
 
 Это сознательная граница декомпозиции.
 
-## 8. Module result object
+## 8. Module result object и нагрузка верхней грани
 
 Для каждого physical module в каждом operational load case сохраняются:
 
@@ -181,10 +181,18 @@ moduleNumber
 bottomNodeIds[]
 topNodeIds[]
 memberIds[9]
+
+topStructuralFromAbove[3]
+topDirectApplied[3]
 topAppliedFromAbove[3]
-bottomReactionFromBelow[3]
+
+topStructuralResultantFromAbove
+topDirectResultant
 topResultantFromAbove
+
+bottomReactionFromBelow[3]
 bottomResultantFromBelow
+
 criticalMemberId
 maxUtilization
 maxStressUtilization
@@ -203,6 +211,32 @@ forceN[3]
 momentNm[3]
 ```
 
+После issue #32 важно различать три величины:
+
+```text
+topStructuralFromAbove
+  = только действие физически существующих вышестоящих модулей
+
+topDirectApplied
+  = внешняя узловая нагрузка, приложенная непосредственно к верхней грани
+    (масса оборудования, его ветер, дополнительные силы)
+
+topAppliedFromAbove
+  = topStructuralFromAbove + topDirectApplied
+```
+
+То же разделение существует для результирующих сил/моментов.
+
+Почему это необходимо: остаток изолированного модуля
+
+```text
+r = Kmodule*u - fmodule
+```
+
+не содержит непосредственную узловую нагрузку, уже включённую в `fmodule`. Поэтому для единственного модуля с грузом 1000 кг структурный стек выше действительно отсутствует, но **нагрузка на верхнюю грань не равна нулю**: она состоит из `topDirectApplied`. Пользовательская итоговая величина всегда берётся из `topResultantFromAbove`.
+
+Внутренний interface-equilibrium cross-check соседних модулей использует именно `topStructuralFromAbove`, чтобы непосредственная узловая нагрузка на общей грани не была ошибочно посчитана как действие соседнего модуля.
+
 ## 9. Детальная визуализация
 
 Главная схема мачты поддерживает selection физического модуля:
@@ -218,18 +252,20 @@ momentNm[3]
 9 members selected module
 node numbers
 N/V/M labels on members
-red arrows = action from upper stack
-blue arrows = lower-stack/foundation reaction
-brown arrows = direct nodal load
+red arrows   = structural action from upper modules
+brown arrows = direct external nodal load on the top face
+blue arrows  = lower-stack/foundation reaction
 ```
+
+Строка **«нагрузка на верхнюю грань»** показывает сумму красной и коричневой составляющих, то есть `topResultantFromAbove`.
 
 Рядом выводятся таблицы:
 
-- все три верхних interface actions;
+- все три суммарных верхних actions;
 - все три нижних interface actions;
 - все девять member results выбранного модуля.
 
-Для верхнего модуля `topAppliedFromAbove` от несуществующего стека равен нулю; непосредственная top equipment/load при этом показывается отдельно как direct nodal load.
+Для верхнего модуля без физически существующего модуля выше `topStructuralFromAbove = 0`. Если на вершине установлено оборудование или задана дополнительная сила, `topDirectApplied != 0`, а `topAppliedFromAbove` и `topResultantFromAbove` показывают эту реальную нагрузку. Это регрессионно проверяется случаем «1 модуль + 1000 кг».
 
 ## 10. Группировка ведомости рёбер
 

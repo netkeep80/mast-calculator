@@ -28,8 +28,6 @@ function parameters(overrides = {}) {
     windDirectionDeg: 0,
     equipmentMassKg: 0,
     equipmentWindAreaM2: 0,
-    extraHorizontalLoadN: 0,
-    extraVerticalLoadN: 0,
     iceThicknessMm: 0,
     ...overrides,
   })
@@ -102,8 +100,14 @@ test('issue #23: empty guy system reproduces the existing frame calculation', ()
   approximately(guyed.envelope.minimumBucklingFactor, reference.envelope.minimumBucklingFactor, 2e-9, 1e-8)
 })
 
-test('issue #23: three guys reduce lateral displacement and redistribute tension', () => {
-  const p = parameters({ moduleCount: 12, extraHorizontalLoadN: 1500, windDirectionDeg: 0, displacementLimitMm: 1000 })
+test('issue #23: three guys reduce wind displacement and redistribute tension', () => {
+  const p = parameters({
+    moduleCount: 12,
+    windPressurePa: 380,
+    equipmentWindAreaM2: 2,
+    windDirectionDeg: 0,
+    displacementLimitMm: 1000,
+  })
   const bare = calculateGuyedMast(p, [])
   const guyed = calculateGuyedMast(p, [{
     heightM: p.moduleCount * p.moduleHeightMm / 1000,
@@ -121,8 +125,15 @@ test('issue #23: three guys reduce lateral displacement and redistribute tension
   assert.ok(guyed.cases[0].cables.every((cable) => cable.moduleNodeReactionN.length === 3))
 })
 
-test('issue #23: cable tension is never negative', () => {
-  const p = parameters({ moduleCount: 10, extraHorizontalLoadN: 5000, windDirectionDeg: 0, displacementLimitMm: 10000, barDiameterMm: 20 })
+test('issue #23: strongly asymmetric wind can fully unload a low-pretension cable', () => {
+  const p = parameters({
+    moduleCount: 10,
+    windPressurePa: 1500,
+    equipmentWindAreaM2: 2.5,
+    windDirectionDeg: 0,
+    displacementLimitMm: 10000,
+    barDiameterMm: 20,
+  })
   const guyed = calculateGuyedMast(p, [{
     heightM: p.moduleCount * p.moduleHeightMm / 1000,
     anchorRadiusM: 6,

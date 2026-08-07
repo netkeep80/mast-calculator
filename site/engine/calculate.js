@@ -3,15 +3,21 @@ import {
   regularOctahedronHeightMm,
   theoreticalCutLengthMm,
 } from './catalog.js'
-import { DEFAULT_LATERAL_CAPACITY_STEP_DEG } from './lateral-capacity.js'
+import {
+  calculateLateralCapacity,
+  DEFAULT_LATERAL_CAPACITY_STEP_DEG,
+  lateralDirections,
+} from './lateral-capacity.js'
 import { generateMastModel } from './geometry.js'
 import { buildLoadCase } from './loads.js'
-import { analyzeFrame } from './solver.js'
+import { analyzeFrame, compileFrameSystem } from './solver.js'
 import { resolveWindParameters, windSpeedFromPressurePa } from './weather.js'
 
+const ROTATIONAL_SYMMETRY_DEG = 120
+
 export const CALCULATION_METHOD = Object.freeze({
-  id: 'linear-frame-v0.6',
-  description: 'Линейная пространственная Euler-Bernoulli frame-модель с 6 степенями свободы на узел, идеальными жёсткими сварными соединениями и отдельной проверкой боковой нагрузки вершины.',
+  id: 'linear-frame-v0.7',
+  description: 'Линейная пространственная Euler-Bernoulli frame-модель с ленточной SPD-факторизацией, generalized Lanczos для общей устойчивости и отдельной проверкой боковой нагрузки вершины.',
 })
 
 export const DEFAULT_PARAMETERS = Object.freeze({
@@ -30,9 +36,6 @@ export const DEFAULT_PARAMETERS = Object.freeze({
   densityKgM3: 7850,
   reinforcementStandard: 'ГОСТ 34028-2016',
   reinforcementWeldabilityGuaranteed: true,
-  // Для отдельной локальной проверки стержня по Эйлеру идеализируем оба
-  // конца как жёстко заделанные: μ = 0,5. Системная устойчивость дополнительно
-  // проверяется собственным расчётом всей frame-модели.
   effectiveLengthFactor: 0.5,
   materialSafetyFactor: 1.1,
   deadLoadFactor: 1.1,
@@ -64,62 +67,51 @@ export function resolveCalculationParameters(parameters = {}) {
   const withWind = resolveWindParameters(withMaterial)
   const ribCutLengthMm = theoreticalCutLengthMm(withWind.stockBarLengthMm, withWind.stockBarPieces)
   const moduleHeightMm = regularOctahedronHeightMm(ribCutLengthMm)
-
   return {
     ...withWind,
     ribCutLengthMm,
     triangleSideMm: ribCutLengthMm,
     moduleHeightMm,
-    // Концы каждого ребра в глобальном расчёте считаются жёстко сваренными.
     effectiveLengthFactor: 0.5,
   }
 }
 
-function windDirections(parameters) {
+const canonicalSymmetryAngle = (angle) => {
+  const value = ((angle % ROTATIONAL_SYMMETRY_DEG) + ROTATIONAL_SYMMETRY_DEG) % ROTATIONAL_SYMMETRY_DEG
+  return Math.abs(value - ROTATIONAL_SYMMETRY_DEG) < 1e-9 ? 0 : value
+}
+
+export function windDirections(parameters) {
   if (!parameters.windEnvelopeEnabled) return [parameters.windDirectionDeg]
   const step = Number(parameters.windEnvelopeStepDeg)
   if (!Number.isFinite(step) || step <= 0 || step > 180) {
     throw new Error('Шаг перебора направлений ветра должен быть от 0 до 180°')
   }
-  const values = []
-  for (let angle = 0; angle < 360 - step / 1000; angle += step) values.push(angle)
-  return values
+
+  // Сначала строим ровно ту же сетку 0..360°, что и раньше, а затем сворачиваем
+  // её по точной 120° вращательной симметрии треугольной мачты. Поэтому ни одно
+  // уникальное направление исходной сетки не теряется, а эквивалентные solve не повторяются.
+  const unique = new Map()
+  for (let angle = 0; angle < 360 - step / 1000; angle += step) {
+    const canonical = canonicalSymmetryAngle(angle)
+    const key = Math.round(canonical * 1e9)
+    if (!unique.has(key)) unique.set(key, canonical)
+  }
+  return [...unique.values()].sort((left, right) => left - right)
 }
 
 const maxBy = (items, selector) => items.reduce((best, item) => selector(item) > selector(best) ? item : best, items[0])
 const minBy = (items, selector) => items.reduce((best, item) => selector(item) < selector(best) ? item : best, items[0])
 
-export function calculateMast(inputParameters) {
-  const parameters = resolveCalculationParameters(inputParameters)
-  const model = generateMastModel(parameters)
-  const cases = windDirections(parameters).map((direction) => {
-    const caseParameters = { ...parameters, windDirectionDeg: direction }
-    const loads = buildLoadCase(model, caseParameters)
-    const analysis = analyzeFrame(model, loads, caseParameters)
-    return { windDirectionDeg: direction, loads, analysis }
-  })
-
-  const strength = maxBy(cases, (item) => item.analysis.maxUtilization)
-  const displacement = maxBy(cases, (item) => item.analysis.maxTopDisplacementM)
-  const buckling = minBy(cases, (item) => item.analysis.buckling.criticalLoadFactor)
-  const score = (item) => Math.max(
-    item.analysis.maxUtilization,
-    item.analysis.maxTopDisplacementM * 1000 / Math.max(parameters.displacementLimitMm, Number.EPSILON),
-    Number.isFinite(item.analysis.buckling.criticalLoadFactor)
-      ? parameters.minimumBucklingFactor / Math.max(item.analysis.buckling.criticalLoadFactor, Number.EPSILON)
-      : 0,
-  )
-  const governing = maxBy(cases, score)
-
+function createWarnings(parameters, governing, buckling) {
   const warnings = [
     'Глобальный каркас рассчитан как идеальная 3D frame-модель: сварные пересечения рёбер считаются абсолютно жёсткими и неразрушаемыми. Реальные болты, гайки, резьба и сварные швы должны проверяться отдельным модулем узлов.',
     'Высота модуля вычисляется из геометрии правильного октаэдра h = a·√(2/3). Высота и нахлёст реального соединительного узла пока не учитываются.',
     'Погодные пресеты по шкале Бофорта — удобные сценарии для сравнения. Они не заменяют нормативное ветровое районирование, порывы, коэффициенты высоты и требования СП 20.',
-    'Распределённые собственный вес, лёд и ветер вводятся в frame-элементы согласованными узловыми силами и моментами. Для оценки напряжений между узлами дополнительно учитывается консервативная добавка qL²/8 к максимуму изгибающего момента.',
-    'Локальная устойчивость отдельного ребра дополнительно проверяется формулой Эйлера с μ = 0,5 (идеально жёсткие концы). Общая устойчивость вычисляется линейным собственным расчётом frame-модели.',
+    'Ветровая огибающая использует точную 120° вращательную симметрию треугольной расчётной модели: эквивалентные направления полной окружности не решаются повторно.',
+    'Матрица упругой жёсткости собирается и факторизуется один раз для всех направлений нагрузки. Решение использует симметричную ленточную Cholesky-факторизацию, а общая устойчивость — matrix-free generalized Lanczos.',
     'Геометрическая нелинейность, начальные несовершенства, пластичность, усталость, фундамент и нормативный расчёт реальных соединений пока не реализованы.',
   ]
-
   if (governing.analysis.diagnostics.relativeResidual > 1e-8) {
     warnings.unshift('Численная невязка превышает 1e-8: результат требует проверки.')
   }
@@ -132,7 +124,34 @@ export function calculateMast(inputParameters) {
   if (buckling.analysis.buckling.residual > 1e-6) {
     warnings.unshift('Собственная форма общей потери устойчивости найдена с повышенной численной невязкой.')
   }
+  return warnings
+}
 
+function calculateOperationalCases(parameters, model, frameSystem, directions, onCaseProgress) {
+  const cases = []
+  for (let index = 0; index < directions.length; index += 1) {
+    const direction = directions[index]
+    const caseParameters = { ...parameters, windDirectionDeg: direction }
+    const loads = buildLoadCase(model, caseParameters)
+    const analysis = analyzeFrame(model, loads, caseParameters, frameSystem)
+    cases.push({ windDirectionDeg: direction, loads, analysis })
+    onCaseProgress?.({ completed: index + 1, total: directions.length, directionDeg: direction })
+  }
+  return cases
+}
+
+function buildMastResult(parameters, model, cases) {
+  const strength = maxBy(cases, (item) => item.analysis.maxUtilization)
+  const displacement = maxBy(cases, (item) => item.analysis.maxTopDisplacementM)
+  const buckling = minBy(cases, (item) => item.analysis.buckling.criticalLoadFactor)
+  const score = (item) => Math.max(
+    item.analysis.maxUtilization,
+    item.analysis.maxTopDisplacementM * 1000 / Math.max(parameters.displacementLimitMm, Number.EPSILON),
+    Number.isFinite(item.analysis.buckling.criticalLoadFactor)
+      ? parameters.minimumBucklingFactor / Math.max(item.analysis.buckling.criticalLoadFactor, Number.EPSILON)
+      : 0,
+  )
+  const governing = maxBy(cases, score)
   return {
     parameters,
     method: CALCULATION_METHOD,
@@ -150,6 +169,77 @@ export function calculateMast(inputParameters) {
       maxTopDisplacementM: displacement.analysis.maxTopDisplacementM,
       minimumBucklingFactor: buckling.analysis.buckling.criticalLoadFactor,
     },
-    warnings,
+    warnings: createWarnings(parameters, governing, buckling),
   }
+}
+
+export function calculateMast(inputParameters, options = {}) {
+  const parameters = resolveCalculationParameters(inputParameters)
+  const model = options.model ?? generateMastModel(parameters)
+  const directions = windDirections(parameters)
+  options.onProgress?.({ phase: 'compile', label: 'Сборка и факторизация матрицы жёсткости', completed: 0, total: directions.length + 1 })
+  const frameSystem = options.frameSystem ?? compileFrameSystem(model, parameters)
+  options.onProgress?.({ phase: 'compile', label: 'Матрица жёсткости факторизована', completed: 1, total: directions.length + 1 })
+  const cases = calculateOperationalCases(parameters, model, frameSystem, directions, (event) => {
+    options.onProgress?.({
+      phase: 'wind',
+      label: `Ветровая огибающая: ${event.completed}/${event.total}, направление ${event.directionDeg.toFixed(0)}°`,
+      completed: 1 + event.completed,
+      total: directions.length + 1,
+    })
+  })
+  return buildMastResult(parameters, model, cases)
+}
+
+export function calculateCompleteMast(inputParameters, options = {}) {
+  const parameters = resolveCalculationParameters(inputParameters)
+  const model = generateMastModel(parameters)
+  const directions = windDirections(parameters)
+  const lateral = lateralDirections(parameters.lateralCapacityStepDeg)
+  const total = 1 + directions.length + lateral.length
+
+  options.onProgress?.({
+    phase: 'compile',
+    label: `Подготовка ${parameters.moduleCount} модулей и факторизация матрицы`,
+    completed: 0,
+    total,
+  })
+  const frameSystem = compileFrameSystem(model, parameters)
+  options.onProgress?.({
+    phase: 'compile',
+    label: `Матрица готова: ${frameSystem.freeDofs.length} свободных DOF, полуширина ${frameSystem.bandwidth}`,
+    completed: 1,
+    total,
+  })
+
+  const cases = calculateOperationalCases(parameters, model, frameSystem, directions, (event) => {
+    options.onProgress?.({
+      phase: 'wind',
+      label: `Ветровая огибающая: ${event.completed}/${event.total}, направление ${event.directionDeg.toFixed(0)}°`,
+      completed: 1 + event.completed,
+      total,
+    })
+  })
+  const result = buildMastResult(parameters, model, cases)
+  const lateralOffset = 1 + directions.length
+  result.lateralCapacity = calculateLateralCapacity(model, parameters, {
+    frameSystem,
+    onProgress: (event) => options.onProgress?.({
+      phase: 'lateral',
+      label: `Боковая нагрузка: ${event.completed}/${event.total}, направление ${event.directionDeg.toFixed(0)}°`,
+      completed: lateralOffset + event.completed,
+      total,
+    }),
+  })
+  result.performance = {
+    linearSystemSolver: frameSystem.method,
+    freeDofCount: frameSystem.freeDofs.length,
+    stiffnessBandwidth: frameSystem.bandwidth,
+    stiffnessFactorizationCount: frameSystem.factorizationCount,
+    operationalCaseCount: directions.length,
+    lateralCaseCount: lateral.length,
+    rotationalSymmetryDeg: ROTATIONAL_SYMMETRY_DEG,
+  }
+  options.onProgress?.({ phase: 'done', label: 'Расчёт завершён', completed: total, total })
+  return result
 }

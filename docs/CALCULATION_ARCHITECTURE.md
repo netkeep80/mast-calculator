@@ -29,12 +29,12 @@ connection configurator
         ↓
 fix selected physical joint
         ↓
-┌────────────────┬──────────────────┬────────────────────┐
-│ lateral limit  │ static top mass  │ maximum height     │
-│ + boom equiv.  │ + additional kg  │                    │
-└────────────────┴──────────────────┴────────────────────┘
+┌──────────────────┬──────────────────┬──────────────────┬────────────────┐
+│ pure lateral ref │ static top mass  │ horizontal boom  │ maximum height │
+│ no self-weight   │ + additional kg  │ self-weight+load │                │
+└──────────────────┴──────────────────┴──────────────────┴────────────────┘
         ↓
-verification / report / snapshot / UI / reference audit
+verification / report / snapshot v9 / UI / reference audit
 ```
 
 Independent dense FEM находится в test/verification path и не участвует в обычном browser calculation.
@@ -78,7 +78,7 @@ Member — 12-DOF 3D Euler–Bernoulli frame. Для круглого сечен
 K*u = F
 ```
 
-Контролируются residual, free-DOF equilibrium, force/moment equilibrium, pivots/conditioning diagnostics.
+Контролируются residual, free-DOF equilibrium, force/moment equilibrium и conditioning diagnostics.
 
 ## 5. Production load layer — issue #36
 
@@ -101,7 +101,7 @@ Top equipment weight:
 Wequipment = equipmentMassKg*g*equipmentLoadFactor
 ```
 
-Если старый parameter object всё ещё содержит `extraHorizontalLoadN` или `extraVerticalLoadN`, `buildLoadCase()` их не читает.
+Если старый parameter object содержит `extraHorizontalLoadN` или `extraVerticalLoadN`, `buildLoadCase()` их не читает.
 
 Для verification/special capacity задач существует отдельный внутренний API:
 
@@ -136,7 +136,7 @@ Bottom-up:
 ut = A^-1*(ft+pupper-Ktb*ub)
 ```
 
-Результат — математически тот же linear system, но другой assembly/solution path. Runtime сравнивает полный displacement/rotation vector с global FEM и баланс общих interfaces.
+Результат — тот же linear system, но другой assembly/solution path. Runtime сравнивает полный displacement/rotation vector с global FEM и баланс общих interfaces.
 
 ### Верхняя грань issue #32
 
@@ -202,7 +202,7 @@ Arib = pi*dbar²/4
 Anet/Arib >= ksection >= 2
 ```
 
-`joint-section-check.js` проверяет обе гайки. Недостаточная площадь делает candidate invalid. Для height/lateral/static это ведёт к невозможности использовать такой fixed joint, а не только к warning.
+`joint-section-check.js` проверяет обе гайки. Недостаточная площадь делает candidate invalid и блокирует fixed-joint capacity cases, где межмодульный узел существует.
 
 ## 12. Bolt demand and oblique shear
 
@@ -213,11 +213,6 @@ Faxis = F*eb
 Fperp = F-eb(F*eb)
 Nt,direct=max(0,-Faxis)
 Ns,direct=|Fperp|
-```
-
-Moment surrogate:
-
-```text
 reff=s/2
 Nt,external=Nt,direct+|Mb|/reff
 Ns=Ns,direct+|T|/reff
@@ -227,43 +222,22 @@ Ns=Ns,direct+|T|/reff
 
 ## 13. Torque preload — issue #33
 
-`bolt-preload.js`:
-
 ```text
 F0,nom=T/(K*d)
 F0,max=(1+Gamma)*F0,nom
 F0,min=(1-Gamma)*F0,nom
-```
-
-Project defaults:
-
-```text
-T=200 N*m
-K=0.20
-Gamma=0.25
-```
-
-Strength tension:
-
-```text
 Nt,strength=F0,max+Nt,external
-```
 
-Bolt check:
-
-```text
 Nbs=Rbs*Ab*ns*gamma_c
 Nbt=Rbt*Abn*gamma_c
 Ubolt=hypot(Ns/Nbs,Nt,strength/Nbt)
 ```
 
-Model conservative: external separating load полностью добавляется к max preload, friction-grip relief не кредитуется.
+Project defaults: `T=200 N*m`, `K=0.20`, `Gamma=0.25`. Model conservative: external separating load полностью добавляется к max preload, friction-grip relief не кредитуется.
 
 ## 14. Weld-layer and area reserve — issue #33
 
 Coincident member-end `N/V/T/M` входит в circular weld-group surrogate.
-
-Дополнительно:
 
 ```text
 teff=beta_f*kf
@@ -288,17 +262,19 @@ hardware geometry
 → bolt interaction
 ```
 
-После operational cases выбранные детали freeze и переиспользуются для lateral/static/height trial calculations. Trial case не может незаметно увеличить соединение.
+После operational cases выбранные детали freeze и переиспользуются для pure lateral, static top mass, horizontal boom и height trial calculations. Trial case не может незаметно увеличить соединение.
 
-## 16. Lateral capacity / idealized crane boom — issue #36
+## 16. Pure lateral reference — issue #36
 
-Pure normalized horizontal tip test использует внутреннюю точечную нагрузку:
+`lateral-capacity.js` решает нормированную проверочную задачу:
 
 ```text
-F0=1 Н
+F0=1 Н horizontal
+self weight=0
+wind=0
+ice=0
+equipment=0
 ```
-
-Исключены permanent/weather/equipment loads.
 
 Из unit cases получаются независимые envelopes:
 
@@ -309,35 +285,83 @@ Fbolt
 Flim=min(Fmember,Fglobal,Fbolt)
 ```
 
-Дополнительная интерпретация:
+Compatibility-поле:
 
 ```text
 idealizedCraneBoomPayloadKg = Flim/g0
 ```
 
-Это эквивалент массы концевого поперечного груза идеализированной консольной стрелы. Собственный вес горизонтально ориентированной стрелы, dynamics, rope/pivot geometry и crane-code factors не входят в этот case.
+остаётся численным эквивалентом чистой tip force. Оно является **reference upper bound**, а не итоговой грузоподъёмностью горизонтальной стрелы, потому что self-weight в этом case равен нулю.
 
-## 17. Static top payload — issue #36
+## 17. Horizontal crane-boom capacity — issue #36
+
+`crane-boom-capacity.js` решает отдельную физически более содержательную задачу.
+
+Геометрия, stiffness/material и fixed connection остаются теми же. Вместо фактического поворота координат конструкции поворачивается gravity vector относительно frame: вес арматурных members становится распределённой поперечной нагрузкой в XY.
+
+```text
+A = pi*d²/4
+qg = rho*A*g*deadLoadFactor
+```
+
+Пробный end payload:
+
+```text
+Pend = m*g*equipmentLoadFactor
+```
+
+передаётся как внутренний `topPointLoadN` на три end nodes. Wind, ice и обычная vertical equipment gravity в boom special case отключены.
+
+Для каждого направления `0<=alpha<120°`:
+
+```text
+Utotal = max(Umember,Ubolt,1/lambda_cr)
+PASS: Utotal <= 1
+```
+
+Алгоритм поиска:
+
+```text
+baseline m=0 with boom self-weight
+→ exponential bracket 1,2,4,8,... kg
+→ binary search
+→ last passing mass
+```
+
+Результат:
+
+```text
+craneBoomCapacity.maximumEndPayloadMassKg
+configuredEndPayloadMassKg
+additionalEndPayloadMassKg
+boomSelfWeightN
+boomSelfMassEquivalentKg
+governingDirectionDeg
+governingMode
+```
+
+Если конструкция не проходит уже от поперечного собственного веса, mode=`boom-self-weight-overlimit` и end payload=0.
+
+Regression требует, чтобы для типового случая `maximumEndPayloadMassKg` был меньше pure-tip `idealizedCraneBoomPayloadKg`, поскольку часть capacity уже расходует собственный вес стрелы.
+
+Текущий boom self-weight включает арматурные frame members. Отдельная fabrication mass болтов/гаек/сварки пока не возвращается в FEM. Не моделируются lifting dynamics, rope/blocks/winch, pivot, fatigue и crane-code factors, поэтому число не является SWL.
+
+## 18. Static top payload — issue #36
 
 Gravity-only trial search retains mast self-weight and fixed connection but excludes wind/ice.
 
 Единственный user vertical input — `equipmentMassKg`.
 
-Результат:
-
 ```text
 maximumTopEquipmentMassKg
 configuredTopEquipmentMassKg
 additionalTopEquipmentMassKg
+additional=max(0,maximum-configured)
 ```
 
-```text
-additional = max(0, maximum-configured)
-```
+Binary search checks member, bolt/connection и global buckling. Water-equivalent поля удалены из capacity result: `V=m/rho` является внешним преобразованием.
 
-Binary search checks member, bolt/connection и global buckling. Water-equivalent поля удалены из capacity result: `V=m/rho` при необходимости является внешним преобразованием, а не структурным пределом.
-
-## 18. Maximum height
+## 19. Maximum height
 
 Integer module count search:
 
@@ -349,7 +373,7 @@ exponential bracket
 
 Design и ultimate-resistance limits различаются displacement criterion и требуемым `lambda_cr`. Fixed connection validity входит в candidate pass/fail.
 
-## 19. 3D connection visualization — issue #33
+## 20. 3D connection visualization — issue #33
 
 `joint-visual-geometry.js` — deterministic geometry layer independent of canvas drawing. Он получает шесть local rib directions правильного октаэдра:
 
@@ -364,6 +388,21 @@ Diagonal leg angle:
 acos(sqrt(2/3)) = 35.264... deg to bolt axis
 ```
 
-Для каждого ребра хранятся nearest hex face, normal, contact point, angle to bolt axis, angle to face plane и weld display segment.
+Для каждого ребра хранятся nearest hex face, normal, contact point, angle to bolt axis, angle to face plane и weld display segment. `joint-viewer.js` рендерит filled depth-sorted prisms с procedural metallic hatching, contact markers и weld zones. Thread profile intentionally omitted.
 
-`joint-viewer.js` рендерит filled depth-sorted prisms с procedural metallic gradient/hatching, ribbed bars, contact markers и weld zones. Thread profile intentionally omitted.
+## 21. User-facing complete result
+
+`calculateCompleteMastWithConfiguredJoint()` не создаёт второй production FEM solver. Он получает canonical complete mast result, затем добавляет производственную оценку массы и `craneBoomCapacity` для той же model/fixed joint.
+
+Snapshot schema `mast-calculator/calculation-snapshot/v9` содержит отдельные:
+
+```text
+lateralCapacity
+staticPayloadCapacity
+craneBoomCapacity
+heightCapacity
+connections
+verification
+```
+
+Water-equivalent больше не является structural capacity result.

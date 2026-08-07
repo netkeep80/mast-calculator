@@ -202,7 +202,8 @@ export class ModuleViewer {
     }
 
     const arrowWorldLength = Math.max(sideM, moduleHeightM) * 0.28
-    for (const action of state.topAppliedFromAbove) {
+    const structuralActions = state.topStructuralFromAbove ?? state.topAppliedFromAbove
+    for (const action of structuralActions) {
       this.drawArrow(
         localPositions.get(action.nodeId),
         action.forceN,
@@ -211,7 +212,7 @@ export class ModuleViewer {
         centerX,
         centerY,
         arrowWorldLength,
-        `↑стек ${forceLabel(action.forceN)}; M ${momentLabel(action.momentNm)}`,
+        `↑модули ${forceLabel(action.forceN)}; M ${momentLabel(action.momentNm)}`,
       )
     }
     for (const action of state.bottomReactionFromBelow) {
@@ -227,33 +228,39 @@ export class ModuleViewer {
       )
     }
 
-    for (const nodeId of nodeIds) {
-      const direct = loadCase.loads.nodalLoads[nodeId] ?? [0, 0, 0]
-      if (norm3(direct) < 1e-8) continue
+    const directActions = state.topDirectApplied ?? module.topNodeIds.map((nodeId) => ({
+      nodeId,
+      forceN: loadCase.loads.nodalLoads[nodeId] ?? [0, 0, 0],
+      momentNm: loadCase.loads.nodalMoments?.[nodeId] ?? [0, 0, 0],
+    }))
+    for (const action of directActions) {
+      if (norm3(action.forceN) < 1e-8) continue
       this.drawArrow(
-        localPositions.get(nodeId),
-        direct,
+        localPositions.get(action.nodeId),
+        action.forceN,
         '#9a681f',
         scale,
         centerX,
         centerY,
         arrowWorldLength * 0.85,
-        `внеш. ${forceLabel(direct)}`,
+        `внеш. ${forceLabel(action.forceN)}`,
       )
     }
 
     const topForce = forceLabel(state.topResultantFromAbove.forceN)
+    const structuralForce = forceLabel(state.topStructuralResultantFromAbove?.forceN ?? [0, 0, 0])
+    const directForce = forceLabel(state.topDirectResultant?.forceN ?? [0, 0, 0])
     const bottomForce = forceLabel(state.bottomResultantFromBelow.forceN)
     ctx.fillStyle = '#33495a'
     ctx.font = '12px system-ui'
     ctx.textAlign = 'left'
-    ctx.fillText(`Модуль ${module.number} · нагрузка от стека сверху: ${topForce} · реакция снизу: ${bottomForce}`, 12, 20)
-    ctx.fillText(`Критическое ребро #${state.criticalMemberId}; U=${state.maxUtilization.toFixed(3)}; вертикальный механизм: ${state.verticalFailureMode === 'local-member-buckling' ? 'потеря устойчивости' : 'разрыв'}`, 12, 38)
+    ctx.fillText(`Модуль ${module.number} · нагрузка на верхнюю грань: ${topForce} (модули выше ${structuralForce}; внешняя ${directForce})`, 12, 20)
+    ctx.fillText(`Реакция снизу: ${bottomForce} · критическое ребро #${state.criticalMemberId}; U=${state.maxUtilization.toFixed(3)}; вертикальный механизм: ${state.verticalFailureMode === 'local-member-buckling' ? 'потеря устойчивости' : 'разрыв'}`, 12, 38)
     ctx.fillStyle = '#b2363f'
     ctx.fillText('красный — воздействие вышестоящих модулей', 12, height - 34)
     ctx.fillStyle = '#246a9a'
     ctx.fillText('синий — реакция нижележащей части/фундамента', 12, height - 18)
     ctx.fillStyle = '#9a681f'
-    ctx.fillText('коричневый — непосредственная узловая нагрузка', Math.max(260, width * 0.5), height - 18)
+    ctx.fillText('коричневый — внешняя нагрузка непосредственно на верхней грани', Math.max(260, width * 0.5), height - 18)
   }
 }

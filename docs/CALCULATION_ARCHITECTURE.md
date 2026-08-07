@@ -1,20 +1,23 @@
 # Архитектура расчётного ядра
 
-Статус: архитектура прототипа 0.9.
+Статус: архитектура прототипа 1.0.
 
-Документ фиксирует границы между практическим вводом, геометрией, global 3D frame FEM, оптимизированным solver, специальными предельными cases, многоуровневой верификацией, Web Worker и отчётностью.
+Документ фиксирует границы между практическим вводом, геометрией, global 3D frame FEM, solver, физическим post-processing соединений, специальными предельными cases, verification, Worker и отчётностью.
 
 ## 1. Общий поток
 
 ```text
 Practical input
-  stock / cutting / diameter / material / weather / loads
+  stock/cutting/rebar/material/weather/loads
+  bolt class/diameter/joint radius
+  weld material/leg/segments
         |
         v
 Parameter resolution
   a = Lstock/nparts
   h = a*sqrt(2/3)
-  material catalogue
+  reinforcement catalogue
+  connection catalogues
   weather preset -> v -> q
         |
         v
@@ -22,19 +25,28 @@ Regular-octahedron geometry
         |
         v
 compileFrameSystem()
-  element geometry + transforms
+  member geometry + transforms
   free DOF map
   symmetric band K
   Cholesky(K) once
         |
         +---- operational wind cases
-        |       build F -> solve -> N/V/T/M -> KG -> buckling
+        |       F -> solve -> N/V/T/M -> KG -> buckling
+        |                         |
+        |                         +-> intermodule bolt demands
+        |                         +-> member-end weld demands
         |
         +---- lateral unit-load cases
-        |       same K -> solve -> member/global limits
+        |       same K -> member/global/bolt limits
         |
         +---- static top-payload search
-        |       same K -> self weight + trial mass -> solve/buckling
+        |       same K -> member/buckling/bolt checks
+        |
+        v
+calculateConnectionChecks(result)
+  physical 4+2 member split at interior joints
+  selected bolt + minimum diameter by class
+  weld-end envelope + consumable recommendation
         |
         v
 buildVerificationPassport(result)
@@ -47,16 +59,16 @@ buildVerificationPassport(result)
         v
 Worker result
         +-- UI / 3D viewer
-        +-- CSV
-        +-- printable project + verification appendix
-        +-- internal CalculationSnapshot v6
+        +-- CSV with weld lengths
+        +-- printable project with connection appendix
+        +-- internal CalculationSnapshot v7
 ```
 
 Main thread браузера не выполняет FEM solve.
 
-## 2. Parameter/material boundary
+## 2. Parameter boundaries
 
-Пользовательские fabrication inputs:
+Fabrication inputs:
 
 ```js
 {
@@ -67,29 +79,77 @@ Main thread браузера не выполняет FEM solve.
 }
 ```
 
+Connection inputs:
+
+```js
+{
+  jointBoltDiameterMm,
+  jointBoltClass,
+  jointBoltShearPlanes,
+  jointEffectiveRadiusMm,
+  connectionConditionFactor,
+  jointBaseMetalTensileStrengthMPa,
+  weldConsumableId,
+  weldLegMm,
+  weldSegmentsPerEnd,
+  weldBetaF,
+  weldBetaZ
+}
+```
+
 До отдельной fabrication model:
 
 ```text
 ribCutLengthMm = stockBarLengthMm/stockBarPieces
 ```
 
-Material catalogue централизованно задаёт:
+Reinforcement catalogue задаёт `E/nu/Ry/Rm/rho/weldability/standard`.
 
-```text
-E
-nu
-Ry
-Rm
-rho
-weldability
-standard
+`resolveCalculationParameters()` всегда заново выводит `ribCutLengthMm`, `triangleSideMm`, `moduleHeightMm` и фиксирует `effectiveLengthFactor=0.5` для текущей ideal fixed-fixed member check.
+
+## 3. Connection catalog boundary
+
+`connection-catalog.js` централизованно хранит нормативные данные, чтобы UI/report/tests не имели собственных копий сопротивлений.
+
+Bolt property class entry:
+
+```js
+{
+  id,
+  rbunMPa,
+  rbsMPa,
+  rbtMPa,
+  nutClassForTension
+}
 ```
 
-`resolveCalculationParameters()` всегда заново выводит `ribCutLengthMm`, `triangleSideMm`, `moduleHeightMm` и фиксирует `effectiveLengthFactor=0.5` для текущей fixed-fixed идеализации.
+Bolt size entry:
 
-## 3. Weather boundary
+```js
+{
+  diameterMm,
+  pitchMm,
+  grossAreaMm2, // Ab
+  netAreaMm2    // Abn
+}
+```
 
-`weather.js` разрешает UI selection в:
+Weld consumable entry:
+
+```js
+{
+  id,
+  process,
+  rwunMPa,
+  rwfMPa
+}
+```
+
+Текущий источник bolted/welded resistances — СП 16.13330.2017; thread size identity — метрическая крупная резьба.
+
+## 4. Weather boundary
+
+`weather.js` разрешает selection в:
 
 ```js
 {
@@ -108,9 +168,9 @@ q = rho_air*v²/2
 rho_air = 1.225 kg/m³
 ```
 
-Mechanical solver получает уже `windPressurePa` и не зависит от способа выбора погоды.
+Mechanical solver получает уже `windPressurePa`.
 
-## 4. Geometry
+## 5. Geometry
 
 Для правильного октаэдра:
 
@@ -119,13 +179,13 @@ R = a/sqrt(3)
 h = a*sqrt(2/3)
 ```
 
-Каждый уровень содержит три узла; соседние уровни повёрнуты на 60°.
+Каждый level содержит три node; соседние уровни повёрнуты на 60°.
 
 Один module:
 
 ```text
-3 horizontal members
-6 diagonal members
+3 horizontal
+6 diagonal
 = 9 members
 ```
 
@@ -134,19 +194,19 @@ Node:
 ```js
 {
   id,
-  position: [x, y, z],
-  restrained: [ux, uy, uz, rx, ry, rz]
+  position: [x,y,z],
+  restrained: [ux,uy,uz,rx,ry,rz]
 }
 ```
 
-Нижние три nodes полностью заделаны.
+Нижние три node полностью заделаны.
 
-## 5. Frame element
+## 6. Frame element
 
 На node:
 
 ```text
-[ux, uy, uz, rx, ry, rz]
+[ux,uy,uz,rx,ry,rz]
 ```
 
 На member — 12 DOF.
@@ -161,16 +221,7 @@ W = pi*d³/32
 G = E/[2*(1+nu)]
 ```
 
-Euler–Bernoulli local stiffness использует:
-
-```text
-EA/L
-GJ/L
-12EI/L³
-6EI/L²
-4EI/L
-2EI/L
-```
+Euler–Bernoulli stiffness использует `EA/L`, `GJ/L`, `12EI/L³`, `6EI/L²`, `4EI/L`, `2EI/L`.
 
 Coordinate transform:
 
@@ -178,9 +229,9 @@ Coordinate transform:
 Ke = T^T*ke*T
 ```
 
-Идеальные joints не имеют moment releases.
+Global ideal joints не имеют moment releases. Это отдельная идеализация от физического connection post-processing.
 
-## 6. Loads
+## 7. Loads
 
 `buildLoadCase()` разделяет:
 
@@ -190,23 +241,23 @@ nodalMoments[nodeId]
 memberDistributedLoads[memberId]
 ```
 
-Self weight, ice and member wind являются distributed loads.
+Self weight, ice and member wind — distributed loads.
 
 Для uniform transverse load consistent local vector учитывает `qL/2` и `qL²/12`.
 
-Wind vector цилиндрического member:
+Wind cylinder vector:
 
 ```text
 qwind = p*cd*dout*gamma_w*(ew - ex*(ex dot ew))
 ```
 
-Осевая компонента потока исключается.
+Осевая компонента исключается.
 
-## 7. Symmetric band K
+## 8. Symmetric band K и compile-once
 
-Текущая топология соединяет nodes одного либо двух соседних уровней. При level-order numbering глобальная stiffness matrix имеет ограниченную полуширину.
+При level-order numbering текущая topology даёт малую полуширину.
 
-40 modules:
+Для 40 modules:
 
 ```text
 123 nodes
@@ -215,7 +266,7 @@ qwind = p*cd*dout*gamma_w*(ew - ex*(ex dot ew))
 half-bandwidth = 35
 ```
 
-Основной solver использует symmetric band storage:
+Storage/solver complexity:
 
 ```text
 storage       O(n*b)
@@ -223,29 +274,13 @@ factorization O(n*b²)
 solve         O(n*b)
 ```
 
-## 8. compileFrameSystem
+`compileFrameSystem()` один раз рассчитывает member transforms/properties, free-DOF map, bandwidth, `Kfree`, `Cholesky(Kfree)` и total mass.
 
-Один раз на геометрию рассчитываются:
-
-```text
-member length/local axes
-T
-A/I/J/G
-ke/Ke
-free DOF map
-bandwidth
-Kfree
-Cholesky(Kfree)
-total mass
-```
-
-Invariant complete calculation:
+Invariant:
 
 ```text
 stiffnessFactorizationCount = 1
 ```
-
-Все subsequent load cases переиспользуют factorization.
 
 ## 9. Static solve
 
@@ -260,327 +295,330 @@ build KG from axial forces
 solve generalized buckling
 ```
 
-Member local end vector:
+Member end vector:
 
 ```text
 fend = ke*ue - feq
 ```
 
-содержит `N, Vy, Vz, T, My, Mz`.
+содержит correlated `N,Vy,Vz,T,My,Mz` на обоих концах. Именно этот vector является источником для connection layer.
 
 Stress recovery:
 
 ```text
 sigma_N = |N|/A
 sigma_M = M/W
-sigma = sigma_N + sigma_M
-
 tau_T = T*(d/2)/J
 tau_V = 4V/(3A)
-tau = sqrt(tau_T² + tau_V²)
-
-sigma_eq = sqrt(sigma² + 3*tau²)
+sigma_eq = sqrt((sigma_N+sigma_M)² + 3*(tau_T²+tau_V²))
 ```
 
-Для transverse distributed load дополнительно учитывается internal bending allowance порядка `q_perp*L²/8`.
+## 10. Local/global buckling
 
-## 10. Local Euler check
+Local Euler:
 
 ```text
-Leff = mu*L
-mu = 0.5
+Leff = 0.5*L
 N_E = pi²*E*I/Leff²/gamma_M
 eta_member = max(eta_stress, eta_Euler)
 ```
 
-Это текущая elastic engineering check, не полный СП 16 member design.
-
-## 11. Global buckling
-
-Исходная задача:
+Global:
 
 ```text
 (K + lambda*KG)*phi = 0
-```
-
-Рабочий matrix-free operator:
-
-```text
 A(v) = solve(K, -KG*v)
-mu = eigenvalue(A)
 lambda = 1/mu
 ```
 
-Явный `K^-1` не строится.
+Lanczos использует K-inner product/reorthogonalization и проверяет actual generalized residual.
 
-Generalized Lanczos работает в `K`-inner product и использует повторную ортогонализацию.
+## 11. Wind envelope
 
-Критерий сходимости обязательно включает actual generalized residual:
-
-```text
-r = (K + lambda*KG)*phi
-```
-
-Сохраняются `criticalLoadFactor`, mode translations/rotations, residual/eigenResidual and iterations.
-
-## 12. Wind envelope и 120° symmetry
-
-Полная пользовательская сетка `0..360` сначала строится без изменений, затем canonical angles сворачиваются modulo 120° и удаляются только точные физически эквивалентные duplicates.
+Полная сетка `0..360` сворачивается modulo 120° только после построения. Удаляются лишь физически эквивалентные directions.
 
 Default 30°:
 
 ```text
-12 full-circle samples -> 4 solves
-0, 30, 60, 90 degrees
+12 full samples -> 4 unique FEM solves
+0,30,60,90 deg
 ```
 
-Optimization не имеет права терять уникальное направление исходной сетки.
+## 12. Physical intermodule split
 
-## 13. Lateral capacity
+`joint-demand.js` не создаёт нового FEM. Он интерпретирует уже рассчитанный ideal node как физический стык.
 
-Normalized special case:
+Interior node:
+
+```text
+4 members lower module
+2 upward diagonals next module
+1 vertical intermodule bolt
+```
+
+Для каждого interior node функция требует **ровно два upward members**. Нарушение topology вызывает error, а не молчаливый другой смысл.
+
+Число физических joints:
+
+```text
+3*(moduleCount-1)
+```
+
+Foundation nodes excluded.
+
+## 13. Transform member-end actions to joint demand
+
+Local member end actions переводятся в global coordinates через те же local axes, которые использовал frame solver.
+
+Для двух upward members одного load case:
+
+```text
+Fjoint = F1 + F2
+Mjoint = M1 + M2
+```
+
+Bolt axis:
+
+```text
+eb = [0,0,1]
+```
+
+Direct split:
+
+```text
+Faxis = Fjoint dot eb
+Fperp = Fjoint - eb*Faxis
+```
+
+Rigid frame moment requires explicit physical lever arm:
+
+```text
+reff = jointEffectiveRadiusMm
+Nt = |Faxis| + |Mb|/reff
+Ns = |Fperp| + |T|/reff
+```
+
+Этот surrogate намеренно консервативен и зависит от пользовательского `reff`.
+
+## 14. Bolt check
+
+`bolt-check.js` получает один physical demand `{tensionN,shearN}` и выбранную спецификацию.
+
+Capacity:
+
+```text
+Nbs = Rbs*Ab*ns*gamma_c
+Nbt = Rbt*Abn*gamma_c
+```
+
+В текущем single-bolt connection `gamma_b=1` и потому не является отдельным input.
+
+Interaction:
+
+```text
+Us = Ns/Nbs
+Ut = Nt/Nbt
+Ubolt = hypot(Us,Ut)
+PASS = Ubolt <= 1
+```
+
+Machine-level boundary uses tiny floating tolerance only to avoid `1.0000000000000002` from round-off being reported as physical failure.
+
+Characteristic rupture reference:
+
+```text
+Nu = Rbun*Abn
+```
+
+хранится отдельно от design capacity.
+
+`minimumBoltForClass()` перебирает allowed standard diameters по возрастанию; `buildBoltRecommendations()` делает это отдельно для каждого supported property class.
+
+## 15. Weld-end check
+
+`buildMemberEndWeldDemands()` формирует два physical ends на каждый member.
+
+Один demand:
+
+```js
+{
+  memberId,
+  end,
+  nodeId,
+  axialForceN,
+  shearForceN,
+  torsionNm,
+  bendingNm
+}
+```
+
+Каждый operational case проверяется отдельно. `connection-check.js` выбирает для конкретного physical end case с максимальной required physical weld length.
+
+Exact bead coordinates пока неизвестны, поэтому `weld-check.js` использует circular surrogate:
+
+```text
+Qaxial = |N| + 2|M|/rw
+Qshear = |V| + |T|/rw
+Qw = hypot(Qaxial,Qshear)
+```
+
+Resistance per effective millimetre:
+
+```text
+Rf/mm = beta_f*kf*Rwf*gamma_c
+Rz/mm = beta_z*kf*Rwz*gamma_c
+Rwz = 0.45*Run
+```
+
+Length:
+
+```text
+lw,f = Qw/Rf
+lw,z = Qw/Rz
+lw,eff = max(lw,f,lw,z,4kf,40 mm)
+Lphysical = lw,eff + 10 mm*nsegments
+```
+
+Consumable recommendation requires `Rwun >= Run` of weaker parent metal.
+
+## 16. Connection envelope
+
+`calculateConnectionChecks(result)` creates:
+
+```text
+connections.method
+connections.jointCount
+connections.jointDemands[]
+connections.bolt.selected
+connections.bolt.recommendationsByClass[]
+connections.weld.envelope[]
+connections.weld.critical
+connections.weld.electrodeRecommendation
+connections.weld.wireRecommendation
+```
+
+Operational connection envelope never merges unrelated cases.
+
+## 17. Lateral capacity
+
+Normalized case:
 
 ```text
 F0 = 1 N horizontal at top
 ```
 
-В нём отключены gravity, wind, ice, equipment and extra loads.
+Gravity/wind/ice/equipment disabled.
 
-Из линейности:
+Now:
 
 ```text
 Fmember = 1/eta_member(F0)
 Fglobal = lambda_cr(F0)*1 N
-Flim = min(Fmember, Fglobal)
+Fbolt = 1/Ubolt(F0)
+Flim = min(Fmember,Fglobal,Fbolt)
 ```
 
-`Fmember`, `Fglobal`, `Flim` строят independent direction envelopes.
+Direction envelopes for member/global/bolt are independent.
 
-## 14. Static top payload capacity
+## 18. Static top payload
 
-Этот special case, наоборот, сохраняет self weight и прикладывает trial mass вертикально к top nodes.
-
-Для каждого `m`:
+Trial mass keeps self weight. For each `m`:
 
 ```text
 Pdesign = m*g*equipmentLoadFactor
 U_member(m)
+U_bolt(m)
 lambda_cr(m)
 ```
 
-Pass condition:
+Pass:
 
 ```text
 U_member <= 1
+U_bolt <= 1
 lambda_cr >= 1
 ```
 
-Pure 1 kg case без self weight используется только для initial upper bound. Финальное значение уточняется binary search уже с self weight.
+Pure 1 kg without self weight is only an upper-bound reference. Final value uses binary search with self weight.
 
-Все trial cases используют то же `K` и его единственную Cholesky factorization.
+## 19. Solid-rod sanity boundary
 
-## 15. Verification layer
+The solid-rod test exists to cross-check scale of the **frame/member** implementation.
 
-`site/engine/verification.js` не является ещё одним FEM solver. Он читает готовый complete result и формирует **evidence passport**.
-
-```text
-result
-  -> buildVerificationPassport(result)
-       -> level 1: simple independent formulas
-       -> level 2: equilibrium + residuals
-       -> level 3: known-answer production-solver benchmarks
-       -> level 4: different numerical algorithms/reference
-       -> level 5: external FEM + expert review = pending
-       -> level 6: physical validation = pending
-```
-
-### 15.1. Level 1 — derived inputs and easy quantities
-
-Проверяются независимо от UI display:
+Therefore after connection checks were added it intentionally uses:
 
 ```text
-a = L0/n
-h = a*sqrt(2/3)
-actual H from node coordinates
-member count
-actual member lengths
-steel mass from Lsum*A*rho
-self weight from m*g*gamma_g
-wind pressure from rho_air*v²/2
+mast.memberLimitForceN / solid.memberLimitForceN
 ```
 
-Для numeric checks сохраняются:
+not overall `criticalForceN`, because a real M24 in the artificial `d_rib=a/2` geometry would legitimately become orders of magnitude weaker and destroy the original solver sanity invariant.
 
-```js
-{
-  actual,
-  expected,
-  tolerance,
-  relativeError,
-  formula,
-  substitution,
-  howToCheck
-}
-```
+## 20. Verification layer
 
-### 15.2. Level 2 — equation/physics closure
-
-Паспорт агрегирует worst-case diagnostics по operational cases:
+`verification.js` reads complete result and creates evidence levels:
 
 ```text
-global force closure
-moment closure
-linear residual
-free DOF equilibrium residual
-buckling residual
+1 simple independent formulas
+2 equilibrium + residuals
+3 known-answer production-solver benchmarks
+4 different numerical algorithms/reference
+5 external FEM + expert review = pending
+6 physical validation = pending
 ```
 
-Эти проверки отвечают на вопрос «удовлетворяет ли найденное решение собранной задаче и законам равновесия?», но не на вопрос «правильно ли сформулирована реальная задача?».
+Any internal fail => `verification.status=failed`.
 
-### 15.3. Level 3 — runtime known-answer frame checks
+Internal pass with external pending => `internal-passed-external-pending`.
 
-При `calculateCompleteMast()` тем же production `analyzeFrame()` решаются небольшие модели:
+Verification does not claim validation of real joints.
 
-```text
-axial bar:        delta = FL/(EA)
-cantilever:       delta = PL³/(3EI)
-cantilever angle: theta = PL²/(2EI)
-```
-
-Это self-test именно production frame element, а не копия формулы из report renderer.
-
-### 15.4. Level 4 — cross-algorithm checks
-
-Рабочий banded Cholesky сравнивается с отдельным dense Gaussian solver на одной SPD system.
-
-Рабочий banded/Lanczos buckling и dense reference решают diagonal generalized eigenproblem с analytical `lambda_cr=2`.
-
-Purpose: ловить ошибки fast numerical path, не выдавая cross-algorithm agreement за proof полной physical model.
-
-### 15.5. Levels 5–6 are intentionally pending
-
-Программный код не может сам сделать независимыми собственные результаты. Поэтому следующие checks создаются с status `not-verified`:
-
-```text
-external FEM
-expert engineering review
-physical validation
-```
-
-UI и paper report обязаны показывать это явно.
-
-### 15.6. Passport status
-
-Если есть любой internal fail:
-
-```text
-verification.status = failed
-```
-
-Если levels 1–4 pass, а внешние остаются pending:
-
-```text
-verification.status = internal-passed-external-pending
-```
-
-Это означает internal verification, а не validation реальной конструкции.
-
-Подробности: [`VERIFICATION_FOR_NON_SPECIALISTS.md`](VERIFICATION_FOR_NON_SPECIALISTS.md).
-
-## 16. Verification anti-false-green
-
-`tests/verification.test.js` содержит negative regression: рассчитанная total steel mass намеренно меняется на 5%, passport перестраивается, и `steel-mass` обязан стать `fail`.
-
-Таким образом CI проверяет не только happy path, но и способность verification layer обнаруживать controlled inconsistency.
-
-## 17. Web Worker boundary
+## 21. Worker boundary
 
 ```text
 Main thread                     Worker
 -----------                     ------
 form                            calculateCompleteMast
-progress UI       <----------   progress messages
+progress UI       <----------   progress
 3D viewer         <----------   result/error
 paper/CSV export                selectUniformDiameter
 ```
 
-Main thread не импортирует FEM solve API.
+Cancel uses `worker.terminate()`.
 
-Cancel:
+## 22. Diameter optimization boundary
 
-```js
-worker.terminate()
-```
+`selectUniformDiameter()` optimizes **rebar diameter** by strength/displacement/global buckling.
 
-## 18. Progress contract
+Bolt/weld are separate design variables and therefore are not incorrectly used to reject a rebar diameter that cannot repair a weak bolt. After the rebar diameter is selected, the complete calculation always runs connection checks and reports their result.
 
-Core callback:
+Future multi-variable optimization may jointly vary rebar/bolt/weld parameters.
 
-```js
-{
-  phase,
-  label,
-  completed,
-  total
-}
-```
+## 23. Reporting boundary
 
-Major phases:
+UI, CSV and printable project read already-calculated values.
 
-```text
-compile
-wind
-lateral
-static-payload
-done
-```
+Report renderer must not:
 
-Verification analytical/reference micro-checks выполняются после основных cases; их стоимость мала относительно полного FEM search и они не изменяют `K` мачты.
+- repeat FEM;
+- create an alternative mechanical model;
+- recompute governing cases from hidden formulas;
+- mix actions from different load cases.
 
-## 19. Diameter optimization
+CSV adds required physical weld length at both ends of every member.
 
-Standard diameters проверяются по возрастанию. Первый candidate, проходящий по strength/displacement/global buckling, является минимальным искомым. После выбора выполняется complete calculation, который добавляет lateral capacity, static payload и verification passport.
-
-## 20. Reporting boundary
-
-UI, CSV and printable project читают уже рассчитанные results.
-
-Report renderer не должен:
-
-- повторно решать FEM;
-- создавать альтернативную mechanical model;
-- менять solver values;
-- использовать отдельные скрытые формулы для определения результата.
-
-Paper project добавляет verification appendix из того же `result.verification`.
+Paper report includes dedicated connection section with `Nt/Ns/Nbt/Nbs/Ubolt/Rbun*Abn`, diameter recommendations and weld length calculations.
 
 Internal snapshot:
 
 ```text
-mast-calculator/calculation-snapshot/v6
+mast-calculator/calculation-snapshot/v7
 ```
 
-и включает full verification evidence. JSON остаётся internal regression/debug artifact.
+includes full `connections` and `verification` objects.
 
-## 21. Physical joint boundary
+## 24. Diagnostics
 
-Global FEM продолжает считать joints ideal rigid.
-
-Будущий joint layer получает correlated demand одного load case:
-
-```js
-{
-  jointId,
-  loadCaseId,
-  action: { N, Vy, Vz, T, My, Mz }
-}
-```
-
-Нельзя смешивать maxima разных load cases в физически несуществующий vector.
-
-## 22. Diagnostics
-
-Каждый solve сохраняет минимум:
+Each solve retains:
 
 ```text
 relativeResidual
@@ -593,34 +631,11 @@ globalMomentResidual
 buckling residual/eigenResidual/iterations
 ```
 
-Плохая диагностика должна приводить к warning/verification fail, а не молча считаться надёжным результатом.
+Connection layer additionally retains governing level/node/load case and demand/capacity/utilization.
 
-## 23. Verification pyramid
+## 25. 40-module regression
 
-Автоматизированные evidence layers:
-
-```text
-analytical formulas
-physical equilibrium
-known-answer production-solver cases
-fast-vs-reference algorithms
-structural invariants/regressions
-40-module performance/residual regression
-```
-
-Внешние layers, которые остаются вне самого приложения:
-
-```text
-independent FEM cross-check
-engineering review
-physical validation
-```
-
-Это разграничение является архитектурным требованием, а не только текстом документации.
-
-## 24. 40-module regression
-
-Обязательный CI case:
+Required CI case:
 
 ```text
 modules = 40
@@ -630,21 +645,22 @@ factorizations = 1
 wind cases = 4
 lateral cases = 8
 static payload evaluations = fixed bounded count
-static residual < 1e-8
-node equilibrium residual < 1e-8
-buckling residual < 1e-5
+internal bolt joints = 117
+weld envelope entries = 2 * member count
+finite lateral bolt limit
+finite static bolt utilization
 verification.failed = 0
 verification levels 1..4 = PASS
 runtime < generous CI guard
 ```
 
-Performance guard предназначен для обнаружения возврата к minute-scale dense behavior, а не для гарантии конкретного времени на любом компьютере.
+Performance guard detects regression to minute-scale dense behavior rather than promising identical time on all hardware.
 
-## 25. Independent engineering verification
+## 26. External engineering verification
 
-Внутренние analytical/reference checks не заменяют external FEM cross-check.
+Internal checks do not replace external FEM or a detailed joint model.
 
-Для external verification должны быть сохранены reference models с одинаковыми:
+External reference should match:
 
 ```text
 coordinates/topology
@@ -653,7 +669,7 @@ E/nu/A/I/J
 loads and units
 ```
 
-и сравнены:
+and compare:
 
 ```text
 displacements/rotations
@@ -661,13 +677,14 @@ reactions/moments
 N/V/T/M
 stresses
 buckling eigenvalues/modes
+joint resultants
 ```
 
-Engineering review постановки является отдельным evidence item.
+For exact connection validation additionally model actual bolt/nut/washer/thread/weld geometry.
 
-## 26. CI completion rule
+## 27. CI completion rule
 
-Расчётное изменение считается готовым только после:
+Calculation change is complete only after:
 
 ```text
 syntax + maintainability
@@ -679,4 +696,4 @@ secret scan
 static-site smoke
 ```
 
-Static smoke обязан проверять выдачу `verification.js` вместе с Worker, solver, banded/buckling, weather/lateral/static-payload/report modules и CSS.
+Static smoke must load connection catalog/check modules, verification, Worker, solver, report modules and CSS.

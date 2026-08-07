@@ -182,12 +182,12 @@ function createConnectionAppendix(result) {
 <h3>11.1. Физическое разделение межмодульного узла</h3>
 <p>${escapeHtml(connections.physicalSplit)} В расчётном узле выделяются два ребра, уходящие на следующий уровень. Их совпадающие конечные силы и моменты суммируются и передаются одному вертикальному болту. Для мачты из ${p.moduleCount} модулей внутренних стыков: ${connections.jointCount}.</p>
 <div class="formula">
-  <div class="formula-symbolic">Nt = |Faxis| + |Mb|/reff</div>
+  <div class="formula-symbolic">Nt = max(0, −Faxis) + |Mb|/reff</div>
   <div class="formula-symbolic">Ns = |F⊥| + |T|/reff</div>
   <div>reff = ${number(p.jointEffectiveRadiusMm, 1)} мм</div>
   <div class="formula-result">${escapeHtml(selectedBoltText)}</div>
 </div>
-<p class="equation-note">Перевод M/T через <em>reff</em> — консервативная surrogate-модель одного болта с контактной зоной. Значение reff должно быть подтверждено реальными размерами шайбы, гайки, торца и упора. Без этого моментная часть проверки является чувствительной оценкой.</p>
+<p class="equation-note">Знак Faxis соответствует end-force верхней отсечённой части: положительный Faxis сжимает контакт и не превращается в фиктивное растяжение болта; отрицательный разрывает стык. Чтобы не завышать выгоду неизвестного распределения контактных давлений, сжатие пока не вычитается из prying-составляющей |Mb|/reff. Перевод M/T через <em>reff</em> остаётся консервативной surrogate-моделью одного болта с контактной зоной. Значение reff должно быть подтверждено реальными размерами шайбы, гайки, торца и упора.</p>
 
 <h3>11.2. Расчёт выбранного болта</h3>
 ${bolt ? `

@@ -71,6 +71,7 @@ test('snapshot v9 содержит physical modules, simplified top mass, horizo
   const buildInfo = { repository: 'netkeep80/mast-calculator', ref: 'main', sha: 'abc123', runId: '42' }
   const snapshot = createCalculationExport(result, result.parameters, generatedAt, buildInfo)
   const geometry = result.connections.configurator.geometry
+  const selected = result.connections.configurator.selected
 
   assert.equal(snapshot.schema, 'mast-calculator/calculation-snapshot/v9')
   assert.equal(snapshot.software.sha, 'abc123')
@@ -99,16 +100,18 @@ test('snapshot v9 содержит physical modules, simplified top mass, horizo
   assert.equal('equivalentWaterVolumeM3' in snapshot.staticPayloadCapacity, false)
 
   assert.equal(snapshot.summary.configuredBoltDiameterMm, geometry.bolt.diameterMm)
-  assert.equal(snapshot.summary.configuredBoltClass, result.connections.configurator.selected.boltClass)
-  assert.equal(snapshot.connections.method, 'two-nut-intermodule-joint-and-member-end-weld-v3')
-  assert.equal(snapshot.connections.configurator.method, 'self-configuring-two-nut-joint-v2')
+  assert.equal(snapshot.summary.configuredBoltClass, selected.boltClass)
+  assert.equal(snapshot.connections.method, 'two-nut-intermodule-joint-and-member-end-weld-v4')
+  assert.equal(snapshot.connections.configurator.method, 'self-configuring-two-nut-joint-v3')
   assert.equal(snapshot.connections.configurator.geometry.bottomClearanceNut.ribCount, 2)
   assert.equal(snapshot.connections.configurator.geometry.topCouplingNut.ribCount, 4)
   assert.equal(snapshot.connections.configurator.geometry.bolt.lengthMm, result.parameters.jointBoltLengthMm)
   assert.equal(snapshot.connections.jointCount, 3)
   assert.equal(snapshot.connections.nutSections.passes, true)
   assert.ok(snapshot.connections.nutSections.minimumRatio >= 2)
-  assert.equal(snapshot.connections.strengthParameters.jointTighteningTorqueNm, 200)
+  assert.equal(selected.requestedTighteningTorqueNm, 200)
+  assert.equal(snapshot.connections.strengthParameters.jointTighteningTorqueNm, selected.tighteningTorqueNm)
+  assert.ok(snapshot.connections.strengthParameters.jointTighteningTorqueNm <= 200)
   assert.equal(snapshot.connections.strengthParameters.jointNutFactor, 0.2)
   assert.equal(snapshot.connections.strengthParameters.jointPreloadVariation, 0.25)
   assert.equal(snapshot.connections.strengthParameters.weldToRibAreaRatio, 2.5)

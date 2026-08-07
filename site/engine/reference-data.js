@@ -16,6 +16,10 @@ import {
   REGULAR_NUTS,
   WELD_LEG_SIZES_MM,
 } from './joint-hardware-catalog.js'
+import {
+  METRIC_COARSE_THREADS,
+  METRIC_THREAD_STANDARD,
+} from './metric-thread-catalog.js'
 import { reinforcementMassPerMeterKg } from './assembly-mass.js'
 import {
   DEFAULT_NUT_FACTOR,
@@ -28,8 +32,15 @@ import {
   MAX_WELD_TO_RIB_AREA_RATIO,
   MIN_WELD_TO_RIB_AREA_RATIO,
 } from './weld-check.js'
+import {
+  DEFAULT_WELD_ANNUAL_STIFFNESS_LOSS_RATE,
+  DEFAULT_WELD_INITIAL_STIFFNESS_RETENTION,
+  DEFAULT_WELD_MINIMUM_STIFFNESS_RETENTION,
+  DEFAULT_WELD_SERVICE_YEARS,
+} from './weld-service-degradation.js'
+import { AUTO_MAX_PRELOAD_UTILIZATION } from './joint-configurator.js'
 
-export const REFERENCE_DATA_SCHEMA = 'mast-calculator/reference-data/v2'
+export const REFERENCE_DATA_SCHEMA = 'mast-calculator/reference-data/v3'
 
 export function buildReferenceData() {
   const reinforcementClasses = Object.values(REINFORCEMENT_CLASSES).map((item) => ({ ...item }))
@@ -46,6 +57,7 @@ export function buildReferenceData() {
     geometryStandard: FASTENER_GEOMETRY_STANDARD,
     threadStandard: THREAD_STANDARD,
   }))
+  const metricThreads = METRIC_COARSE_THREADS.map((item) => ({ ...item }))
   const regularNuts = REGULAR_NUTS.map((item) => ({ ...item }))
   const couplingNuts = COUPLING_NUTS.map((item) => ({ ...item }))
   const weldConsumables = WELD_CONSUMABLES.map((item) => ({
@@ -62,6 +74,8 @@ export function buildReferenceData() {
     fasteners: {
       classes: boltClasses,
       sizes: boltSizes,
+      metricCoarseThreads: metricThreads,
+      metricThreadStandard: METRIC_THREAD_STANDARD,
       regularNuts,
       couplingNuts,
     },
@@ -75,6 +89,7 @@ export function buildReferenceData() {
         defaultTighteningTorqueNm: DEFAULT_TIGHTENING_TORQUE_NM,
         defaultNutFactor: DEFAULT_NUT_FACTOR,
         defaultPreloadVariation: DEFAULT_PRELOAD_VARIATION,
+        autoMaximumPreloadUtilization: AUTO_MAX_PRELOAD_UTILIZATION,
         source: 'NASA-STD-5020A Appendix A / NASA Fastener Design Manual; K должен уточняться для фактической резьбы, покрытия и смазки',
       },
       nutNetSection: {
@@ -83,11 +98,19 @@ export function buildReferenceData() {
         source: 'Дополнительный геометрический критерий проекта issue #33, не нормативная замена проверки резьбы/смятия',
       },
       weldEffectiveArea: {
-        relation: 'Aweld,eff = beta_f*kf*leff',
+        relation: 'Aweld,service = eta_service*beta_f*kf*leff',
         minimumAreaRatioToRib: MIN_WELD_TO_RIB_AREA_RATIO,
         defaultAreaRatioToRib: DEFAULT_WELD_TO_RIB_AREA_RATIO,
         maximumSelectableAreaRatioToRib: MAX_WELD_TO_RIB_AREA_RATIO,
         source: 'Эффективная площадь = effective throat × effective length; коэффициент 2–3× является дополнительным критерием issue #33',
+      },
+      weldServiceDegradation: {
+        model: 'eta_service = max(eta_min, eta0*(1-r)^years)',
+        defaultServiceYears: DEFAULT_WELD_SERVICE_YEARS,
+        defaultInitialStiffnessRetention: DEFAULT_WELD_INITIAL_STIFFNESS_RETENTION,
+        defaultAnnualStiffnessLossRate: DEFAULT_WELD_ANNUAL_STIFFNESS_LOSS_RATE,
+        defaultMinimumStiffnessRetention: DEFAULT_WELD_MINIMUM_STIFFNESS_RETENTION,
+        source: 'Issue #19: параметрический консервативный reserve model. Универсального нормативного закона календарного старения сварной стали нет; fatigue/corrosion/inspection должны проверяться отдельно.',
       },
     },
   }

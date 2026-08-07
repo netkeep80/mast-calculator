@@ -40,7 +40,7 @@ test('бумажный проект содержит формулы массы �
   assert.match(html, /Aweld ≈ k²\/2/)
   assert.match(html, /Полный межмодульный узел/)
   assert.match(html, /Сваренный и закреплённый модуль/)
-  assert.match(html, /mast-calculator\/reference-data\/v2/)
+  assert.match(html, /mast-calculator\/reference-data\/v3/)
   assert.match(html, /Арматура/)
   assert.match(html, /Классы болтов/)
   assert.match(html, /Электроды и проволока/)

@@ -58,6 +58,10 @@ function weldOptions(parameters, memberDiameterMm, consumableId = parameters.wel
     weldGroupRadiusMm: Math.max(diameterMm / 2, parameters.weldLegMm / 2),
     memberAreaMm2,
     minimumAreaRatio: strength.weldToRibAreaRatio,
+    serviceYears: strength.weldServiceYears,
+    initialStiffnessRetention: strength.weldInitialStiffnessRetention,
+    annualStiffnessLossRate: strength.weldAnnualStiffnessLossRate,
+    minimumStiffnessRetention: strength.weldMinimumStiffnessRetention,
   }
 }
 
@@ -211,12 +215,12 @@ export function calculateConnectionChecks(result) {
   const jointGeometryPasses = hardwareGeometryPasses && configurator.nutSections.passes
 
   return {
-    method: 'two-nut-intermodule-joint-and-member-end-weld-v3',
-    standard: 'СП 16.13330.2017 (ред. 09.12.2024) + ISO/ГОСТ геометрия + torque-preload T=KFd + проектные area-reserve критерии issue #33',
+    method: 'two-nut-intermodule-joint-and-member-end-weld-v4',
+    standard: 'СП 16.13330.2017 + ISO/ГОСТ геометрия + torque-preload T=KFd + проектные criteria issue #33/#19',
     physicalSplit: 'На ножке верхнего модуля два ребра приварены к проходной гайке с резьбой большего диаметра. Болт свободно проходит через неё и ввинчивается в длинную соединительную гайку верхнего узла нижнего модуля, к которой приварены четыре ребра.',
-    boltModel: 'Сила наклонных верхних рёбер явно раскладывается на осевую и поперечную к болту составляющие; момент добавляет M/reff. Максимальный преднатяг от фактического момента затяжки добавляется к растяжению при консервативной strength-check.',
+    boltModel: 'Сила наклонных верхних рёбер раскладывается на осевую и поперечную к болту составляющие; момент добавляет M/reff. В auto момент затяжки ограничивается по расчётной растягивающей способности конкретного диаметра, ручной режим сохраняет заданный момент.',
     nutSectionModel: 'Нетто-площадь шестигранника за вычетом базового отверстия обязана быть не меньше заданного кратного сечения одного ребра; по умолчанию 2×.',
-    weldModel: 'Каждый конец ребра проверяется по совпадающему N/V/T/M одного load case. Требуемая длина является максимумом силового расчёта, нормативного минимума и проектного запаса эффективной площади шва 2–3× площади ребра.',
+    weldModel: 'Каждый конец ребра проверяется по совпадающему N/V/T/M. Номинальное throat дополнительно умножается на явный service-retention factor сварной зоны issue #19; это консервативный параметрический reserve model, а не универсальный физический закон календарного старения.',
     jointCount: result.model.moduleCount > 1 ? 3 * (result.model.moduleCount - 1) : 0,
     jointDemandCount: jointDemands.length,
     jointResultants,
@@ -248,6 +252,11 @@ export function calculateConnectionChecks(result) {
       betaZ: parameters.weldBetaZ,
       weakerBaseMetalRunMPa: baseMetalRunMPa(parameters),
       minimumAreaRatio: strength.weldToRibAreaRatio,
+      serviceYears: strength.weldServiceYears,
+      initialStiffnessRetention: strength.weldInitialStiffnessRetention,
+      annualStiffnessLossRate: strength.weldAnnualStiffnessLossRate,
+      minimumStiffnessRetention: strength.weldMinimumStiffnessRetention,
+      serviceDegradation: criticalWeld?.check.serviceDegradation ?? null,
       envelope: weldEnvelope,
       critical: criticalWeld,
       selectedConsumableCompatible: selectedWeldCompatible,

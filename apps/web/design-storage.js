@@ -1,5 +1,4 @@
 import {
-  buildDesignPackage,
   parseDesignPackage,
   serializeDesignPackage,
 } from '../../packages/design/index.js'
@@ -16,11 +15,6 @@ export function saveDesignPackage(value, storage = globalThis.localStorage) {
   if (!storage?.setItem) throw new Error('localStorage недоступен')
   storage.setItem(DESIGN_PACKAGE_STORAGE_KEY, text)
   return { bytes, text }
-}
-
-export function saveDesignResult(result, metadata = {}, storage = globalThis.localStorage) {
-  const designPackage = buildDesignPackage(result, metadata)
-  return { designPackage, ...saveDesignPackage(designPackage, storage) }
 }
 
 export function loadDesignPackage(storage = globalThis.localStorage) {

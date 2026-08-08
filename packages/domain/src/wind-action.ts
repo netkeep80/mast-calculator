@@ -39,6 +39,9 @@ export interface WindActionProvenance {
   readonly windRegion: Sp20WindRegion | null
   readonly terrainType: Sp20TerrainType | null
   readonly basicWindPressurePa: number | null
+  readonly referenceHeightM: number | null
+  readonly referenceHeightCoefficient: number | null
+  readonly referenceCharacteristicMeanPressurePa: number
   readonly loadReliabilityFactor: number
   readonly aerodynamicCoefficientsAppliedSeparately: boolean
 }
@@ -95,6 +98,8 @@ export function createWindActionProvenance(parameters: {
   readonly windTerrainType?: Sp20TerrainType | null
   readonly windPressurePa: number
   readonly windLoadFactor: number
+  readonly windReferenceHeightM?: number | null
+  readonly windReferenceHeightCoefficient?: number | null
 }): WindActionProvenance {
   if (parameters.windActionMode === WIND_ACTION_MODE_SP20_MEAN_V1) {
     const region = parameters.windRegion ?? null
@@ -109,6 +114,9 @@ export function createWindActionProvenance(parameters: {
       windRegion: region,
       terrainType: terrain,
       basicWindPressurePa: region ? SP20_BASIC_WIND_PRESSURE_PA[region] : null,
+      referenceHeightM: parameters.windReferenceHeightM ?? null,
+      referenceHeightCoefficient: parameters.windReferenceHeightCoefficient ?? null,
+      referenceCharacteristicMeanPressurePa: parameters.windPressurePa,
       loadReliabilityFactor: parameters.windLoadFactor,
       aerodynamicCoefficientsAppliedSeparately: true,
     })
@@ -123,6 +131,9 @@ export function createWindActionProvenance(parameters: {
     windRegion: null,
     terrainType: null,
     basicWindPressurePa: null,
+    referenceHeightM: parameters.windReferenceHeightM ?? null,
+    referenceHeightCoefficient: null,
+    referenceCharacteristicMeanPressurePa: parameters.windPressurePa,
     loadReliabilityFactor: parameters.windLoadFactor,
     aerodynamicCoefficientsAppliedSeparately: true,
   })
@@ -145,13 +156,17 @@ export function resolveWindAction<T extends {
     }
     return {
       ...resolved,
-      windActionProvenance: createWindActionProvenance(resolved),
+      windActionProvenance: createWindActionProvenance({
+        ...resolved,
+        windReferenceHeightM: referenceHeightM,
+      }),
     }
   }
 
   const windRegion = resolveRegion(parameters.windRegion)
   const windTerrainType = resolveTerrain(parameters.windTerrainType)
-  const windPressurePa = sp20CharacteristicMeanPressurePa(windRegion, windTerrainType, referenceHeightM)
+  const windReferenceHeightCoefficient = sp20HeightCoefficient(referenceHeightM, windTerrainType)
+  const windPressurePa = SP20_BASIC_WIND_PRESSURE_PA[windRegion] * windReferenceHeightCoefficient
   const resolved = {
     ...parameters,
     windActionMode,
@@ -161,7 +176,11 @@ export function resolveWindAction<T extends {
   }
   return {
     ...resolved,
-    windActionProvenance: createWindActionProvenance(resolved),
+    windActionProvenance: createWindActionProvenance({
+      ...resolved,
+      windReferenceHeightM: referenceHeightM,
+      windReferenceHeightCoefficient,
+    }),
   }
 }
 

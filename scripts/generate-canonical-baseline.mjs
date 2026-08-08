@@ -1,4 +1,4 @@
-import { DEFAULT_PARAMETERS, calculateMast, resolveCalculationParameters } from '../packages/application/index.js'
+import { calculateMast } from '../packages/application/index.js'
 import { calculateCompleteMastWithConfiguredJoint } from '../packages/application/index.js'
 import { calculateGuyedMast } from '../packages/engineering/index.js'
 import {
@@ -9,6 +9,7 @@ import {
 } from '../packages/design/index.js'
 import { buildDetailedMastModel } from '../packages/design/index.js'
 import { createMastObj } from '../packages/design/index.js'
+import { resolvedProject } from '../tests/helpers/resolved-project.js'
 import {
   CANONICAL_SCENARIO_SCHEMA,
   CANONICAL_SCENARIOS,
@@ -210,7 +211,7 @@ const completeCache = new Map()
 function completeFor(scenario) {
   const key = scenario.cacheKey ?? JSON.stringify(scenario.input)
   if (!completeCache.has(key)) {
-    completeCache.set(key, calculateCompleteMastWithConfiguredJoint({ ...DEFAULT_PARAMETERS, ...scenario.input }))
+    completeCache.set(key, calculateCompleteMastWithConfiguredJoint(resolvedProject(scenario.input)))
   }
   return completeCache.get(key)
 }
@@ -225,11 +226,11 @@ for (const scenario of CANONICAL_SCENARIOS) {
     continue
   }
   if (scenario.kind === 'mast') {
-    cases[scenario.id] = projectMast(calculateMast({ ...DEFAULT_PARAMETERS, ...scenario.input }))
+    cases[scenario.id] = projectMast(calculateMast(resolvedProject(scenario.input)))
     continue
   }
   if (scenario.kind === 'guys') {
-    const parameters = resolveCalculationParameters({ ...DEFAULT_PARAMETERS, ...scenario.input })
+    const parameters = resolvedProject(scenario.input)
     cases[scenario.id] = projectGuyed(parameters, scenario)
     continue
   }

@@ -1,0 +1,65 @@
+.guy-editor {
+  margin-top: .65rem;
+  border-color: #b9d7cd;
+  background: #f6fbf9;
+}
+
+.guy-editor[open] {
+  padding-bottom: .75rem;
+}
+
+.guy-editor > summary {
+  color: #155f4b;
+  font-weight: 850;
+}
+
+.guy-editor-enabled {
+  margin: .7rem 0;
+  padding: .55rem .65rem;
+  border: 1px solid #cfe1da;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.guy-editor-global {
+  margin-bottom: .65rem;
+}
+
+.guy-editor-tiers {
+  display: grid;
+  gap: .55rem;
+}
+
+.guy-editor-tier {
+  padding: .65rem;
+  border: 1px solid #d8e4df;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.guy-editor-tier h4 {
+  margin: 0 0 .45rem;
+  color: #2f4d43;
+  font-size: .76rem;
+}
+
+.guy-editor-tier-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .45rem;
+}
+
+.guy-editor-tier-grid label {
+  min-width: 0;
+}
+
+.guy-editor-tier-grid select,
+.guy-editor-tier-grid input {
+  width: 100%;
+}
+
+@media (max-width: 680px) {
+  .guy-editor-tier-grid {
+    grid-template-columns: 1fr;
+  }
+}

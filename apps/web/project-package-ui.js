@@ -34,7 +34,7 @@ function dispatchFormSynchronization(form) {
   }
 }
 
-export function initializeProjectPackageUi(form, fileAdapter = defaultFileAdapter) {
+export function initializeProjectPackageUi(form, fileAdapter = defaultFileAdapter, guyEditor = null) {
   const actions = document.querySelector('#project-file-actions') ?? document.querySelector('.export-row')
   if (!actions || !form || !fileAdapter) return null
 
@@ -63,10 +63,12 @@ export function initializeProjectPackageUi(form, fileAdapter = defaultFileAdapte
   downloadButton.addEventListener('click', async () => {
     try {
       const project = readProjectInputFromForm(form)
+      const editableGuys = guyEditor ? guyEditor.read() : retainedGuys
       const packageValue = createProjectPackage(project, {
         ...(retainedMetadata === undefined ? {} : { metadata: retainedMetadata }),
-        ...(retainedGuys === undefined ? {} : { guys: retainedGuys }),
+        ...(editableGuys === undefined ? {} : { guys: editableGuys }),
       })
+      retainedGuys = packageValue.guys
       const filename = `${safeFilename(packageValue.metadata?.name)}.project.json`
       const saved = await fileAdapter.saveText({
         suggestedName: filename,
@@ -75,7 +77,7 @@ export function initializeProjectPackageUi(form, fileAdapter = defaultFileAdapte
         extensions: ['json'],
       })
       if (!saved) return
-      status.textContent = `Сохранён ${packageValue.schema}${saved.path ? `: ${saved.path}` : ''}${packageValue.guys ? '; вместе с конфигурацией растяжек' : ''}.`
+      status.textContent = `Сохранён ${packageValue.schema}${saved.path ? `: ${saved.path}` : ''}${packageValue.guys ? '; с редактируемой конфигурацией растяжек' : ''}.`
       status.hidden = false
     } catch (error) {
       status.textContent = error instanceof Error ? error.message : String(error)
@@ -92,7 +94,8 @@ export function initializeProjectPackageUi(form, fileAdapter = defaultFileAdapte
       retainedGuys = packageValue.guys
       applyProjectInputToForm(form, packageValue.project)
       dispatchFormSynchronization(form)
-      status.textContent = `Открыт ${packageValue.schema}${opened.path ? `: ${opened.path}` : ''}${packageValue.guys ? '; параметры растяжек сохранены в пакете' : ''}. Запустите расчёт для обновления результата.`
+      guyEditor?.apply(packageValue.guys)
+      status.textContent = `Открыт ${packageValue.schema}${opened.path ? `: ${opened.path}` : ''}${packageValue.guys ? '; растяжки загружены в редактор проекта' : ''}. Запустите расчёт для обновления результата.`
       status.hidden = false
     } catch (error) {
       status.textContent = error instanceof Error ? error.message : String(error)

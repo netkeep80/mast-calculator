@@ -187,6 +187,15 @@ jobs:
               exit 1
             fi
           }
+          assert_not_contains() {
+            local file="$1"
+            local needle="$2"
+            local label="$3"
+            if grep --fixed-strings --quiet -- "$needle" "$file"; then
+              echo "::error::$label: unexpected '$needle' in $file"
+              exit 1
+            fi
+          }
           assert_asset() {
             local path="$1"
             if ! curl --fail --silent "http://127.0.0.1:4173/$path" >/dev/null; then
@@ -213,8 +222,16 @@ jobs:
           fi
 
           assert_contains /tmp/mast-calculator-index.html '<title>Калькулятор мачты</title>' 'main page title changed'
-          assert_contains /tmp/mast-calculator-index.html 'Проверить конкретную мачту' 'main calculation flow is missing'
+          assert_contains /tmp/mast-calculator-index.html '<body data-web-ui="2.0">' 'Web UI 2.0 marker is missing'
+          assert_contains /tmp/mast-calculator-index.html 'class="app-bar"' 'canonical app bar is missing'
+          assert_contains /tmp/mast-calculator-index.html 'workspace-project-pane' 'project workspace is missing'
+          assert_contains /tmp/mast-calculator-index.html 'workspace-view-pane' '3D workspace is missing'
+          assert_contains /tmp/mast-calculator-index.html 'workspace-summary-pane' 'engineering summary workspace is missing'
           assert_contains /tmp/mast-calculator-index.html 'Справочники — проверить исходные значения расчёта' 'reference-data entry point is missing'
+          assert_not_contains /tmp/mast-calculator-index.html 'Что вы хотите узнать о мачте?' 'legacy scenario-first hero returned'
+          assert_not_contains /tmp/mast-calculator-index.html 'прототип 1.' 'hardcoded prototype version returned'
+          assert_not_contains /tmp/mast-calculator-index.html 'scenario-panel' 'legacy scenario landing returned'
+          assert_not_contains /tmp/mast-calculator-index.html 'workflow-strip' 'legacy workflow strip returned'
 
           curl --fail --silent http://127.0.0.1:4173/design.html >/tmp/mast-design.html
           assert_contains /tmp/mast-design.html 'http-equiv="refresh" content="0; url=./#reports"' 'legacy design URL no longer redirects to Reports'
@@ -223,14 +240,17 @@ jobs:
           for asset in \
             logo.jpg \
             apps/web/app.js \
+            apps/web/app-bootstrap.js \
+            apps/web/workspace-behavior.js \
+            apps/web/workspace.css \
             apps/web/calculation-worker.js \
             apps/web/viewer.js \
             apps/web/joint-viewer.js \
             apps/web/result-tabs.js \
             apps/web/result-tabs.css \
+            apps/web/guy-result-panel.css \
             apps/web/reports-exports.js \
             apps/web/reports-exports.css \
-            apps/web/design-storage.js \
             packages/domain/index.js \
             packages/numerics/index.js \
             packages/structural-analysis/index.js \
@@ -240,4 +260,16 @@ jobs:
             packages/reporting/index.js
           do
             assert_asset "$asset"
+          done
+
+          for removed in \
+            apps/web/workspace-shell.js \
+            apps/web/procurement-export.js \
+            apps/web/design-storage.js \
+            apps/web/navigation.js
+          do
+            if curl --fail --silent "http://127.0.0.1:4173/$removed" >/dev/null; then
+              echo "::error::Legacy Web asset is still published: $removed"
+              exit 1
+            fi
           done

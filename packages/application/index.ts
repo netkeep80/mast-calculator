@@ -6,6 +6,7 @@ export * from './src/use-cases.js'
 export * from './src/joint-preview.js'
 export * from './src/fabrication-preview.js'
 export * from './src/artifacts.js'
+export * from './src/result-summary.js'
 export * from './src/cancellation.js'
 export * from './src/errors.js'
 export {

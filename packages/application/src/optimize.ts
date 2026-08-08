@@ -65,7 +65,7 @@ export function selectUniformDiameter(
     const diameter = orderedDiameters[index]!
     const variantParameters: ResolvedProject = { ...uniformParameters, barDiameterMm: diameter }
     const result = calculateMast(
-      variantParameters,
+      variantParameters as unknown as Record<string, unknown>,
       {
         resolvedProject: variantParameters,
         onProgress: (event) => options.onProgress?.({

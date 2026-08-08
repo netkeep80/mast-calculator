@@ -1,3 +1,4 @@
+import type { calculateAssemblyMass } from '../../design/index.js'
 import type { ResolvedProject } from '../../domain/contracts.js'
 import type {
   buildVerificationPassport,
@@ -117,7 +118,7 @@ export interface ReportingCalculationResult {
   readonly heightCapacity?: HeightCapacity | null
   readonly verification?: ReturnType<typeof buildVerificationPassport> | null
   readonly performance?: Readonly<Record<string, unknown>>
-  readonly assemblyMass?: Readonly<Record<string, unknown>>
+  readonly assemblyMass?: ReturnType<typeof calculateAssemblyMass> | null
 }
 
 export interface ReportingBuildInfo {

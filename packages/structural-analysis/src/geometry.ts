@@ -9,7 +9,6 @@ const levelNodeIds = (level: number): number[] => [0, 1, 2].map((corner) => leve
 type Position3 = [number, number, number]
 type Restraint6 = [boolean, boolean, boolean, boolean, boolean, boolean]
 type MemberRole = 'top-ring' | 'leg'
-
 type WeldZoneStiffness = ReturnType<typeof calculateEquivalentMemberWeldZoneStiffness>
 
 interface MastNode {
@@ -122,10 +121,10 @@ export function generateMastModel(parameters: ResolvedProject): GeneratedMastMod
     const weldZoneStiffness = calculateEquivalentMemberWeldZoneStiffness({
       memberLengthM,
       memberDiameterMm: diameterM * 1000,
-      serviceYears: parameters.weldServiceYears,
-      initialStiffnessRetention: parameters.weldInitialStiffnessRetention,
-      annualStiffnessLossRate: parameters.weldAnnualStiffnessLossRate,
-      minimumStiffnessRetention: parameters.weldMinimumStiffnessRetention,
+      ...(parameters.weldServiceYears === undefined ? {} : { serviceYears: parameters.weldServiceYears }),
+      ...(parameters.weldInitialStiffnessRetention === undefined ? {} : { initialStiffnessRetention: parameters.weldInitialStiffnessRetention }),
+      ...(parameters.weldAnnualStiffnessLossRate === undefined ? {} : { annualStiffnessLossRate: parameters.weldAnnualStiffnessLossRate }),
+      ...(parameters.weldMinimumStiffnessRetention === undefined ? {} : { minimumStiffnessRetention: parameters.weldMinimumStiffnessRetention }),
     })
     const youngModulusPa = nominalYoungModulusPa
       * weldZoneStiffness.equivalentStiffnessRetentionFactor

@@ -1,3 +1,5 @@
+import { publishCalculationResult } from './result-channel.js'
+
 export function createCalculationController({
   state,
   createWorker = () => new Worker('./calculation-worker.js', { type: 'module' }),
@@ -65,6 +67,7 @@ export function createCalculationController({
         })
         if (!completed) return
         stopTransport()
+        publishCalculationResult(state.snapshot)
         onResult(state.snapshot, activeJob)
       }
     }

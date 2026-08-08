@@ -13,12 +13,13 @@ function hasScenario(value) {
   return new RegExp(`name="usageScenario"\\s+value="${value}"`).test(html)
 }
 
-test('интерфейс начинается с четырёх понятных пользовательских сценариев', () => {
-  for (const id of ['check', 'design', 'limits', 'verify']) assert.ok(hasScenario(id), `нет сценария ${id}`)
+test('четыре пользовательских сценария сохранены как представления одного result workspace', () => {
+  for (const id of ['check', 'design', 'limits', 'verify']) assert.ok(hasScenario(id), `нет представления ${id}`)
   assert.match(html, /Проверить конкретную мачту/)
   assert.match(html, /Подобрать конструкцию/)
   assert.match(html, /Узнать пределы/)
   assert.match(html, /Проверить расчёт/)
+  assert.match(scenarios, /createEngineeringSummary/)
 })
 
 test('ручной ввод отделён от автоматически вычисляемых величин', () => {
@@ -60,7 +61,7 @@ test('справочники арматуры, крепежа и сварочн�
   assert.doesNotMatch(reference, /rbtMPa:\s*451/)
 })
 
-test('сценарный слой не создаёт второй FEM solver или инженерный расчётный путь', () => {
+test('сценарный слой не вычисляет PASS/FAIL самостоятельно и не создаёт второй engineering path', () => {
   assert.doesNotMatch(scenarios, /analyzeFrame/)
   assert.doesNotMatch(scenarios, /compileFrameSystem/)
   assert.doesNotMatch(scenarios, /solveModuleStack/)
@@ -68,4 +69,16 @@ test('сценарный слой не создаёт второй FEM solver и
   assert.match(scenarios, /previewRibFabrication/)
   assert.match(scenarios, /result\.assemblyMass/)
   assert.match(scenarios, /renderScenarioResult/)
+  assert.match(scenarios, /createEngineeringSummary\(result, guyResult\)/)
+  assert.doesNotMatch(scenarios, /result\.envelope\.maxUtilization\s*<=\s*1/)
+  assert.doesNotMatch(scenarios, /result\.envelope\.minimumBucklingFactor\s*>=/)
+  assert.doesNotMatch(scenarios, /maxTopDisplacementM\s*\*\s*1000\s*<=/)
+  assert.doesNotMatch(scenarios, /criteria\.every\(\(item\) => item\.passes\)/)
+})
+
+test('guyed view exposes incomplete status instead of turning GUY PASS into overall PASS', () => {
+  assert.match(scenarios, /НЕПОЛНАЯ ПРОВЕРКА/)
+  assert.match(scenarios, /guyed-connection-envelope/)
+  assert.match(scenarios, /болты и сварка по усилиям мачты с растяжками/)
+  assert.match(scenarios, /bare-frame/)
 })

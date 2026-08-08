@@ -5,6 +5,8 @@ import { performance } from 'node:perf_hooks'
 import { pathToFileURL } from 'node:url'
 
 const root = process.cwd()
+const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+const INITIAL_WEB_BUDGET_BYTES = 1024 * 1024
 const WEB_CODE_BUDGET_BYTES = 6 * 1024 * 1024
 const OPTIMIZATION_BUDGET_MS = 45_000
 const DESIGN_OBJ_BUDGET_MS = 5_000
@@ -21,10 +23,24 @@ function walkFiles(directory) {
   return result
 }
 
-execFileSync(process.execPath, ['scripts/build-web.mjs'], { cwd: root, stdio: 'inherit' })
-execFileSync(process.execPath, ['scripts/build-core.mjs'], { cwd: root, stdio: 'inherit' })
+execFileSync(npmCommand, ['run', 'build:web'], { cwd: root, stdio: 'inherit' })
 
 const webRoot = path.join(root, '_site')
+const initialWebAssets = [
+  'index.html',
+  'apps/web/app-bootstrap.js',
+  'apps/web/app.js',
+  'apps/web/file-adapter.js',
+  'apps/web/runtime-info.js',
+].map((relative) => path.join(webRoot, relative))
+for (const file of initialWebAssets) {
+  if (!fs.existsSync(file)) throw new Error(`Initial Web asset is missing: ${path.relative(root, file)}`)
+}
+const initialWebBytes = initialWebAssets.reduce((sum, file) => sum + fs.statSync(file).size, 0)
+if (initialWebBytes > INITIAL_WEB_BUDGET_BYTES) {
+  throw new Error(`Initial Web shell exceeds ${INITIAL_WEB_BUDGET_BYTES} bytes: ${initialWebBytes}`)
+}
+
 const codeAssets = walkFiles(webRoot).filter((file) => /\.(?:html|js|css|json)$/i.test(file))
 const webCodeBytes = codeAssets.reduce((sum, file) => sum + fs.statSync(file).size, 0)
 if (webCodeBytes > WEB_CODE_BUDGET_BYTES) {
@@ -74,6 +90,7 @@ if (objBytes > OBJ_SIZE_BUDGET_BYTES) {
 }
 
 console.info([
+  `Initial Web shell: ${(initialWebBytes / 1024).toFixed(1)} KiB / ${(INITIAL_WEB_BUDGET_BYTES / 1024).toFixed(0)} KiB`,
   `Web code assets: ${(webCodeBytes / 1024).toFixed(1)} KiB / ${(WEB_CODE_BUDGET_BYTES / 1024).toFixed(0)} KiB`,
   `Optimization: ${optimizationElapsedMs.toFixed(1)} ms / ${OPTIMIZATION_BUDGET_MS} ms`,
   `Design + OBJ: ${designElapsedMs.toFixed(1)} ms / ${DESIGN_OBJ_BUDGET_MS} ms`,

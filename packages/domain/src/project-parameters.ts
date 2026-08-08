@@ -220,7 +220,7 @@ function resolveFlatCalculationParameters(parameters: JsonRecord = {}): Resolved
     : withWindAction
   const heightSearchMaxModules = Math.max(
     1,
-    Math.min(500, Math.floor(Number(normalizedWind.heightSearchMaxModules) || Number(DEFAULT_FLAT_INPUT.heightSearchMaxModules))),
+    Math.min(500, Math.floor(Number(withWeather.heightSearchMaxModules) || Number(DEFAULT_FLAT_INPUT.heightSearchMaxModules))),
   )
   const baseMetalStrength = Number(parameters.jointBaseMetalTensileStrengthMPa)
   return {

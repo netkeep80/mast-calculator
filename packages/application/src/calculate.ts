@@ -128,27 +128,27 @@ export function windDirections(parameters: ResolvedProject): number[] {
   return [...unique.values()].sort((left, right) => left - right)
 }
 
-function maxBy<T>(items: readonly T[], selector: (item: T) => number): T {
+function maxBy<T extends object>(items: readonly T[], selector: (item: T) => number): T {
   const first = items[0]
   if (first === undefined) throw new Error('Невозможно выбрать максимум из пустого набора')
-  let best = first
+  let best: T = first
   for (const item of items.slice(1)) {
     if (selector(item) > selector(best)) best = item
   }
   return best
 }
 
-function minBy<T>(items: readonly T[], selector: (item: T) => number): T {
+function minBy<T extends object>(items: readonly T[], selector: (item: T) => number): T {
   const first = items[0]
   if (first === undefined) throw new Error('Невозможно выбрать минимум из пустого набора')
-  let best = first
+  let best: T = first
   for (const item of items.slice(1)) {
     if (selector(item) < selector(best)) best = item
   }
   return best
 }
 
-const vectorNorm = (vector: readonly number[]): number => Math.hypot(...vector)
+const vectorNorm = (vector: Iterable<number>): number => Math.hypot(...vector)
 
 function createWarnings(
   parameters: ResolvedProject,

@@ -8,19 +8,16 @@ interface VerificationCheck {
   readonly id: string
   readonly level: number
   readonly status: VerificationStatus
-  readonly [key: string]: unknown
 }
 
 interface VerificationLevel {
   readonly number: number
-  readonly [key: string]: unknown
 }
 
-interface VerificationPassport {
+interface VerificationPassportShape {
   readonly levels: readonly VerificationLevel[]
   readonly checks: readonly VerificationCheck[]
-  readonly thresholds: Readonly<Record<string, unknown>>
-  readonly [key: string]: unknown
+  readonly thresholds: object
 }
 
 interface ModularAnalysisResult {
@@ -59,7 +56,7 @@ function statusFor(value: number, threshold: number): VerificationStatus {
   return Number.isFinite(value) && value <= threshold ? PASS : FAIL
 }
 
-function recompute(passport: VerificationPassport, checks: readonly VerificationCheck[]) {
+function recompute<T extends VerificationPassportShape>(passport: T, checks: readonly VerificationCheck[]): T {
   const levels = passport.levels.map((level) => {
     const levelChecks = checks.filter((check) => check.level === level.number)
     const hasFail = levelChecks.some((check) => check.status === FAIL)
@@ -90,13 +87,13 @@ function recompute(passport: VerificationPassport, checks: readonly Verification
       modularDisplacementDifference: 1e-8,
       modularInterfaceEquilibrium: 1e-8,
     },
-  }
+  } as T
 }
 
-export function augmentVerificationWithModuleChecks(
-  passport: VerificationPassport,
+export function augmentVerificationWithModuleChecks<T extends VerificationPassportShape>(
+  passport: T,
   result: VerificationResult,
-) {
+): T {
   const cases = result.cases ?? []
   const worstDisplacementDifference = Math.max(
     0,

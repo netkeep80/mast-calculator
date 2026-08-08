@@ -208,7 +208,7 @@ test('бумажный расчёт и portable project JSON остаются р
   assert.match(projectPackageUi, /createProjectPackage/)
   assert.match(projectPackageUi, /parseProjectPackage/)
   assert.match(projectPackageUi, /serializeProjectPackage/)
-  assert.match(bootstrap, /initializeProjectPackageUi\(form\)/)
+  assert.match(bootstrap, /initializeProjectPackageUi\(form/)
   assert.doesNotMatch(app, /createCalculationJson/)
 })
 

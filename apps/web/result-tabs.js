@@ -1,4 +1,5 @@
 import './guy-result-panel.js'
+import { renderGuyedConnectionProjection } from './guyed-connection-panel.js'
 import { subscribeCalculationResult } from './result-channel.js'
 
 const TAB_DEFINITIONS = Object.freeze([
@@ -310,6 +311,7 @@ export function initializeResultTabs() {
     decorateMemberRows()
     decorateConnectionRows()
     syncGuyTab(snapshot)
+    renderGuyedConnectionProjection(snapshot)
     const guyBody = $('#guy-cable-envelope-body')
     if (guyBody && !guyBody.dataset.selectionWired) {
       guyBody.dataset.selectionWired = 'true'

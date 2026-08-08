@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calculateMast } from '../packages/application/index.js'
+import {
+  calculateMast,
+  calculateProjectWithGuys,
+  createEngineeringSummary,
+} from '../packages/application/index.js'
 import { generateMastModel } from '../packages/structural-analysis/index.js'
 import {
   DEFAULT_GUY_WIRE_ID,
   calculateGuyWireCapacity,
+  createProjectInput,
   getGuyWireSpec,
 } from '../packages/domain/index.js'
 import {
@@ -31,6 +36,49 @@ function parameters(overrides = {}) {
     iceThicknessMm: 0,
     ...overrides,
   })
+}
+
+function compactProject(overrides = {}) {
+  const project = createProjectInput({
+    geometry: {
+      moduleCount: 4,
+      barDiameterMm: 16,
+    },
+    environment: {
+      windPresetId: 'custom',
+      windPressurePa: 280,
+      windDirectionDeg: 0,
+      windEnvelopeEnabled: false,
+      lateralCapacityStepDeg: 60,
+    },
+    equipment: {
+      massKg: 10,
+      windAreaM2: 0.5,
+    },
+    criteria: {
+      displacementLimitMm: 500,
+      minimumBucklingFactor: 1,
+      heightSearchMaxModules: 5,
+    },
+  })
+  return {
+    ...project,
+    ...overrides,
+  }
+}
+
+function compactGuys(project) {
+  const moduleHeightM = project.geometry.stockBarLengthMm / project.geometry.stockBarPieces * Math.sqrt(2 / 3) / 1000
+  return {
+    tiers: [{
+      heightM: project.geometry.moduleCount * moduleHeightM,
+      anchorRadiusM: 6,
+      guyCount: 3,
+      azimuthOffsetDeg: 0,
+      wireId: DEFAULT_GUY_WIRE_ID,
+      pretensionN: 700,
+    }],
+  }
 }
 
 test('issue #23: galvanized 6x19 catalog uses EN 12385-4 class factors', () => {
@@ -145,4 +193,44 @@ test('issue #23: strongly asymmetric wind can fully unload a low-pretension cabl
   assert.ok(guyed.cases[0].nonlinear.converged)
   assert.ok(guyed.cases[0].cables.some((cable) => cable.tensionN === 0))
   assert.ok(guyed.cases[0].cables.every((cable) => cable.tensionN >= 0))
+})
+
+test('issue #88: canonical guyed job reuses one selected physical joint for the whole nonlinear envelope', () => {
+  const project = compactProject()
+  const { result, guyedResult } = calculateProjectWithGuys(project, compactGuys(project))
+  assert.ok(guyedResult)
+  assert.equal(guyedResult.connectionEnvelope.method, 'fixed-selected-joint-guyed-connection-envelope-v1')
+  assert.equal(guyedResult.connectionEnvelope.physicalJointSource, 'bare-project-selected')
+  assert.equal(guyedResult.connectionEnvelope.checkMode, 'manual')
+  assert.equal(guyedResult.connections.configurator.mode, 'manual')
+  assert.equal(guyedResult.connections.requestedMode, result.parameters.jointConfiguratorMode)
+  assert.equal(guyedResult.connectionEnvelope.selectedJoint.boltDiameterMm, result.parameters.jointBoltDiameterMm)
+  assert.equal(guyedResult.connectionEnvelope.selectedJoint.boltClass, result.parameters.jointBoltClass)
+  assert.equal(guyedResult.connectionEnvelope.selectedJoint.boltLengthMm, result.parameters.jointBoltLengthMm)
+  assert.equal(guyedResult.connectionEnvelope.selectedJoint.clearanceNutThreadMm, result.parameters.jointClearanceNutThreadMm)
+  assert.equal(guyedResult.connectionEnvelope.selectedJoint.weldConsumableId, result.parameters.weldConsumableId)
+  assert.equal(guyedResult.connectionEnvelope.caseCount, guyedResult.cases.length)
+  assert.equal(guyedResult.passes, guyedResult.structuralAndCablePasses && guyedResult.connectionEnvelope.passes)
+  assert.ok(guyedResult.connections.jointDemands.every((demand) => Number.isFinite(demand.windDirectionDeg)))
+  if (guyedResult.connectionEnvelope.criticalWeld) {
+    assert.ok(Number.isFinite(guyedResult.connectionEnvelope.criticalWeld.windDirectionDeg))
+  }
+})
+
+test('issue #88: engineering summary resolves guyed connection only for the canonical composite result', () => {
+  const project = compactProject()
+  const { result, guyedResult } = calculateProjectWithGuys(project, compactGuys(project))
+  assert.ok(guyedResult)
+  const compositeSummary = createEngineeringSummary(result, guyedResult)
+  const compositeCriterion = compositeSummary.criteria.find((item) => item.id === 'guyed-connection-envelope')
+  assert.ok(compositeCriterion)
+  assert.equal(compositeCriterion.status, guyedResult.connectionEnvelope.passes ? 'pass' : 'fail')
+  assert.equal(compositeCriterion.value, guyedResult.connectionEnvelope.maximumBoltUtilization)
+  assert.ok(!compositeSummary.pendingCriterionIds.includes('guyed-connection-envelope'))
+
+  const lowLevelGuyed = calculateGuyedMast(result.parameters, compactGuys(project).tiers)
+  const lowLevelSummary = createEngineeringSummary(result, lowLevelGuyed)
+  const lowLevelCriterion = lowLevelSummary.criteria.find((item) => item.id === 'guyed-connection-envelope')
+  assert.equal(lowLevelCriterion?.status, 'not-verified')
+  assert.ok(lowLevelSummary.pendingCriterionIds.includes('guyed-connection-envelope'))
 })

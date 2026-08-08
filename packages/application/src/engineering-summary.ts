@@ -12,7 +12,13 @@ export type EngineeringCriterionComparison = '<=' | '>=' | 'verified'
 export type EngineeringCriterionSource = 'bare' | 'guyed' | 'verification'
 
 type BareResult = ReturnType<typeof calculateProject>
-type GuyedResult = ReturnType<typeof calculateGuyedProject>
+type LowLevelGuyedResult = ReturnType<typeof calculateGuyedProject>
+type GuyedResult = LowLevelGuyedResult & {
+  readonly connectionEnvelope?: {
+    readonly passes: boolean
+    readonly maximumBoltUtilization: number
+  }
+}
 
 export interface EngineeringCriterion {
   readonly id: string
@@ -162,6 +168,37 @@ function verificationCriterion(result: BareResult): EngineeringCriterion {
   }
 }
 
+function guyedConnectionCriterion(result: GuyedResult): EngineeringCriterion {
+  const envelope = result.connectionEnvelope
+  if (!envelope) {
+    return {
+      id: 'guyed-connection-envelope',
+      group: 'connection',
+      source: 'guyed',
+      status: 'not-verified',
+      required: true,
+      comparison: 'verified',
+      value: null,
+      limit: null,
+      ratio: null,
+      unit: null,
+    }
+  }
+  const boltUtilization = envelope.maximumBoltUtilization
+  return {
+    id: 'guyed-connection-envelope',
+    group: 'connection',
+    source: 'guyed',
+    status: envelope.passes ? 'pass' : 'fail',
+    required: true,
+    comparison: '<=',
+    value: boltUtilization,
+    limit: 1,
+    ratio: envelope.passes ? boltUtilization : Math.max(1, boltUtilization),
+    unit: 'ratio',
+  }
+}
+
 function guyedCriteria(result: GuyedResult): EngineeringCriterion[] {
   const nonlinearConverged = result.cases.every((item) => item.nonlinear.converged)
   return [
@@ -209,18 +246,7 @@ function guyedCriteria(result: GuyedResult): EngineeringCriterion[] {
       ratio: nonlinearConverged ? 0 : Number.POSITIVE_INFINITY,
       unit: 'count',
     },
-    {
-      id: 'guyed-connection-envelope',
-      group: 'connection',
-      source: 'guyed',
-      status: 'not-verified',
-      required: true,
-      comparison: 'verified',
-      value: null,
-      limit: null,
-      ratio: null,
-      unit: null,
-    },
+    guyedConnectionCriterion(result),
   ]
 }
 
@@ -241,12 +267,16 @@ function governingCriterion(criteria: readonly EngineeringCriterion[]): Engineer
 
 /**
  * One presentation-neutral criteria projection for Web/Desktop summaries.
- * For a guyed project, bare frame response is reference for structural demand,
- * but a known bare physical-connection failure remains a hard veto. A bare
- * connection PASS cannot prove the guyed connection envelope: the current
- * nonlinear guy solver does not recompute bolt/weld checks from its member-end
- * actions, so a guyed project cannot honestly receive overall PASS until that
- * separate engineering check exists.
+ * For a guyed project, the nonlinear structural/cable envelope is authoritative
+ * for member/buckling/displacement demand. The canonical composite calculation
+ * additionally checks the already-selected physical intermodule joint and
+ * member-end welds against those same nonlinear cases. Low-level guy-only
+ * results without that projection remain explicitly incomplete rather than
+ * receiving an accidental PASS.
+ *
+ * Local guy attachment brackets/eyes, anchors, turnbuckles, thimbles/clamps and
+ * soil capacity are outside `guyed-connection-envelope` and remain separate
+ * engineering checks.
  */
 export function createEngineeringSummary(
   result: BareResult,

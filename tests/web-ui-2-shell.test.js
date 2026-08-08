@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const shell = fs.readFileSync(path.join(root, 'apps', 'web', 'workspace-shell.js'), 'utf8')
 const styles = fs.readFileSync(path.join(root, 'apps', 'web', 'workspace.css'), 'utf8')
+const index = fs.readFileSync(path.join(root, 'apps', 'web', 'index.html'), 'utf8')
 const projectPackageUi = fs.readFileSync(path.join(root, 'apps', 'web', 'project-package-ui.js'), 'utf8')
 const runtimeInfo = fs.readFileSync(path.join(root, 'apps', 'web', 'runtime-info.js'), 'utf8')
 
@@ -51,8 +52,32 @@ test('workspace shell is presentation-only and cannot acquire engineering owners
   assert.doesNotMatch(shell, /Math\.(sqrt|pow|hypot)|9\.80665|1e9|1e6/)
 })
 
+test('workspace CSS is loaded before DOM migration instead of racing shell layout', () => {
+  requires(index, /<link rel="stylesheet" href="\.\/workspace\.css">/, 'workspace.css не загружается в head до bootstrap')
+  assert.doesNotMatch(shell, /createElement\(['"]link['"]\)|data\.webUiStyles/, 'shell не должен динамически подключать layout CSS')
+})
+
+test('desktop workspace cannot be widened by legacy min-content controls', () => {
+  requires(
+    styles,
+    /grid-template-columns:\s*minmax\(280px, 330px\)\s+minmax\(0, 1fr\)\s+minmax\(280px, 330px\)/,
+    'нет shrink-safe трёхколоночного desktop workspace',
+  )
+  requires(styles, /\.workspace-layout > \*[\s\S]*min-width:\s*0/, 'primary panes не имеют min-width:0')
+  requires(styles, /\.workspace-project-card \.form-grid\s*\{[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/, 'project form сохраняет min-content overflow')
+  requires(styles, /\.workspace-project-card select[\s\S]*max-width:\s*100%/, 'длинные select не ограничены шириной project pane')
+  requires(styles, /@media \(max-width:\s*1180px\)/, 'двухколоночный breakpoint должен быть ниже 1366-class desktop')
+})
+
+test('sticky panes follow the real wrapped app-bar height', () => {
+  requires(shell, /ResizeObserver/, 'app bar height не отслеживается при переносе toolbar')
+  requires(shell, /--app-bar-height/, 'runtime app-bar height не публикуется в CSS')
+  requires(styles, /top:\s*calc\(var\(--app-bar-height\) \+ \.75rem\)/, 'sticky pane использует фиксированный top')
+  requires(styles, /max-height:\s*calc\(100vh - var\(--app-bar-height\) - 1\.5rem\)/, 'sticky pane не учитывает фактическую высоту app bar')
+  assert.doesNotMatch(styles, /top:\s*84px/, 'старый фиксированный offset 84px возвращён')
+})
+
 test('desktop-first layout exposes all three primary panes at 1366-class width', () => {
-  requires(styles, /grid-template-columns:\s*minmax\(300px, 350px\)\s+minmax\(470px, 1fr\)\s+minmax\(290px, 350px\)/, 'нет трёхколоночного desktop workspace')
   requires(styles, /grid-template-areas:\s*\n\s*'project view summary'/, 'primary panes не находятся в одной строке desktop workspace')
-  requires(styles, /#mast-canvas[\s\S]*height:\s*calc\(100vh - 190px\)/, '3D viewport не привязан к первому экрану')
+  requires(styles, /#mast-canvas[\s\S]*height:\s*calc\(100vh - var\(--app-bar-height\) - 118px\)/, '3D viewport не привязан к фактической высоте toolbar')
 })

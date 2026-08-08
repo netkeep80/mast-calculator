@@ -1,6 +1,6 @@
 export const WIND_ACTION_MODE_MANUAL = 'manual-custom-pressure' as const
 export const WIND_ACTION_MODE_SP20_MEAN_V1 = 'sp20-mean-v1' as const
-export const SP20_WIND_MODEL_SOURCE = 'СП 20.13330.2016, изм. №6, раздел 11' as const
+export const SP20_WIND_MODEL_SOURCE = 'СП 20.13330.2016 «Нагрузки и воздействия», изм. №6; приказ Минстроя России №597/пр от 05.09.2024; введено 25.09.2024; раздел 11' as const
 
 export type WindActionMode = typeof WIND_ACTION_MODE_MANUAL | typeof WIND_ACTION_MODE_SP20_MEAN_V1
 export type Sp20WindRegion = 'Ia' | 'I' | 'II' | 'III' | 'IV' | 'V' | 'VI' | 'VII'
@@ -44,6 +44,9 @@ export interface WindActionProvenance {
   readonly referenceCharacteristicMeanPressurePa: number
   readonly loadReliabilityFactor: number
   readonly aerodynamicCoefficientsAppliedSeparately: boolean
+  readonly aerodynamicCoefficientSource: 'project-input-not-sp20-annex'
+  readonly memberAerodynamicCoefficient: number | null
+  readonly equipmentAerodynamicCoefficient: number | null
 }
 
 /**
@@ -92,15 +95,28 @@ function resolveTerrain(value: unknown): Sp20TerrainType {
   return terrain
 }
 
+function finiteOrNull(value: unknown): number | null {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
 export function createWindActionProvenance(parameters: {
   readonly windActionMode?: WindActionMode
   readonly windRegion?: Sp20WindRegion | null
   readonly windTerrainType?: Sp20TerrainType | null
   readonly windPressurePa: number
   readonly windLoadFactor: number
+  readonly dragCoefficient?: number
+  readonly equipmentDragCoefficient?: number
   readonly windReferenceHeightM?: number | null
   readonly windReferenceHeightCoefficient?: number | null
 }): WindActionProvenance {
+  const aerodynamic = {
+    aerodynamicCoefficientsAppliedSeparately: true as const,
+    aerodynamicCoefficientSource: 'project-input-not-sp20-annex' as const,
+    memberAerodynamicCoefficient: finiteOrNull(parameters.dragCoefficient),
+    equipmentAerodynamicCoefficient: finiteOrNull(parameters.equipmentDragCoefficient),
+  }
   if (parameters.windActionMode === WIND_ACTION_MODE_SP20_MEAN_V1) {
     const region = parameters.windRegion ?? null
     const terrain = parameters.windTerrainType ?? null
@@ -118,7 +134,7 @@ export function createWindActionProvenance(parameters: {
       referenceHeightCoefficient: parameters.windReferenceHeightCoefficient ?? null,
       referenceCharacteristicMeanPressurePa: parameters.windPressurePa,
       loadReliabilityFactor: parameters.windLoadFactor,
-      aerodynamicCoefficientsAppliedSeparately: true,
+      ...aerodynamic,
     })
   }
   return Object.freeze({
@@ -135,7 +151,7 @@ export function createWindActionProvenance(parameters: {
     referenceHeightCoefficient: null,
     referenceCharacteristicMeanPressurePa: parameters.windPressurePa,
     loadReliabilityFactor: parameters.windLoadFactor,
-    aerodynamicCoefficientsAppliedSeparately: true,
+    ...aerodynamic,
   })
 }
 
@@ -145,6 +161,8 @@ export function resolveWindAction<T extends {
   readonly windTerrainType?: unknown
   readonly windPressurePa: number
   readonly windLoadFactor: number
+  readonly dragCoefficient?: number
+  readonly equipmentDragCoefficient?: number
 }>(parameters: T, referenceHeightM: number) {
   const windActionMode = resolveMode(parameters.windActionMode)
   if (windActionMode === WIND_ACTION_MODE_MANUAL) {

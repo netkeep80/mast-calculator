@@ -5,9 +5,11 @@ import {
   MastApplicationError,
   PROJECT_PACKAGE_SCHEMA,
   ProjectSchemaError,
+  SUPPORTED_PROJECT_PACKAGE_SCHEMAS,
   calculateProject,
   createProjectInput,
   createProjectPackage,
+  migrateProjectPackage,
   parseProjectPackage,
   resolveProjectInput,
   serializeProjectPackage,
@@ -55,6 +57,60 @@ test('versioned project package round-trips and rejects unknown schemas/fields',
   )
   assert.throws(
     () => parseProjectPackage(JSON.stringify({ ...packageValue, legacy: true })),
+    (error) => error instanceof ProjectSchemaError && error.code === 'unknown-package-field',
+  )
+})
+
+test('project package v1 supports metadata and optional guys without derived calculation state', () => {
+  const project = createProjectInput({ geometry: { moduleCount: 3 } })
+  const packageValue = createProjectPackage(project, {
+    metadata: {
+      name: 'Guyed test mast',
+      description: 'Portable source project',
+      createdAt: '2026-08-08T12:00:00.000Z',
+    },
+    guys: {
+      safetyFactor: 3,
+      terminationEfficiency: 0.8,
+      tiers: [{
+        id: 'top',
+        heightM: 2.5,
+        anchorRadiusM: 8,
+        guyCount: 3,
+        pretensionN: 1000,
+        wireId: '6x19-4.0',
+      }],
+    },
+  })
+
+  const parsed = parseProjectPackage(serializeProjectPackage(packageValue))
+  assert.deepEqual(parsed, packageValue)
+  assert.equal(parsed.metadata.name, 'Guyed test mast')
+  assert.equal(parsed.guys.tiers[0].heightM, 2.5)
+  assert.equal('ribCutLengthMm' in parsed.project.geometry, false)
+  assert.equal('moduleHeightMm' in parsed.project.geometry, false)
+  assert.equal('jointEffectiveRadiusMm' in parsed.project.connection, false)
+})
+
+test('project package migration dispatcher accepts current v1 and exposes supported schemas', () => {
+  const project = createProjectInput({ geometry: { moduleCount: 2 } })
+  const legacyShapeWithinV1 = { schema: PROJECT_PACKAGE_SCHEMA, project }
+  assert.deepEqual(migrateProjectPackage(legacyShapeWithinV1), legacyShapeWithinV1)
+  assert.deepEqual([...SUPPORTED_PROJECT_PACKAGE_SCHEMAS], [PROJECT_PACKAGE_SCHEMA])
+})
+
+test('project package validates guy semantics and rejects unknown nested fields', () => {
+  const project = createProjectInput({ geometry: { moduleCount: 2 } })
+  assert.throws(
+    () => createProjectPackage(project, { guys: { tiers: [{ heightM: 2, guyCount: 2 }] } }),
+    (error) => error instanceof ProjectSchemaError && error.code === 'invalid-guy-tier',
+  )
+  assert.throws(
+    () => parseProjectPackage(JSON.stringify({
+      schema: PROJECT_PACKAGE_SCHEMA,
+      project,
+      guys: { tiers: [], derivedCableForceN: 10 },
+    })),
     (error) => error instanceof ProjectSchemaError && error.code === 'unknown-package-field',
   )
 })

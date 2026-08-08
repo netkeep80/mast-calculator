@@ -75,14 +75,14 @@ const jsonClone = <T>(value: T): T => (
 )
 
 function compactDesignParameters(parameters: AssemblyMassInput['parameters']) {
-  const compact = jsonClone(parameters) as typeof parameters & Record<string, unknown>
+  const compact = jsonClone(parameters) as unknown as Record<string, unknown>
   if (compact.windActionMode === WIND_ACTION_MODE_MANUAL) {
     delete compact.windActionMode
     delete compact.windRegion
     delete compact.windTerrainType
     delete compact.windActionProvenance
   }
-  return compact
+  return compact as unknown as typeof parameters
 }
 
 function compactMemberResults(result: DesignSourceResult) {

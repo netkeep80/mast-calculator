@@ -11,7 +11,10 @@ import {
 } from './design-storage.js'
 import { fileAdapter } from './file-adapter.js'
 import { JointViewer } from './joint-viewer.js'
+import { initializeRuntimeInfo } from './runtime-info.js'
 import { MastViewer } from './viewer.js'
+
+void initializeRuntimeInfo()
 
 const $ = (selector) => document.querySelector(selector)
 const sourceSummary = $('#source-summary')

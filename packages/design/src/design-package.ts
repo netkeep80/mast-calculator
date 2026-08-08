@@ -1,3 +1,4 @@
+import { WIND_ACTION_MODE_MANUAL } from '../../domain/index.js'
 import type { DesignPackageV1 } from './contracts.js'
 import { DESIGN_PACKAGE_SCHEMA } from './contracts.js'
 export { DESIGN_PACKAGE_SCHEMA } from './contracts.js'
@@ -73,6 +74,17 @@ const jsonClone = <T>(value: T): T => (
   value == null ? value : JSON.parse(JSON.stringify(value)) as T
 )
 
+function compactDesignParameters(parameters: AssemblyMassInput['parameters']) {
+  const compact = jsonClone(parameters) as typeof parameters & Record<string, unknown>
+  if (compact.windActionMode === WIND_ACTION_MODE_MANUAL) {
+    delete compact.windActionMode
+    delete compact.windRegion
+    delete compact.windTerrainType
+    delete compact.windActionProvenance
+  }
+  return compact
+}
+
 function compactMemberResults(result: DesignSourceResult) {
   const analysis = result.envelope?.governing?.analysis ?? result.analysis
   if (!Array.isArray(analysis?.memberResults)) return []
@@ -135,7 +147,7 @@ export function buildDesignPackage(
       sha: metadata.sha ?? null,
     },
     result: {
-      parameters: jsonClone(result.parameters),
+      parameters: compactDesignParameters(result.parameters),
       model: jsonClone(result.model),
       analysis: {
         memberResults: compactMemberResults(result),

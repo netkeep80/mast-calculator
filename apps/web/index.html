@@ -92,14 +92,18 @@
             <div><h2>Условия эксплуатации</h2></div>
           </div>
           <div class="form-grid">
+            <label>Модель ветровой нагрузки<select name="windActionMode"></select></label>
+            <label>Ветровой район СП 20<select name="windRegion"></select></label>
+            <label>Тип местности СП 20<select name="windTerrainType"></select></label>
             <label>Погодный сценарий<select name="windPresetId"></select></label>
             <label>Уже установленная масса на вершине, кг<input name="equipmentMassKg" type="number" min="0" step="1"></label>
             <label>Парусная площадь, м²<input name="equipmentWindAreaM2" type="number" min="0" step="0.01"></label>
             <label>Толщина льда, мм<input name="iceThicknessMm" type="number" min="0" step="1"></label>
           </div>
+          <p id="wind-action-note" class="hint practical-note"></p>
           <div class="derived-inline">
-            <span>Скорость: <strong><input name="windSpeedMs" type="number" readonly> м/с</strong></span>
-            <span>Давление: <strong><input name="windPressurePa" type="number" min="0" step="1"> Па</strong></span>
+            <span>Эквивалентная скорость на вершине: <strong><input name="windSpeedMs" type="number" readonly> м/с</strong></span>
+            <span>Характеристическое давление на вершине: <strong><input name="windPressurePa" type="number" min="0" step="1"> Па</strong></span>
           </div>
 
           <details class="input-details">
@@ -139,7 +143,7 @@
             <div class="form-grid advanced-grid">
               <label>Коэффициент материала<input name="materialSafetyFactor" type="number" min="1" max="3" step="0.05"></label>
               <label>Коэффициент постоянной нагрузки<input name="deadLoadFactor" type="number" min="1" max="3" step="0.05"></label>
-              <label>Коэффициент ветровой нагрузки<input name="windLoadFactor" type="number" min="1" max="3" step="0.05"></label>
+              <label>γf ветровой нагрузки<input name="windLoadFactor" type="number" min="1" max="3" step="0.05"></label>
               <label>Коэффициент веса оборудования<input name="equipmentLoadFactor" type="number" min="1" max="3" step="0.05"></label>
               <label>Допустимое отклонение, мм<input name="displacementLimitMm" type="number" min="1" step="1"></label>
               <label>Минимальный множитель общей устойчивости<input name="minimumBucklingFactor" type="number" min="1" step="0.1"></label>
@@ -187,7 +191,7 @@
         <span class="result-placeholder-status">НЕ РАССЧИТАНО</span>
         <h3>Введите параметры и запустите расчёт</h3>
         <p>После расчёта здесь появятся PASS/FAIL, определяющий критерий, использование ребра и соединения, прогиб и λcr.</p>
-        <p class="model-scope-note">Текущая эксплуатационная модель не включает нормативную динамику ветра и монтажный подъём мачты; эти проверки развиваются отдельными физическими этапами.</p>
+        <p class="model-scope-note">Нормативная средняя составляющая ветра по СП 20 доступна отдельно от погодных сценариев. Пульсация/динамический отклик и монтажный подъём развиваются отдельными физическими этапами.</p>
       </div>
       <section id="scenario-answer" class="panel scenario-answer workspace-summary-card" hidden aria-live="polite">
         <div class="answer-heading">

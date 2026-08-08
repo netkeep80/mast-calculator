@@ -110,8 +110,8 @@ export function augmentVerificationWithModuleChecks(
     && result.model.modules.length === result.parameters.moduleCount
     && result.model.modules.every((module) => (
       module.memberIds.length === 9
-      && module.memberIds.slice(0, 3).every((memberId) => result.model.members[memberId]?.role === 'top-ring')
-      && module.memberIds.slice(3).every((memberId) => result.model.members[memberId]?.role === 'leg')
+      && module.memberIds.slice(0, 3).every((memberId: number) => result.model.members[memberId]?.role === 'top-ring')
+      && module.memberIds.slice(3).every((memberId: number) => result.model.members[memberId]?.role === 'leg')
     ))
 
   const additions: VerificationCheck[] = [

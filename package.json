@@ -6,7 +6,6 @@
   "scripts": {
     "test": "node scripts/run-emitted-tests.mjs",
     "test:physics": "node scripts/run-selected-emitted-tests.mjs tests/canonical-regression.test.js tests/physics-invariants-seeded.test.js tests/triple-solver-crosscheck.test.js tests/joint-configurator.test.js tests/connections.test.js tests/joint-strength-issue33.test.js tests/issue19-durability-fasteners.test.js tests/support-reactions.test.js tests/static-load-simplification-issue36.test.js tests/static-payload-capacity.test.js tests/crane-boom-capacity.test.js tests/loads.test.js tests/lateral-capacity.test.js tests/mixed-module-diameters.test.js tests/guy-wires-issue23.test.js",
-    "test:canonical": "node scripts/run-selected-emitted-tests.mjs tests/canonical-regression.test.js",
     "test:platform": "node scripts/run-selected-emitted-tests.mjs tests/canonical-regression.test.js",
     "test:performance": "node scripts/run-selected-emitted-tests.mjs tests/performance.test.js",
     "test:headless": "node scripts/run-selected-emitted-tests.mjs tests/headless-api.test.js tests/package-entrypoints.test.js",

@@ -1,0 +1,102 @@
+name: Desktop checks
+
+on:
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'scripts/build-desktop-web.mjs'
+      - 'tests/desktop-*.test.js'
+      - 'package.json'
+      - '.github/workflows/desktop.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/desktop/**'
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'scripts/build-desktop-web.mjs'
+      - 'tests/desktop-*.test.js'
+      - 'package.json'
+      - '.github/workflows/desktop.yml'
+
+env:
+  GIT_CONFIG_KEY_0: init.defaultBranch
+  GIT_CONFIG_VALUE_0: main
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  webview-oracle:
+    name: Desktop packaged-core oracle
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Simulate fresh merge with latest base
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/simulate-fresh-merge.sh
+      - name: Use Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+      - name: Check JavaScript syntax
+        run: npm run check
+      - name: Test generated Desktop WebView and numerical equivalence
+        run: npm run test:desktop
+
+  shell-check:
+    name: Tauri shell check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Simulate fresh merge with latest base
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/simulate-fresh-merge.sh
+      - name: Use Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+      - name: Install Linux Tauri prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+      - name: Build Desktop WebView assets
+        run: npm run build:desktop:web
+      - name: Show Rust toolchain
+        run: |
+          rustc --version
+          cargo --version
+      - name: Compile Tauri shell
+        run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml

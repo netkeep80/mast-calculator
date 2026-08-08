@@ -63,40 +63,6 @@ function closestMetricArticle(id) {
   return document.querySelector(id)?.closest('article') ?? null
 }
 
-function setMetricLabel(id, text) {
-  const article = closestMetricArticle(id)
-  const caption = article?.querySelector('span')
-  if (caption) caption.textContent = text
-}
-
-function installIssue36Ui() {
-  const equipment = form?.elements.namedItem('equipmentMassKg')
-  if (equipment?.closest('label')) {
-    const label = equipment.closest('label')
-    for (const node of [...label.childNodes]) {
-      if (node.nodeType === Node.TEXT_NODE) node.textContent = ''
-    }
-    label.prepend(document.createTextNode('Уже установленная масса на вершине, кг'))
-  }
-
-  setMetricLabel('#metric-lateral-capacity', 'Чистый поперечный предел')
-  setMetricLabel('#metric-static-payload', 'Максимальная масса на вершине')
-  setMetricLabel('#metric-static-reserve', 'Сколько ещё можно добавить сверху')
-  const waterArticle = closestMetricArticle('#metric-water-volume')
-  if (waterArticle) waterArticle.hidden = true
-
-  const lateralCardTitle = document.querySelector('.lateral-card h3')
-  if (lateralCardTitle) lateralCardTitle.textContent = 'Поперечный unit-load и горизонтальная стрела'
-  const staticCardTitle = document.querySelector('.static-payload-card h3')
-  if (staticCardTitle) staticCardTitle.textContent = 'Масса груза на вершине вертикальной мачты'
-
-  const eyebrow = document.querySelector('.page-header .eyebrow')
-  if (eyebrow) eyebrow.textContent = 'Калькулятор мачты · прототип 1.4'
-  document.body.dataset.issue36StaticLoadModel = 'top-mass-only'
-}
-
-installIssue36Ui()
-
 function selectedScenario() {
   return document.querySelector('input[name="usageScenario"]:checked')?.value ?? 'check'
 }
@@ -289,7 +255,7 @@ function renderScenarioResult(result, guyResult = null) {
   governingDetails.open = scenario === 'limits'
 }
 
-function renderIssue36DetailedResult(result) {
+function renderStaticLoadDetails(result) {
   const lateral = result?.lateralCapacity
   const boom = result?.craneBoomCapacity
   const payload = result?.staticPayloadCapacity
@@ -371,6 +337,6 @@ export function enrichAndRenderUsageResult(result, guyResult = null) {
   renderAssemblyMass(result)
   lastUsageSnapshot = { result, guyResult }
   renderScenarioResult(result, guyResult)
-  queueMicrotask(() => renderIssue36DetailedResult(result))
+  queueMicrotask(() => renderStaticLoadDetails(result))
   return result
 }

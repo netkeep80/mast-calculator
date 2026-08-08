@@ -9,6 +9,8 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
 
 const browserFiles = read('apps/web/file-adapter.js')
 const projectPackageUi = read('apps/web/project-package-ui.js')
+const mainApp = read('apps/web/app.js')
+const designApp = read('apps/web/design-app.js')
 const desktopFiles = read('apps/desktop/web/file-adapter.js')
 const rustMain = read('apps/desktop/src-tauri/src/main.rs')
 const capability = JSON.parse(read('apps/desktop/src-tauri/capabilities/main.json'))
@@ -16,13 +18,20 @@ const tauriConfig = JSON.parse(read('apps/desktop/src-tauri/tauri.conf.json'))
 const cargo = read('apps/desktop/src-tauri/Cargo.toml')
 const desktopBuild = read('scripts/build-desktop-web.mjs')
 
-test('project package presentation depends on a file adapter instead of browser file APIs', () => {
+test('shared presentation delegates all user file I/O to one environment adapter', () => {
   assert.match(projectPackageUi, /fileAdapter as defaultFileAdapter/)
   assert.match(projectPackageUi, /fileAdapter\.saveText/)
   assert.match(projectPackageUi, /fileAdapter\.openText/)
-  assert.doesNotMatch(projectPackageUi, /new Blob\(|createObjectURL|type = 'file'/)
+  assert.match(mainApp, /fileAdapter\.saveText/)
+  assert.match(designApp, /fileAdapter\.saveText/)
+  assert.match(designApp, /fileAdapter\.openText/)
+  for (const presentation of [projectPackageUi, mainApp, designApp]) {
+    assert.doesNotMatch(presentation, /new Blob\(|createObjectURL|type = 'file'|\.download\s*=/)
+  }
   assert.match(browserFiles, /environment:\s*'browser'/)
   assert.match(browserFiles, /new Blob\(/)
+  assert.match(browserFiles, /createObjectURL/)
+  assert.match(browserFiles, /type = 'file'/)
 })
 
 test('desktop file adapter exposes only two custom IPC operations', () => {
@@ -32,6 +41,7 @@ test('desktop file adapter exposes only two custom IPC operations', () => {
   assert.match(desktopFiles, /'save_text_file'/)
   assert.doesNotMatch(desktopFiles, /plugin-fs|plugin-shell|http:|fetch\(/)
   assert.doesNotMatch(desktopFiles, /new Blob\(|createObjectURL/)
+  assert.doesNotMatch(desktopFiles, /mediaType/)
 })
 
 test('Rust shell reads and writes only paths explicitly returned by native dialogs', () => {
@@ -60,6 +70,7 @@ test('desktop shell pins the reviewed Tauri generation and has no fs/shell/http/
   assert.match(cargo, /tauri-build = "=2\.6\.3"/)
   assert.match(cargo, /tauri-plugin-dialog = "=2\.7\.2"/)
   assert.doesNotMatch(cargo, /tauri-plugin-(?:fs|shell|http|updater)/)
+  assert.doesNotMatch(cargo, /rust-version/)
 })
 
 test('desktop WebView is generated from the canonical Web build plus an explicit environment overlay', () => {

@@ -126,7 +126,7 @@ test('OBJ exporter rejects incomplete calculation snapshots', () => {
   assert.throws(() => createMastObj({}), /выполненный расчёт/)
 })
 
-test('issue #47: OBJ download belongs to design workspace, not calculation bootstrap', () => {
+test('issue #47: OBJ export belongs to design workspace and delegates file persistence', () => {
   const bootstrap = fs.readFileSync(new URL('../apps/web/app-bootstrap.js', import.meta.url), 'utf8')
   const design = fs.readFileSync(new URL('../apps/web/design-app.js', import.meta.url), 'utf8')
   const page = fs.readFileSync(new URL('../apps/web/design.html', import.meta.url), 'utf8')
@@ -134,6 +134,9 @@ test('issue #47: OBJ download belongs to design workspace, not calculation boots
   assert.doesNotMatch(bootstrap, /createMastObj/)
   assert.doesNotMatch(bootstrap, /export-obj-button/)
   assert.match(design, /createMastObj/)
+  assert.match(design, /fileAdapter/)
   assert.match(design, /export-obj/)
-  assert.match(page, /Скачать OBJ/)
+  assert.doesNotMatch(design, /new Blob|createObjectURL|downloadText/)
+  assert.match(page, /id="export-obj"/)
+  assert.match(page, /Сохранить OBJ/)
 })

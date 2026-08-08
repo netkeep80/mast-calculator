@@ -107,14 +107,18 @@ test('issue #36: полный пользовательский расчёт до
   assert.doesNotMatch(completeSource, /result\.craneBoomCapacity\s*=/)
 })
 
-test('issue #36: пользовательская форма физически не содержит legacy сил и по-прежнему показывает стрелу', () => {
+test('issue #36: пользовательская форма физически не содержит legacy сил и статически показывает актуальные пределы', () => {
   assert.doesNotMatch(htmlSource, /name=["']extraHorizontalLoadN["']/)
   assert.doesNotMatch(htmlSource, /name=["']extraVerticalLoadN["']/)
-  assert.doesNotMatch(usageSource, /removeLegacyForceControl/)
-  assert.match(usageSource, /metric-water-volume/)
+  assert.match(htmlSource, /Чистый поперечный предел/)
+  assert.match(htmlSource, /Максимальная масса на вершине/)
+  assert.match(htmlSource, /Сколько ещё можно добавить сверху/)
+  assert.match(htmlSource, /Поперечный unit-load и горизонтальная стрела/)
+  assert.match(htmlSource, /metric-water-volume[^>]*>/)
+  assert.doesNotMatch(usageSource, /removeLegacyForceControl|installIssue36Ui|setMetricLabel|page-header|прототип\s+1\./i)
   assert.match(usageSource, /waterArticle\.hidden = true/)
   assert.doesNotMatch(usageSource, /equivalentWaterVolumeM3/)
   assert.match(usageSource, /Горизонтальная стрела/)
   assert.match(usageSource, /boomSelfMassEquivalentKg/)
-  assert.match(usageSource, /Сколько ещё можно добавить сверху/)
+  assert.match(usageSource, /renderStaticLoadDetails/)
 })

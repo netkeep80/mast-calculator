@@ -177,6 +177,10 @@ export function assertProjectInput(value: unknown): ProjectInput {
       throw new Error(`Неизвестные поля ProjectInput.${groupName}: ${unknownFields.join(', ')}`)
     }
     for (const requiredField of Object.keys(DEFAULT_PROJECT_INPUT[groupName])) {
+      const windPressureDerived = groupName === 'environment'
+        && requiredField === 'windPressurePa'
+        && (group.windActionMode === WIND_ACTION_MODE_SP20_MEAN_V1 || group.windPresetId !== 'custom')
+      if (windPressureDerived) continue
       if (!(requiredField in group)) throw new Error(`Отсутствует ProjectInput.${groupName}.${requiredField}`)
     }
   }

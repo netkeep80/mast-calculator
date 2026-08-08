@@ -66,9 +66,19 @@ test('project/v1 keeps legacy packages readable and round-trips optional SP20 wi
   assert.equal(sp20Parsed.project.environment.windRegion, 'III')
   assert.equal(sp20Parsed.project.environment.windTerrainType, 'B')
 
-  const invalid = JSON.parse(serializeProjectPackage(createProjectPackage(sp20Project)))
-  invalid.project.environment.windRegion = 'VIII'
-  assert.throws(() => parseProjectPackage(JSON.stringify(invalid)), /windRegion не поддерживается/)
+  const handAuthoredSp20 = JSON.parse(serializeProjectPackage(createProjectPackage(sp20Project)))
+  delete handAuthoredSp20.project.environment.windPressurePa
+  const withoutPressure = parseProjectPackage(JSON.stringify(handAuthoredSp20))
+  assert.equal(withoutPressure.project.environment.windPressurePa, undefined)
+  assert.equal(withoutPressure.project.environment.windActionMode, WIND_ACTION_MODE_SP20_MEAN_V1)
+
+  const invalidRegion = JSON.parse(serializeProjectPackage(createProjectPackage(sp20Project)))
+  invalidRegion.project.environment.windRegion = 'VIII'
+  assert.throws(() => parseProjectPackage(JSON.stringify(invalidRegion)), /windRegion не поддерживается/)
+
+  const manualWithoutPressure = JSON.parse(serializeProjectPackage(legacyPackage))
+  delete manualWithoutPressure.project.environment.windPressurePa
+  assert.throws(() => parseProjectPackage(JSON.stringify(manualWithoutPressure)), /windPressurePa/)
 })
 
 test('main project package UI round-trips editable guys instead of retaining an invisible sidecar', () => {

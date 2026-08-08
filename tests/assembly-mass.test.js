@@ -7,8 +7,9 @@ import {
   estimateNutMassKg,
   reinforcementMassPerMeterKg,
 } from '../packages/design/index.js'
-import { calculateMast, DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { calculateMast } from '../packages/application/index.js'
 import { buildJointHardwareGeometry } from '../packages/domain/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 const approximately = (actual, expected, relative = 1e-10, absolute = 1e-12) => {
   const tolerance = Math.max(absolute, Math.abs(expected) * relative)
@@ -45,12 +46,11 @@ test('геометрическая масса M24x80, проходной M30 и 
 })
 
 test('сборочная масса модуля состоит из 9 рёбер, 3 комплектов метизов и 18 сваренных концов', () => {
-  const result = calculateMast({
-    ...DEFAULT_PARAMETERS,
+  const result = calculateMast(resolvedProject({
     moduleCount: 2,
     windEnvelopeEnabled: false,
     windDirectionDeg: 17,
-  })
+  }))
   const mass = calculateAssemblyMass(result)
   const jointHardware = mass.hardware.bolt.massKg
     + mass.hardware.clearanceNut.massKg

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS, resolveCalculationParameters } from '../packages/application/index.js'
 import { generateMastModel } from '../packages/structural-analysis/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 const memberLength = (model, member) => {
   const a = model.nodes[member.nodeA].position
@@ -10,7 +10,7 @@ const memberLength = (model, member) => {
 }
 
 test('геометрия содержит три узла на уровень и ровно девять рёбер на каждый физический модуль', () => {
-  const model = generateMastModel({ ...DEFAULT_PARAMETERS, moduleCount: 4 })
+  const model = generateMastModel(resolvedProject({ moduleCount: 4 }))
   assert.equal(model.nodes.length, 15)
   assert.equal(model.members.length, 36)
   assert.equal(model.modules.length, 4)
@@ -20,15 +20,14 @@ test('геометрия содержит три узла на уровень и
 })
 
 test('каждый узел frame-модели имеет шесть степеней свободы и только фундамент заделан', () => {
-  const model = generateMastModel(DEFAULT_PARAMETERS)
+  const model = generateMastModel(resolvedProject())
   assert.ok(model.nodes.every((node) => node.restrained.length === 6))
   assert.ok(model.nodes.slice(0, 3).every((node) => node.restrained.every(Boolean)))
   assert.ok(model.nodes.slice(3).every((node) => node.restrained.every((value) => value === false)))
 })
 
 test('один модуль является правильным октаэдром: все девять рёбер равны', () => {
-  const parameters = resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
+  const parameters = resolvedProject({
     moduleCount: 1,
     stockBarLengthMm: 12000,
     stockBarPieces: 16,
@@ -44,7 +43,7 @@ test('один модуль является правильным октаэдр
 })
 
 test('модуль ориентирован ножками вниз: горизонтальный треугольник принадлежит его верхней грани', () => {
-  const model = generateMastModel({ ...DEFAULT_PARAMETERS, moduleCount: 2 })
+  const model = generateMastModel(resolvedProject({ moduleCount: 2 }))
   const first = model.modules[0]
   const second = model.modules[1]
 
@@ -62,7 +61,7 @@ test('модуль ориентирован ножками вниз: гориз�
 })
 
 test('верхний треугольник последнего модуля существует естественно без closeTopRing', () => {
-  const model = generateMastModel({ ...DEFAULT_PARAMETERS, moduleCount: 3, closeTopRing: false })
+  const model = generateMastModel(resolvedProject({ moduleCount: 3 }))
   const topSet = new Set(model.topNodeIds)
   const topRing = model.members.filter((member) => (
     topSet.has(member.nodeA) && topSet.has(member.nodeB)
@@ -72,8 +71,7 @@ test('верхний треугольник последнего модуля с
 })
 
 test('высота между соседними треугольными уровнями равна a·sqrt(2/3)', () => {
-  const parameters = resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
+  const parameters = resolvedProject({
     stockBarLengthMm: 11800,
     stockBarPieces: 12,
   })
@@ -85,7 +83,7 @@ test('высота между соседними треугольными уро
 
 test('все девять рёбер каждого модуля имеют одинаковую длину', () => {
   const moduleCount = 6
-  const parameters = resolveCalculationParameters({ ...DEFAULT_PARAMETERS, moduleCount })
+  const parameters = resolvedProject({ moduleCount })
   const model = generateMastModel(parameters)
 
   for (const module of model.modules) {
@@ -101,7 +99,7 @@ test('все девять рёбер каждого модуля имеют од
 })
 
 test('направление шести ножек чередуется вместе с поворотом уровней', () => {
-  const model = generateMastModel({ ...DEFAULT_PARAMETERS, moduleCount: 2 })
+  const model = generateMastModel(resolvedProject({ moduleCount: 2 }))
 
   assert.deepEqual(
     model.modules[0].memberIds.slice(3).map((id) => {
@@ -129,7 +127,7 @@ test('направление шести ножек чередуется вмес
 })
 
 test('поворот уровней не меняет радиус треугольной грани', () => {
-  const model = generateMastModel({ ...DEFAULT_PARAMETERS, moduleCount: 3 })
+  const model = generateMastModel(resolvedProject({ moduleCount: 3 }))
   const radii = model.nodes.map((node) => Math.hypot(node.position[0], node.position[1]))
   const reference = radii[0]
   assert.ok(radii.every((radius) => Math.abs(radius - reference) < 1e-12))

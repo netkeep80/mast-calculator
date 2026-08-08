@@ -49,13 +49,15 @@ export function createCalculationController({
       }
 
       if (message.type === 'error') {
+        const activeJob = state.snapshot.activeJob
         if (!state.failJob(jobId)) return
         stopTransport()
-        onError(message.message ?? 'Неизвестная ошибка worker')
+        onError(message.message ?? 'Неизвестная ошибка worker', activeJob)
         return
       }
 
       if (message.type === 'result') {
+        const activeJob = state.snapshot.activeJob
         const completed = state.completeJob(jobId, {
           projectInput: message.projectInput,
           result: message.result,
@@ -63,15 +65,16 @@ export function createCalculationController({
         })
         if (!completed) return
         stopTransport()
-        onResult(state.snapshot)
+        onResult(state.snapshot, activeJob)
       }
     }
 
     worker.onerror = (event) => {
       if (worker !== activeWorker) return
+      const activeJob = state.snapshot.activeJob
       if (!state.failJob(jobId)) return
       stopTransport()
-      onError(event.message || 'Ошибка Web Worker')
+      onError(event.message || 'Ошибка Web Worker', activeJob)
     }
 
     worker.postMessage({ jobId, action, parameters: projectInput })

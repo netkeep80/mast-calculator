@@ -12,21 +12,18 @@ interface VerificationCheck {
   readonly id: string
   readonly level: number
   readonly status: VerificationStatus
-  readonly [key: string]: unknown
 }
 
 interface VerificationLevel {
   readonly number: number
   readonly status?: VerificationStatus
   readonly checkIds?: readonly string[]
-  readonly [key: string]: unknown
 }
 
 interface VerificationPassportLike {
   readonly checks?: readonly VerificationCheck[]
   readonly levels?: readonly VerificationLevel[]
   readonly counts?: Readonly<Record<string, number>>
-  readonly [key: string]: unknown
 }
 
 interface MixedDiameterResult {

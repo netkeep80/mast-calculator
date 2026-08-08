@@ -32,6 +32,15 @@ export function attachGuyedConnectionEnvelope(
   const criticalWeld = connections.weld.critical
   const structuralAndCablePasses = guyedResult.passes
   const connectionPasses = connections.passes
+  const failureReasons: string[] = []
+  if (!connections.passesConfiguredBolt) failureReasons.push('configured-bolt-capacity')
+  if (!connections.passesHardwareGeometry) failureReasons.push('joint-hardware-geometry')
+  if (!connections.passesNutSections) failureReasons.push('nut-net-section')
+  if (!connections.selectedWeldConsumableCompatible) failureReasons.push('weld-base-metal-compatibility')
+  if (!connections.passesWeldAreaCriterion) failureReasons.push('weld-effective-area-reserve')
+  const statusReason = connectionPasses
+    ? 'fixed-selected-intermodule-joint-passes-all-guyed-cases'
+    : failureReasons.join('+') || 'fixed-selected-intermodule-joint-failed'
 
   const connectionEnvelope = {
     method: GUYED_CONNECTION_ENVELOPE_METHOD,
@@ -41,6 +50,8 @@ export function attachGuyedConnectionEnvelope(
     caseCount: guyedResult.cases.length,
     capacityChecksUseFixedSelectedJoint: true as const,
     passes: connectionPasses,
+    statusReason,
+    failureReasons,
     maximumBoltUtilization: selectedBolt.applicable ? selectedBolt.utilization : 0,
     governingBoltDemand: selectedBolt.governingDemand,
     governingBoltCheck: selectedBolt.governingCheck,
@@ -52,9 +63,18 @@ export function attachGuyedConnectionEnvelope(
       clearanceNutThreadMm: fixedParameters.jointClearanceNutThreadMm,
       threadEngagementFactor: fixedParameters.jointThreadEngagementFactor,
       effectiveRadiusMm: fixedParameters.jointEffectiveRadiusMm,
+      boltShearPlanes: fixedParameters.jointBoltShearPlanes,
+      connectionConditionFactor: fixedParameters.connectionConditionFactor,
+      tighteningTorqueNm: fixedParameters.jointTighteningTorqueNm,
+      nutFactor: fixedParameters.jointNutFactor,
+      preloadVariation: fixedParameters.jointPreloadVariation,
+      nutSectionAreaRatio: fixedParameters.jointNutSectionAreaRatio,
       weldConsumableId: fixedParameters.weldConsumableId,
       weldLegMm: fixedParameters.weldLegMm,
       weldSegmentsPerEnd: fixedParameters.weldSegmentsPerEnd,
+      weldBetaF: fixedParameters.weldBetaF,
+      weldBetaZ: fixedParameters.weldBetaZ,
+      weldToRibAreaRatio: fixedParameters.weldToRibAreaRatio,
     },
     scope: {
       checked: 'intermodule bolt/nuts and member-end welds from nonlinear guyed frame actions',
@@ -65,7 +85,7 @@ export function attachGuyedConnectionEnvelope(
   const warnings = [...guyedResult.warnings]
   warnings.push('Межмодульные болт/гайки и сварные концы повторно проверены по N/V/T/M всей нелинейной guyed-огибающей с тем же физическим узлом, который выбран основным расчётом проекта. Местный узел крепления растяжки, анкер, талреп, коуш/зажимы и грунт остаются отдельными проверками.')
   if (!connectionPasses) {
-    warnings.unshift('Нелинейная guyed-огибающая превышает несущую способность выбранного межмодульного соединения или его сварных концов.')
+    warnings.unshift(`Нелинейная guyed-огибающая не проходит выбранный межмодульный узел: ${statusReason}.`)
   }
 
   return {

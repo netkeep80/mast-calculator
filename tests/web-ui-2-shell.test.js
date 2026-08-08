@@ -64,8 +64,8 @@ test('workspace CSS is loaded before DOM migration instead of racing shell layou
 test('desktop workspace cannot be widened by legacy min-content controls', () => {
   requires(
     styles,
-    /grid-template-columns:\s*minmax\(280px, 330px\)\s+minmax\(0, 1fr\)\s+minmax\(280px, 330px\)/,
-    'нет shrink-safe трёхколоночного desktop workspace',
+    /grid-template-columns:\s*minmax\(280px, 320px\)\s+minmax\(560px, 1fr\)\s+minmax\(280px, 320px\)/,
+    'нет shrink-safe трёхколоночного desktop workspace с минимальной шириной центральной области',
   )
   requires(styles, /\.workspace-layout > \*[\s\S]*min-width:\s*0/, 'primary panes не имеют min-width:0')
   requires(styles, /\.workspace-project-card \.form-grid\s*\{[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/, 'project form сохраняет min-content overflow')
@@ -82,8 +82,22 @@ test('sticky panes follow the real wrapped app-bar height', () => {
 })
 
 test('desktop-first layout exposes all three primary panes at 1366-class width', () => {
-  requires(styles, /grid-template-areas:\s*\n\s*'project view summary'/, 'primary panes не находятся в одной строке desktop workspace')
+  requires(styles, /grid-template-areas:\s*\n\s*'project view summary'\s*\n\s*'project details summary'/, 'desktop workspace не держит Project/3D/Summary в устойчивых колонках')
   requires(styles, /#mast-canvas[\s\S]*height:\s*calc\(100vh - var\(--app-bar-height\) - 118px\)/, '3D viewport не привязан к фактической высоте toolbar')
+})
+
+test('desktop details stay in the center column instead of scrolling under sticky sidebars', () => {
+  requires(styles, /'project view summary'\s*\n\s*'project details summary'/, 'details снова растянут под sticky Project/Summary')
+  assert.doesNotMatch(styles, /'details details details'/, 'full-width desktop details снова могут быть перекрыты sticky sidebars')
+  requires(styles, /\.workspace-details\s*\{[\s\S]*grid-area:\s*details;[\s\S]*align-self:\s*start/, 'details не закреплены в центральной grid area')
+})
+
+test('two-column layout disables sticky panes before results span the full width', () => {
+  requires(
+    styles,
+    /@media \(max-width:\s*1180px\)[\s\S]*\.workspace-project-pane,\s*\n\s*\.workspace-summary-pane\s*\{[\s\S]*position:\s*static;[\s\S]*max-height:\s*none;[\s\S]*overflow:\s*visible/,
+    'на двух колонках sticky sidebars могут перекрыть full-width summary/results',
+  )
 })
 
 test('durable result workspace has accessible presentation-only tabs', () => {

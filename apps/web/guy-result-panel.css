@@ -1,0 +1,98 @@
+.guy-result-panel {
+  margin-bottom: .55rem;
+  padding: .8rem;
+  border: 1px solid #b8d6cc;
+  border-radius: 10px;
+  background: #f5fbf8;
+  box-shadow: 0 3px 12px rgba(28, 45, 61, .04);
+}
+
+.guy-result-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .6rem;
+}
+
+.guy-result-heading h3 {
+  margin: .1rem 0 0;
+  font-size: .94rem;
+}
+
+.guy-result-eyebrow {
+  color: #27765f;
+  font-size: .62rem;
+  font-weight: 850;
+  letter-spacing: .06em;
+}
+
+.guy-result-status {
+  padding: .25rem .5rem;
+  border-radius: 999px;
+  font-size: .66rem;
+  white-space: nowrap;
+}
+
+.guy-result-status.pass {
+  background: #dcefe7;
+  color: #0e694c;
+}
+
+.guy-result-status.fail {
+  background: #f7dfdf;
+  color: #8a2424;
+}
+
+.guy-result-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .38rem;
+  margin-top: .65rem;
+}
+
+.guy-result-metrics article {
+  padding: .48rem;
+  border: 1px solid #dce8e3;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.guy-result-metrics span,
+.guy-result-metrics small {
+  display: block;
+  color: #687b73;
+  font-size: .61rem;
+}
+
+.guy-result-metrics strong {
+  display: block;
+  margin: .15rem 0;
+  font-size: .84rem;
+}
+
+.guy-result-summary {
+  margin: .6rem 0 0;
+  color: #49645a;
+  font-size: .71rem;
+  line-height: 1.45;
+}
+
+.guy-result-details {
+  margin-top: .55rem;
+  font-size: .68rem;
+}
+
+.guy-result-details .table-wrap {
+  margin-top: .45rem;
+  overflow: auto;
+}
+
+.guy-result-details table {
+  min-width: 540px;
+}
+
+.guy-result-warnings {
+  margin: .5rem 0 0;
+  padding-left: 1.1rem;
+  color: #755522;
+}

@@ -160,6 +160,20 @@ function observeAppBarHeight(appBar) {
   globalThis.addEventListener?.('resize', sync, { passive: true })
 }
 
+function loadPresentationStylesheet(href, markerAttribute) {
+  const existing = document.querySelector(`link[${markerAttribute}]`)
+  if (existing) return Promise.resolve()
+  const stylesheet = document.createElement('link')
+  stylesheet.rel = 'stylesheet'
+  stylesheet.href = href
+  stylesheet.setAttribute(markerAttribute, 'true')
+  return new Promise((resolve) => {
+    stylesheet.addEventListener('load', resolve, { once: true })
+    stylesheet.addEventListener('error', resolve, { once: true })
+    document.head.append(stylesheet)
+  })
+}
+
 function installWorkspaceShell() {
   if (document.body.dataset.webUi === '2.0') return
 
@@ -197,4 +211,7 @@ function installWorkspaceShell() {
 }
 
 installWorkspaceShell()
-void import('./result-tabs.js').then(({ initializeResultTabs }) => initializeResultTabs())
+void Promise.all([
+  loadPresentationStylesheet('./result-tabs.css', 'data-result-tabs-styles'),
+  loadPresentationStylesheet('./guy-result-panel.css', 'data-guy-result-styles'),
+]).then(() => import('./result-tabs.js')).then(({ initializeResultTabs }) => initializeResultTabs())

@@ -6,17 +6,20 @@ export * from './src/use-cases.js'
 export * from './src/joint-preview.js'
 export * from './src/fabrication-preview.js'
 export * from './src/artifacts.js'
+export * from './src/result-summary.js'
 export * from './src/cancellation.js'
 export * from './src/errors.js'
 export {
   DEFAULT_LATERAL_CAPACITY_STEP_DEG,
   DEFAULT_PROJECT_INPUT,
   PROJECT_PACKAGE_SCHEMA,
+  SUPPORTED_PROJECT_PACKAGE_SCHEMAS,
   ProjectSchemaError,
   assertProjectInput,
   assertProjectPackage,
   createProjectInput,
   createProjectPackage,
+  migrateProjectPackage,
   parseProjectPackage,
   resolveProjectInput,
   serializeProjectPackage,

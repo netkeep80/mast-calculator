@@ -1,0 +1,65 @@
+name: CLI checks
+
+on:
+  pull_request:
+    paths:
+      - 'apps/cli/**'
+      - 'packages/application/**'
+      - 'packages/domain/**'
+      - 'tests/cli-oracle.test.js'
+      - 'tests/cli-artifacts.test.js'
+      - 'tests/project-package-web.test.js'
+      - 'package.json'
+      - '.github/workflows/cli.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/cli/**'
+      - 'packages/application/**'
+      - 'packages/domain/**'
+      - 'tests/cli-oracle.test.js'
+      - 'tests/cli-artifacts.test.js'
+      - 'tests/project-package-web.test.js'
+      - 'package.json'
+      - '.github/workflows/cli.yml'
+
+env:
+  GIT_CONFIG_KEY_0: init.defaultBranch
+  GIT_CONFIG_VALUE_0: main
+
+permissions:
+  contents: read
+
+jobs:
+  oracle:
+    name: CLI oracle (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    concurrency:
+      group: cli-${{ github.workflow }}-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Simulate fresh merge with latest base
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/simulate-fresh-merge.sh
+      - name: Use Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+      - name: Check JavaScript syntax
+        run: npm run check
+      - name: Typecheck portable contracts
+        run: npm run typecheck
+      - name: Run CLI application oracle
+        run: npm run test:cli

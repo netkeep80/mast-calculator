@@ -523,6 +523,6 @@ export function solveModuleStack(
     modules: moduleStates,
     condensedBaseLoad: condensedLoads[0],
     interfaceEquilibriumResidual: interfaceClosure / interfaceScale,
-    displacementNorm: vectorNorm(displacementVector),
+    displacementNorm: vectorNorm([...displacementVector]),
   }
 }

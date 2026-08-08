@@ -139,14 +139,55 @@ export interface HeightCapacity {
   readonly [key: string]: unknown
 }
 
-export interface VerificationPassport {
-  readonly counts: {
-    readonly internal: number
-    readonly [key: string]: number
-  }
-  readonly levels?: readonly Readonly<Record<string, unknown>>[]
-  readonly checks?: readonly Readonly<Record<string, unknown>>[]
+export type VerificationCheckStatus = 'pass' | 'fail' | 'not-verified'
+
+export interface VerificationCheck {
+  readonly id: string
+  readonly level: number
+  readonly title: string
+  readonly explanation: string
+  readonly status: VerificationCheckStatus
+  readonly howToCheck: string
+  readonly formula?: string
+  readonly substitution?: string
+  readonly actual?: number
+  readonly expected?: number
+  readonly tolerance?: number
+  readonly relativeError?: number
+  readonly unit?: string
+  readonly evidence?: string
   readonly [key: string]: unknown
+}
+
+export interface VerificationLevel {
+  readonly number: number
+  readonly title: string
+  readonly description: string
+  readonly status: VerificationCheckStatus
+  readonly checkIds: readonly string[]
+  readonly [key: string]: unknown
+}
+
+export interface VerificationPassport {
+  readonly method: string
+  readonly status: 'failed' | 'internal-passed-external-pending' | 'incomplete'
+  readonly headline: string
+  readonly explanation: string
+  readonly counts: {
+    readonly total: number
+    readonly passed: number
+    readonly failed: number
+    readonly notVerified: number
+    readonly internal: number
+  }
+  readonly levels: readonly VerificationLevel[]
+  readonly checks: readonly VerificationCheck[]
+  readonly thresholds: {
+    readonly linearResidual: number
+    readonly freeDofEquilibrium: number
+    readonly globalMomentResidual: number
+    readonly bucklingResidual: number
+  }
 }
 
 export interface GuyWireDefinition {

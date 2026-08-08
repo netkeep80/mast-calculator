@@ -71,20 +71,22 @@ export function sp20CharacteristicMeanPressurePa(
   return basicPressurePa * sp20HeightCoefficient(heightM, terrainType)
 }
 
-export function meanWindPressureAtHeightPa(
-  parameters: {
-    readonly windActionMode?: WindActionMode
-    readonly windRegion?: Sp20WindRegion | null
-    readonly windTerrainType?: Sp20TerrainType | null
-    readonly windPressurePa: number
-  },
-  heightM: number,
-): number {
-  if (parameters.windActionMode !== WIND_ACTION_MODE_SP20_MEAN_V1) return parameters.windPressurePa
-  if (!parameters.windRegion || !parameters.windTerrainType) {
-    throw new RangeError('SP20 mean wind mode requires windRegion and windTerrainType')
-  }
-  return sp20CharacteristicMeanPressurePa(parameters.windRegion, parameters.windTerrainType, heightM)
+function resolveMode(value: unknown): WindActionMode {
+  if (value == null || value === '') return WIND_ACTION_MODE_MANUAL
+  if (value === WIND_ACTION_MODE_MANUAL || value === WIND_ACTION_MODE_SP20_MEAN_V1) return value
+  throw new RangeError(`unsupported wind action mode: ${String(value)}`)
+}
+
+function resolveRegion(value: unknown): Sp20WindRegion {
+  const region = String(value ?? '') as Sp20WindRegion
+  if (!(region in SP20_BASIC_WIND_PRESSURE_PA)) throw new RangeError(`unsupported SP20 wind region: ${String(value)}`)
+  return region
+}
+
+function resolveTerrain(value: unknown): Sp20TerrainType {
+  const terrain = String(value ?? '') as Sp20TerrainType
+  if (!(terrain in SP20_TERRAIN_PARAMETERS)) throw new RangeError(`unsupported SP20 terrain type: ${String(value)}`)
+  return terrain
 }
 
 export function createWindActionProvenance(parameters: {
@@ -124,4 +126,57 @@ export function createWindActionProvenance(parameters: {
     loadReliabilityFactor: parameters.windLoadFactor,
     aerodynamicCoefficientsAppliedSeparately: true,
   })
+}
+
+export function resolveWindAction<T extends {
+  readonly windActionMode?: unknown
+  readonly windRegion?: unknown
+  readonly windTerrainType?: unknown
+  readonly windPressurePa: number
+  readonly windLoadFactor: number
+}>(parameters: T, referenceHeightM: number) {
+  const windActionMode = resolveMode(parameters.windActionMode)
+  if (windActionMode === WIND_ACTION_MODE_MANUAL) {
+    const resolved = {
+      ...parameters,
+      windActionMode,
+      windRegion: null,
+      windTerrainType: null,
+    }
+    return {
+      ...resolved,
+      windActionProvenance: createWindActionProvenance(resolved),
+    }
+  }
+
+  const windRegion = resolveRegion(parameters.windRegion)
+  const windTerrainType = resolveTerrain(parameters.windTerrainType)
+  const windPressurePa = sp20CharacteristicMeanPressurePa(windRegion, windTerrainType, referenceHeightM)
+  const resolved = {
+    ...parameters,
+    windActionMode,
+    windRegion,
+    windTerrainType,
+    windPressurePa,
+  }
+  return {
+    ...resolved,
+    windActionProvenance: createWindActionProvenance(resolved),
+  }
+}
+
+export function meanWindPressureAtHeightPa(
+  parameters: {
+    readonly windActionMode?: WindActionMode
+    readonly windRegion?: Sp20WindRegion | null
+    readonly windTerrainType?: Sp20TerrainType | null
+    readonly windPressurePa: number
+  },
+  heightM: number,
+): number {
+  if (parameters.windActionMode !== WIND_ACTION_MODE_SP20_MEAN_V1) return parameters.windPressurePa
+  if (!parameters.windRegion || !parameters.windTerrainType) {
+    throw new RangeError('SP20 mean wind mode requires windRegion and windTerrainType')
+  }
+  return sp20CharacteristicMeanPressurePa(parameters.windRegion, parameters.windTerrainType, heightM)
 }

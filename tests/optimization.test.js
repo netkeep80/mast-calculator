@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS } from '../packages/application/index.js'
 import { selectUniformDiameter } from '../packages/application/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
-const unloadedParameters = {
-  ...DEFAULT_PARAMETERS,
+const unloadedParameters = resolvedProject({
   moduleCount: 1,
   windEnvelopeEnabled: false,
   windPressurePa: 0,
@@ -12,12 +11,10 @@ const unloadedParameters = {
   deadLoadFactor: 0,
   equipmentMassKg: 0,
   equipmentWindAreaM2: 0,
-  extraHorizontalLoadN: 0,
-  extraVerticalLoadN: 0,
   iceThicknessMm: 0,
   displacementLimitMm: 1e6,
   minimumBucklingFactor: 1,
-}
+})
 
 test('подбор диаметра прекращается на первом проходящем размере', () => {
   const result = selectUniformDiameter(unloadedParameters, [12, 8, 10])

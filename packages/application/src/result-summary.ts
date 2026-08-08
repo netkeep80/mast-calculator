@@ -110,17 +110,15 @@ export function createBareResultSummary(
       connection: connectionSummary(result),
       capacities: {
         lateralCriticalForceKgf: result.lateralCapacity?.criticalForceKgf ?? null,
-        staticMaximumTopMassKg: result.staticPayloadCapacity?.maximumTotalTopMassKg
-          ?? result.staticPayloadCapacity?.maximumPayloadMassKg
-          ?? null,
+        staticMaximumTopMassKg: result.staticPayloadCapacity?.maximumTopEquipmentMassKg ?? null,
         heightDesignMaximumM: result.heightCapacity?.design?.maximumHeightM ?? null,
         heightDesignMaximumModules: result.heightCapacity?.design?.maximumModules ?? null,
         craneMaximumEndPayloadMassKg: result.craneBoomCapacity?.maximumEndPayloadMassKg ?? null,
       },
-      verification: {
+      verification: result.verification ? {
         status: result.verification.status,
         counts: { ...result.verification.counts },
-      },
+      } : null,
       warnings: [...result.warnings],
     },
     optimization: optimizationSummary(options.optimization),

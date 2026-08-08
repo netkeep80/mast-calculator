@@ -2,6 +2,7 @@ export * from './src/calculate.js'
 export * from './src/complete-calculation.js'
 export * from './src/optimize.js'
 export * from './src/use-cases.js'
+export * from './src/joint-preview.js'
 export * from './src/errors.js'
 export {
   DEFAULT_LATERAL_CAPACITY_STEP_DEG,

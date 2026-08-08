@@ -9,10 +9,12 @@ const designPackage = fs.readFileSync(new URL('../packages/design/src/design-pac
 
 test('Web Worker delegates heavy actions to application use cases', () => {
   assert.match(worker, /calculateProject/)
-  assert.match(worker, /optimizeProject/)
+  assert.match(worker, /optimizeAndCalculateProject/)
+  assert.doesNotMatch(worker, /\boptimizeProject\b/)
   assert.doesNotMatch(worker, /calculateCompleteMastWithConfiguredJoint/)
   assert.doesNotMatch(worker, /augmentVerificationWithModuleChecks/)
   assert.doesNotMatch(worker, /selectUniformDiameter/)
+  assert.doesNotMatch(worker, /STANDARD_DIAMETERS_MM|moduleDiametersMm|configuratorMode/)
 })
 
 test('browser persistence stays in apps/web and never leaks back into portable design package', () => {

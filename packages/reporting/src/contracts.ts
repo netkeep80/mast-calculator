@@ -6,7 +6,7 @@ import type {
   calculateLateralCapacity,
   calculateStaticPayloadCapacity,
 } from '../../engineering/index.js'
-import type { CheckedFrameAnalysis } from '../../engineering/src/contracts.js'
+import type { CheckedFrameAnalysis } from '../../engineering/contracts.js'
 import type { GeneratedMastModel } from '../../structural-analysis/index.js'
 import type { LoadCase } from '../../structural-analysis/contracts.js'
 

@@ -100,8 +100,8 @@ function tridiagonalMultiply(
   const result = new Float64Array(diagonal.length)
   for (let index = 0; index < diagonal.length; index += 1) {
     result[index] = (diagonal[index]! + shift) * vector[index]!
-    if (index > 0) result[index] += offDiagonal[index - 1]! * vector[index - 1]!
-    if (index + 1 < diagonal.length) result[index] += offDiagonal[index]! * vector[index + 1]!
+    if (index > 0) result[index] = result[index]! + offDiagonal[index - 1]! * vector[index - 1]!
+    if (index + 1 < diagonal.length) result[index] = result[index]! + offDiagonal[index]! * vector[index + 1]!
   }
   return result
 }

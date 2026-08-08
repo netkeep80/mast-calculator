@@ -7,6 +7,7 @@ const app = fs.readFileSync(new URL('../apps/web/app.js', import.meta.url), 'utf
 const mainForm = fs.readFileSync(new URL('../apps/web/main-project-form.js', import.meta.url), 'utf8')
 const calculationController = fs.readFileSync(new URL('../apps/web/calculation-controller.js', import.meta.url), 'utf8')
 const bootstrap = fs.readFileSync(new URL('../apps/web/app-bootstrap.js', import.meta.url), 'utf8')
+const projectPackageUi = fs.readFileSync(new URL('../apps/web/project-package-ui.js', import.meta.url), 'utf8')
 const usage = fs.readFileSync(new URL('../apps/web/usage-scenarios.js', import.meta.url), 'utf8')
 const viewer = fs.readFileSync(new URL('../apps/web/viewer.js', import.meta.url), 'utf8')
 const moduleViewer = fs.readFileSync(new URL('../apps/web/module-viewer.js', import.meta.url), 'utf8')
@@ -200,9 +201,14 @@ test('progress показывает отдельный этап поиска м�
   assert.doesNotMatch(app, /activeWorker/)
 })
 
-test('бумажный проект доступен, пользовательского JSON-экспорта нет', () => {
+test('бумажный расчёт и portable project JSON остаются разными пользовательскими артефактами', () => {
   assert.match(html, /id="export-note-button"[^>]*>Скачать бумажный расчётный проект</)
-  assert.doesNotMatch(html, /export-json-button/)
+  assert.match(projectPackageUi, /export-project-package-button/)
+  assert.match(projectPackageUi, /open-project-package-button/)
+  assert.match(projectPackageUi, /createProjectPackage/)
+  assert.match(projectPackageUi, /parseProjectPackage/)
+  assert.match(projectPackageUi, /serializeProjectPackage/)
+  assert.match(bootstrap, /initializeProjectPackageUi\(form\)/)
   assert.doesNotMatch(app, /createCalculationJson/)
 })
 

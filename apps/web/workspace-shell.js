@@ -82,8 +82,12 @@ function createProjectPane(parameters) {
 
   const quickLinks = makeElement('nav', 'project-quick-links')
   const guys = makeElement('a', 'workspace-link', 'Растяжки')
-  guys.href = '#guys'
+  guys.href = '#guy-input-details'
   guys.title = 'Параметры растяжек этого же project/v1'
+  guys.addEventListener('click', () => {
+    const editor = document.querySelector('#guy-input-details')
+    if (editor instanceof HTMLDetailsElement) editor.open = true
+  })
   const docs = makeElement('a', 'workspace-link', '3D и КД')
   docs.href = './design.html'
   docs.title = 'Открывает последний рассчитанный design package'

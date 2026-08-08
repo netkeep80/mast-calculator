@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS, calculateMast, resolveCalculationParameters } from '../packages/application/index.js'
+import { calculateMast } from '../packages/application/index.js'
 import { generateMastModel } from '../packages/structural-analysis/index.js'
 import {
   DEFAULT_GUY_WIRE_ID,
@@ -12,6 +12,7 @@ import {
   calculateGuyedMast,
   guyWindDirections,
 } from '../packages/engineering/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 const approximately = (actual, expected, relative = 1e-8, absolute = 1e-8) => {
   const tolerance = Math.max(absolute, Math.abs(expected) * relative)
@@ -19,8 +20,7 @@ const approximately = (actual, expected, relative = 1e-8, absolute = 1e-8) => {
 }
 
 function parameters(overrides = {}) {
-  return resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
+  return resolvedProject({
     moduleCount: 12,
     windPresetId: 'custom',
     windPressurePa: 0,

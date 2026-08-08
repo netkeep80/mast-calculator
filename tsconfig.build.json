@@ -1,8 +1,6 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "allowJs": true,
-    "checkJs": false,
     "noEmit": false,
     "declaration": false,
     "sourceMap": false,
@@ -10,7 +8,6 @@
     "outDir": ".build"
   },
   "include": [
-    "packages/**/*.js",
     "packages/**/*.ts"
   ],
   "exclude": [

@@ -197,3 +197,4 @@ function installWorkspaceShell() {
 }
 
 installWorkspaceShell()
+void import('./result-tabs.js').then(({ initializeResultTabs }) => initializeResultTabs())

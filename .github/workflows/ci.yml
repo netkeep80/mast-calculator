@@ -178,6 +178,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          assert_contains() {
+            local file="$1"
+            local needle="$2"
+            local label="$3"
+            if ! grep --fixed-strings --quiet -- "$needle" "$file"; then
+              echo "::error::$label: expected '$needle' in $file"
+              exit 1
+            fi
+          }
+          assert_asset() {
+            local path="$1"
+            if ! curl --fail --silent "http://127.0.0.1:4173/$path" >/dev/null; then
+              echo "::error::Web smoke asset is missing: $path"
+              exit 1
+            fi
+          }
+
           python3 -m http.server 4173 --directory _site >/tmp/mast-calculator-http.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid"' EXIT
@@ -195,25 +212,31 @@ jobs:
             exit 1
           fi
 
-          grep --quiet '<title>Калькулятор мачты</title>' /tmp/mast-calculator-index.html
-          grep --quiet 'Проверить конкретную мачту' /tmp/mast-calculator-index.html
-          grep --quiet 'Справочники — проверить исходные значения расчёта' /tmp/mast-calculator-index.html
+          assert_contains /tmp/mast-calculator-index.html '<title>Калькулятор мачты</title>' 'main page title changed'
+          assert_contains /tmp/mast-calculator-index.html 'Проверить конкретную мачту' 'main calculation flow is missing'
+          assert_contains /tmp/mast-calculator-index.html 'Справочники — проверить исходные значения расчёта' 'reference-data entry point is missing'
+
           curl --fail --silent http://127.0.0.1:4173/design.html >/tmp/mast-design.html
-          grep --quiet '<title>3D и конструкторская документация мачты</title>' /tmp/mast-design.html
-          grep --quiet 'Модуль 3D и конструкторской документации' /tmp/mast-design.html
-          grep --quiet 'Скачать КД по ЕСКД' /tmp/mast-design.html
-          curl --fail --silent http://127.0.0.1:4173/logo.jpg >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/apps/web/app.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/apps/web/calculation-worker.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/apps/web/viewer.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/apps/web/joint-viewer.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/apps/web/design-app.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/apps/web/design-storage.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/apps/web/design.css >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/packages/domain/index.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/packages/numerics/index.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/packages/structural-analysis/index.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/packages/engineering/index.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/packages/application/index.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/packages/design/index.js >/dev/null
-          curl --fail --silent http://127.0.0.1:4173/packages/reporting/index.js >/dev/null
+          assert_contains /tmp/mast-design.html '<title>3D и конструкторская документация мачты</title>' 'design page title changed'
+          assert_contains /tmp/mast-design.html 'Модуль 3D и конструкторской документации' 'design workspace identity is missing'
+          assert_contains /tmp/mast-design.html 'Сохранить КД по ЕСКД' 'ESKD export control is missing'
+
+          for asset in \
+            logo.jpg \
+            apps/web/app.js \
+            apps/web/calculation-worker.js \
+            apps/web/viewer.js \
+            apps/web/joint-viewer.js \
+            apps/web/design-app.js \
+            apps/web/design-storage.js \
+            apps/web/design.css \
+            packages/domain/index.js \
+            packages/numerics/index.js \
+            packages/structural-analysis/index.js \
+            packages/engineering/index.js \
+            packages/application/index.js \
+            packages/design/index.js \
+            packages/reporting/index.js
+          do
+            assert_asset "$asset"
+          done

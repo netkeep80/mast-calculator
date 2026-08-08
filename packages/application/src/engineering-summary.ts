@@ -113,7 +113,7 @@ function bareStructuralCriteria(result: BareResult, required: boolean): Engineer
   ]
 }
 
-function bareConnectionCriterion(result: BareResult, required: boolean): EngineeringCriterion {
+function bareConnectionCriterion(result: BareResult): EngineeringCriterion {
   const passes = result.connections?.passes !== false
   const boltUtilization = result.connections?.bolt?.selected?.utilization ?? null
   return {
@@ -121,7 +121,7 @@ function bareConnectionCriterion(result: BareResult, required: boolean): Enginee
     group: 'connection',
     source: 'bare',
     status: passes ? 'pass' : 'fail',
-    required,
+    required: true,
     comparison: '<=',
     value: boltUtilization,
     limit: 1,
@@ -241,10 +241,12 @@ function governingCriterion(criteria: readonly EngineeringCriterion[]): Engineer
 
 /**
  * One presentation-neutral criteria projection for Web/Desktop summaries.
- * For a guyed project, bare frame response is retained as reference only.
- * The current nonlinear guy solver does not recompute the physical intermodule
- * connection envelope, so a guyed project cannot honestly receive overall PASS
- * until that separate engineering check exists.
+ * For a guyed project, bare frame response is reference for structural demand,
+ * but a known bare physical-connection failure remains a hard veto. A bare
+ * connection PASS cannot prove the guyed connection envelope: the current
+ * nonlinear guy solver does not recompute bolt/weld checks from its member-end
+ * actions, so a guyed project cannot honestly receive overall PASS until that
+ * separate engineering check exists.
  */
 export function createEngineeringSummary(
   result: BareResult,
@@ -253,7 +255,7 @@ export function createEngineeringSummary(
   const isGuyed = guyedResult !== null
   const criteria: EngineeringCriterion[] = [
     ...bareStructuralCriteria(result, !isGuyed),
-    bareConnectionCriterion(result, !isGuyed),
+    bareConnectionCriterion(result),
     verificationCriterion(result),
     ...(guyedResult ? guyedCriteria(guyedResult) : []),
   ]

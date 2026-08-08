@@ -7,6 +7,20 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
 
+function filesUnder(relativeRoot, predicate = () => true) {
+  const base = path.join(root, relativeRoot)
+  const found = []
+  const visit = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const fullPath = path.join(directory, entry.name)
+      if (entry.isDirectory()) visit(fullPath)
+      else if (entry.isFile() && predicate(fullPath)) found.push(fullPath)
+    }
+  }
+  visit(base)
+  return found
+}
+
 const browserFiles = read('apps/web/file-adapter.js')
 const projectPackageUi = read('apps/web/project-package-ui.js')
 const mainApp = read('apps/web/app.js')
@@ -32,6 +46,21 @@ test('shared presentation delegates all user file I/O to one environment adapter
   assert.match(browserFiles, /new Blob\(/)
   assert.match(browserFiles, /createObjectURL/)
   assert.match(browserFiles, /type = 'file'/)
+})
+
+test('browser-only file APIs are confined to the browser environment adapter', () => {
+  const forbidden = /new Blob\(|createObjectURL|\.download\s*=|type\s*=\s*['"]file['"]/i
+  for (const file of filesUnder('apps/web', (candidate) => candidate.endsWith('.js'))) {
+    if (path.basename(file) === 'file-adapter.js') continue
+    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), forbidden, path.relative(root, file))
+  }
+})
+
+test('portable TypeScript packages have no Tauri dependency leak', () => {
+  const forbidden = /__TAURI__|@tauri-apps|tauri-plugin|\btauri::/i
+  for (const file of filesUnder('packages', (candidate) => candidate.endsWith('.ts'))) {
+    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), forbidden, path.relative(root, file))
+  }
 })
 
 test('desktop file adapter exposes only two custom IPC operations', () => {

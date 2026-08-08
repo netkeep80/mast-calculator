@@ -31,7 +31,7 @@ test('guy editor stores only user-owned project inputs, never derived cable resu
     assert.ok(editor.includes(field), `editable guy field missing: ${field}`)
   }
 
-  assert.doesNotMatch(editor, /tensionN\s*:|angleToHorizontalDeg\s*:|anchorLoadN\s*:|moduleNodeReactionN\s*:|designLengthM\s*:/)
+  assert.doesNotMatch(editor, /\btensionN\s*:|angleToHorizontalDeg\s*:|anchorLoadN\s*:|moduleNodeReactionN\s*:|designLengthM\s*:/)
 })
 
 test('guy editor can explicitly disable or restore ProjectPackage.guys', () => {

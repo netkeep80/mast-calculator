@@ -1,0 +1,571 @@
+:root {
+  --workspace-bg: #e9eef3;
+  --workspace-panel: #ffffff;
+  --workspace-border: #d5dde5;
+  --workspace-text: #17212b;
+  --workspace-muted: #657482;
+  --workspace-accent: #137a5f;
+  --workspace-accent-soft: #e7f4ef;
+  --workspace-dark: #132536;
+  --workspace-dark-2: #20384d;
+  --workspace-warning: #9a6810;
+}
+
+body[data-web-ui='2.0'] {
+  min-height: 100vh;
+  background: var(--workspace-bg);
+  color: var(--workspace-text);
+}
+
+.app-bar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 72px;
+  padding: .65rem 1rem;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  background: var(--workspace-dark);
+  color: #fff;
+  box-shadow: 0 5px 18px rgba(15, 31, 45, .16);
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  min-width: 245px;
+}
+
+.app-logo {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  object-fit: contain;
+  border-radius: 10px;
+  padding: .2rem;
+  background: #fff;
+}
+
+.app-identity {
+  min-width: 0;
+  display: grid;
+  gap: .08rem;
+}
+
+.app-title {
+  font-size: 1rem;
+  letter-spacing: .01em;
+}
+
+.app-version,
+.runtime-build-info {
+  margin: 0;
+  color: #aebdca;
+  font-size: .68rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.runtime-info-slot .runtime-build-info {
+  color: #8ea3b5;
+}
+
+.app-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .7rem;
+  min-width: 0;
+}
+
+.project-file-actions,
+.app-primary-actions {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  margin: 0;
+}
+
+.project-file-actions button,
+.app-primary-actions button {
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  padding: .58rem .75rem;
+  border-radius: 7px;
+  white-space: nowrap;
+  font-size: .75rem;
+}
+
+.app-primary-actions .primary {
+  background: #1a9a77;
+}
+
+.app-primary-actions .secondary,
+.project-file-actions .secondary {
+  background: var(--workspace-dark-2);
+  color: #eaf1f6;
+}
+
+.app-primary-actions .secondary:hover:not(:disabled),
+.project-file-actions .secondary:hover:not(:disabled) {
+  background: #2d506b;
+}
+
+.app-view-group {
+  display: grid;
+  gap: .2rem;
+}
+
+.app-toolbar-label {
+  color: #91a6b7;
+  font-size: .62rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.view-switch {
+  display: flex;
+  align-items: center;
+  gap: .18rem;
+  padding: .18rem;
+  border: 1px solid #355168;
+  border-radius: 8px;
+  background: #0e1f2e;
+}
+
+.view-switch .scenario-card {
+  position: relative;
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #b7c5d0;
+  cursor: pointer;
+}
+
+.view-switch .scenario-card input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.view-switch .scenario-card-title {
+  display: block;
+  padding: .38rem .56rem;
+  border-radius: 6px;
+  font-size: .69rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.view-switch .scenario-card:has(input:checked) .scenario-card-title {
+  background: #edf8f4;
+  color: #0d6048;
+}
+
+.view-switch .scenario-card > span:not(.scenario-card-title),
+.view-switch .scenario-card small {
+  display: none;
+}
+
+.workspace-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 350px) minmax(470px, 1fr) minmax(290px, 350px);
+  grid-template-areas:
+    'project view summary'
+    'details details details';
+  gap: .75rem;
+  width: min(1920px, 100%);
+  margin: 0 auto;
+  padding: .75rem;
+  align-items: start;
+}
+
+.workspace-pane {
+  min-width: 0;
+}
+
+.workspace-project-pane {
+  grid-area: project;
+  position: sticky;
+  top: 84px;
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  padding-right: .15rem;
+}
+
+.workspace-view-pane {
+  grid-area: view;
+}
+
+.workspace-summary-pane {
+  grid-area: summary;
+  position: sticky;
+  top: 84px;
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+}
+
+.workspace-details {
+  grid-area: details;
+  display: grid;
+  gap: .75rem;
+  min-width: 0;
+}
+
+.workspace-pane-heading {
+  margin: 0 0 .45rem;
+  padding: 0 .15rem;
+}
+
+.workspace-pane-heading h2 {
+  margin: 0;
+  font-size: .92rem;
+  color: #263a4b;
+}
+
+.workspace-pane-subtitle {
+  margin: .12rem 0 0;
+  color: var(--workspace-muted);
+  font-size: .7rem;
+  line-height: 1.35;
+}
+
+.project-quick-links {
+  display: flex;
+  gap: .4rem;
+  margin: 0 0 .45rem;
+}
+
+.workspace-link {
+  display: inline-flex;
+  align-items: center;
+  padding: .35rem .55rem;
+  border: 1px solid #cdd8e1;
+  border-radius: 7px;
+  background: #f7fafc;
+  color: #36526a;
+  font-size: .7rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.workspace-link:hover {
+  border-color: #9db2c3;
+  background: #fff;
+}
+
+.workspace-project-card,
+.workspace-visual-card,
+.workspace-summary-card,
+.workspace-detail-card {
+  margin: 0;
+  border-radius: 10px;
+  box-shadow: 0 3px 12px rgba(28, 45, 61, .045);
+}
+
+.workspace-project-card {
+  grid-row: auto;
+  padding: .85rem;
+}
+
+.workspace-project-card .section-heading-row {
+  margin-top: .25rem;
+}
+
+.workspace-project-card .section-heading-row:first-child {
+  margin-top: 0;
+}
+
+.workspace-project-card .step-label {
+  display: none;
+}
+
+.workspace-project-card h2 {
+  margin-bottom: .45rem;
+  font-size: 1rem;
+}
+
+.workspace-project-card .hint {
+  font-size: .74rem;
+}
+
+.workspace-project-card .form-grid {
+  gap: .5rem;
+}
+
+.workspace-project-card label {
+  font-size: .7rem;
+}
+
+.workspace-project-card input[type='number'],
+.workspace-project-card input[type='text'],
+.workspace-project-card select {
+  padding: .46rem .52rem;
+}
+
+.workspace-project-card .derived-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .4rem;
+}
+
+.workspace-project-card .derived-grid article {
+  min-width: 0;
+  padding: .5rem;
+  border: 1px solid #e0e6eb;
+  border-radius: 7px;
+  background: #f7f9fb;
+}
+
+.workspace-project-card .derived-grid span,
+.workspace-project-card .derived-grid small {
+  display: block;
+  color: #687887;
+  font-size: .62rem;
+}
+
+.workspace-project-card .derived-grid strong {
+  display: block;
+  margin: .18rem 0;
+  font-size: .74rem;
+}
+
+.workspace-project-card .advanced-inputs,
+.workspace-project-card .input-details {
+  margin-top: .65rem;
+}
+
+.workspace-visual-card {
+  min-height: calc(100vh - 96px);
+  padding: .9rem;
+}
+
+.workspace-visual-card .visual-title-row {
+  align-items: center;
+}
+
+.workspace-visual-card h2 {
+  margin-bottom: .2rem;
+  font-size: 1rem;
+}
+
+.workspace-visual-card #mast-canvas {
+  height: calc(100vh - 190px);
+  min-height: 470px;
+  max-height: 720px;
+  background: linear-gradient(#fbfdfe, #f2f6f8);
+}
+
+.result-placeholder {
+  padding: 1rem;
+  border: 1px solid var(--workspace-border);
+  border-radius: 10px;
+  background: var(--workspace-panel);
+  box-shadow: 0 3px 12px rgba(28, 45, 61, .045);
+}
+
+.result-placeholder-status {
+  display: inline-block;
+  margin-bottom: .75rem;
+  padding: .22rem .48rem;
+  border-radius: 999px;
+  background: #e9edf1;
+  color: #52616e;
+  font-size: .64rem;
+  font-weight: 850;
+  letter-spacing: .05em;
+}
+
+.result-placeholder h3 {
+  margin-bottom: .45rem;
+  font-size: 1rem;
+}
+
+.result-placeholder p {
+  margin-bottom: .7rem;
+  color: #586a79;
+  font-size: .78rem;
+  line-height: 1.5;
+}
+
+.result-placeholder .model-scope-note {
+  margin: .9rem 0 0;
+  padding: .65rem;
+  border-left: 3px solid #c89532;
+  background: #fff9ed;
+  color: #73561d;
+  font-size: .7rem;
+}
+
+.workspace-summary-card {
+  padding: .85rem;
+}
+
+.workspace-summary-card .answer-heading {
+  display: grid;
+  gap: .45rem;
+}
+
+.workspace-summary-card .step-label {
+  display: none;
+}
+
+.workspace-summary-card h2 {
+  margin-bottom: 0;
+  font-size: 1rem;
+}
+
+.workspace-summary-card .answer-status {
+  justify-self: start;
+}
+
+.workspace-summary-card .answer-text {
+  font-size: .76rem;
+  line-height: 1.5;
+}
+
+.workspace-summary-card .key-metric-grid {
+  grid-template-columns: 1fr 1fr;
+  gap: .45rem;
+}
+
+.workspace-summary-card .key-metric-grid article {
+  min-width: 0;
+  padding: .55rem;
+}
+
+.workspace-summary-card .key-metric-grid span,
+.workspace-summary-card .key-metric-grid small {
+  font-size: .64rem;
+}
+
+.workspace-summary-card .key-metric-grid strong {
+  font-size: .86rem;
+}
+
+.workspace-summary-card #algorithm-details {
+  margin-top: .65rem;
+  font-size: .72rem;
+}
+
+.workspace-detail-card {
+  grid-column: 1;
+}
+
+body[data-web-ui='2.0'] .parameters > .button-row.scenario-actions {
+  display: none;
+}
+
+@media (max-width: 1260px) {
+  .app-bar {
+    align-items: flex-start;
+  }
+
+  .app-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .workspace-layout {
+    grid-template-columns: minmax(300px, 350px) minmax(0, 1fr);
+    grid-template-areas:
+      'project view'
+      'summary summary'
+      'details details';
+  }
+
+  .workspace-summary-pane {
+    position: static;
+    display: grid;
+    grid-template-columns: 1fr;
+    max-height: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-bar {
+    position: static;
+    display: grid;
+  }
+
+  .app-toolbar {
+    justify-content: flex-start;
+  }
+
+  .workspace-layout {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'project'
+      'view'
+      'summary'
+      'details';
+  }
+
+  .workspace-project-pane,
+  .workspace-summary-pane {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .workspace-visual-card {
+    min-height: 0;
+  }
+
+  .workspace-visual-card #mast-canvas {
+    height: 520px;
+    min-height: 420px;
+  }
+}
+
+@media (max-width: 680px) {
+  .app-toolbar,
+  .project-file-actions,
+  .app-primary-actions {
+    width: 100%;
+  }
+
+  .app-toolbar {
+    display: grid;
+  }
+
+  .project-file-actions,
+  .app-primary-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .project-file-actions button,
+  .app-primary-actions button {
+    width: 100%;
+  }
+
+  .view-switch {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .view-switch .scenario-card-title {
+    padding-inline: .3rem;
+    text-align: center;
+  }
+
+  .workspace-project-card .derived-grid,
+  .workspace-summary-card .key-metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-visual-card #mast-canvas {
+    height: 400px;
+    min-height: 340px;
+  }
+}

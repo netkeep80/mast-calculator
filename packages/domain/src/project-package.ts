@@ -7,6 +7,12 @@ import type {
 } from './contracts.js'
 import { PROJECT_PACKAGE_SCHEMA } from './contracts.js'
 import { assertProjectInput } from './project-parameters.js'
+import {
+  SP20_BASIC_WIND_PRESSURE_PA,
+  SP20_TERRAIN_PARAMETERS,
+  WIND_ACTION_MODE_MANUAL,
+  WIND_ACTION_MODE_SP20_MEAN_V1,
+} from './wind-action.js'
 
 export { PROJECT_PACKAGE_SCHEMA }
 export const SUPPORTED_PROJECT_PACKAGE_SCHEMAS = Object.freeze([PROJECT_PACKAGE_SCHEMA] as const)
@@ -46,6 +52,27 @@ function optionalString(value: unknown, path: string): string | undefined {
   if (value === undefined) return undefined
   if (typeof value !== 'string') throw new ProjectSchemaError('invalid-string', `${path} должен быть строкой`, { path })
   return value
+}
+
+function assertOptionalWindActionFields(project: ProjectInput): void {
+  const mode = project.environment.windActionMode
+  const region = project.environment.windRegion
+  const terrain = project.environment.windTerrainType
+  if (mode !== undefined && mode !== WIND_ACTION_MODE_MANUAL && mode !== WIND_ACTION_MODE_SP20_MEAN_V1) {
+    throw new ProjectSchemaError('invalid-wind-action-mode', `ProjectInput.environment.windActionMode не поддерживается: ${String(mode)}`)
+  }
+  if (region !== undefined && !(region in SP20_BASIC_WIND_PRESSURE_PA)) {
+    throw new ProjectSchemaError('invalid-wind-region', `ProjectInput.environment.windRegion не поддерживается: ${String(region)}`)
+  }
+  if (terrain !== undefined && !(terrain in SP20_TERRAIN_PARAMETERS)) {
+    throw new ProjectSchemaError('invalid-wind-terrain', `ProjectInput.environment.windTerrainType не поддерживается: ${String(terrain)}`)
+  }
+  if (mode === WIND_ACTION_MODE_SP20_MEAN_V1 && (region === undefined || terrain === undefined)) {
+    throw new ProjectSchemaError(
+      'incomplete-sp20-wind-input',
+      'Для ProjectInput.environment.windActionMode=sp20-mean-v1 требуются windRegion и windTerrainType',
+    )
+  }
 }
 
 function assertProjectValueTypes(project: ProjectInput): ProjectInput {
@@ -128,6 +155,7 @@ function assertProjectValueTypes(project: ProjectInput): ProjectInput {
       throw new ProjectSchemaError('invalid-string', `ProjectInput.${path} должен быть непустой строкой`, { path })
     }
   }
+  assertOptionalWindActionFields(project)
   if (typeof project.environment.windEnvelopeEnabled !== 'boolean') {
     throw new ProjectSchemaError('invalid-boolean', 'ProjectInput.environment.windEnvelopeEnabled должен быть boolean')
   }

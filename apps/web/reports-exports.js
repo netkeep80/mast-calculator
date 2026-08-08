@@ -15,6 +15,7 @@ import { subscribeCalculationResult } from './result-channel.js'
 const $ = (selector, root = document) => root.querySelector(selector)
 
 let initialized = false
+let waiting = false
 let currentSnapshot = null
 let currentBuildInfo = {
   repository: 'netkeep80/mast-calculator',
@@ -46,10 +47,6 @@ function filenameBase(result) {
   return `mast-${modules}x${Number.isFinite(rib) ? `-${Math.round(rib)}mm` : ''}`
 }
 
-function sourceText(definition) {
-  return `${definition.source} · ${definition.schema}`
-}
-
 function cardFor(definition) {
   const card = makeElement('article', 'artifact-card')
   card.dataset.artifact = definition.id
@@ -58,39 +55,30 @@ function cardFor(definition) {
     makeElement('strong', '', definition.title),
     makeElement('span', 'artifact-status', definition.id === 'project' ? 'всегда доступен' : 'нужен расчёт'),
   )
-  const source = makeElement('p', 'artifact-source', sourceText(definition))
+  const source = makeElement('p', 'artifact-source', `${definition.source} · ${definition.schema}`)
   const actions = makeElement('div', 'artifact-actions')
   actions.dataset.artifactActions = definition.id
   card.append(heading, source, actions)
   return card
 }
 
-function statusFor(id) {
-  return $(`[data-artifact="${id}"] .artifact-status`)
-}
-
 function setArtifactStatus(id, text, state = 'neutral') {
-  const target = statusFor(id)
+  const target = $(`[data-artifact="${id}"] .artifact-status`)
   if (!target) return
   target.textContent = text
   target.dataset.state = state
 }
 
-function reportError(message) {
+function reportMessage(message, state) {
   const target = $('#reports-export-status')
   if (!target) return
   target.textContent = message
-  target.dataset.state = 'error'
+  target.dataset.state = state
   target.hidden = false
 }
 
-function reportSuccess(message) {
-  const target = $('#reports-export-status')
-  if (!target) return
-  target.textContent = message
-  target.dataset.state = 'success'
-  target.hidden = false
-}
+const reportError = (message) => reportMessage(message, 'error')
+const reportSuccess = (message) => reportMessage(message, 'success')
 
 function createAction(id, label, title) {
   const button = makeElement('button', 'secondary artifact-action', label)
@@ -108,9 +96,8 @@ async function saveText(options, successMessage) {
 }
 
 function designArtifacts(result) {
-  const createdAt = new Date().toISOString()
   const designPackage = createDesignPackage(result, {
-    createdAt,
+    createdAt: new Date().toISOString(),
     repository: currentBuildInfo.repository,
     ref: currentBuildInfo.ref,
     sha: currentBuildInfo.sha,
@@ -147,22 +134,22 @@ function installProjectPackageCard() {
     projectActionProxy('export-project-package-button', 'Сохранить project/v1'),
   )
   const status = $('#project-package-status')
-  if (status) {
-    const observer = new MutationObserver(() => {
-      if (!status.hidden && status.textContent) {
-        const target = $('#reports-project-status')
-        if (target) target.textContent = status.textContent
-      }
-    })
-    observer.observe(status, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] })
+  if (!status) return
+  const sync = () => {
+    if (!status.hidden && status.textContent) $('#reports-project-status').textContent = status.textContent
   }
+  new MutationObserver(sync).observe(status, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['hidden'],
+  })
+  sync()
 }
 
-function installResultArtifacts() {
-  const reportButton = $('#export-note-button')
-  const csvButton = $('#export-csv-button')
-  attachExistingAction(reportButton, 'report', 'Сохранить расчётный отчёт')
-  attachExistingAction(csvButton, 'csv', 'Сохранить CSV рёбер')
+function installResultArtifacts(existing) {
+  attachExistingAction(existing.reportButton, 'report', 'Сохранить расчётный отчёт')
+  attachExistingAction(existing.csvButton, 'csv', 'Сохранить CSV рёбер')
 
   const designButton = createAction('export-design-package-button', 'Сохранить design-package/v1', 'Версионированная геометрия для 3D/КД')
   const objButton = createAction('export-design-obj-button', 'Сохранить OBJ', 'OBJ из той же design-package геометрии')
@@ -264,9 +251,7 @@ function updateAvailability(snapshot, controls) {
   for (const id of ['report', 'csv', 'design', 'obj', 'eskd', 'procurement']) {
     setArtifactStatus(id, ready ? 'готов' : 'нужен расчёт', ready ? 'ready' : 'neutral')
   }
-  if (ready && snapshot?.guyResult) {
-    setArtifactStatus('procurement', 'готов · включает растяжки', 'ready')
-  }
+  if (ready && snapshot?.guyResult) setArtifactStatus('procurement', 'готов · включает растяжки', 'ready')
 }
 
 function createWorkspace(panel) {
@@ -292,12 +277,34 @@ function createWorkspace(panel) {
   panel.append(intro, status, projectStatus, grid, preview)
 }
 
+function waitForReportsPanel() {
+  if (waiting || initialized) return
+  waiting = true
+  const observer = new MutationObserver(() => {
+    const panel = document.querySelector('#result-panel-reports')
+    if (!panel) return
+    observer.disconnect()
+    waiting = false
+    void initializeReportsExports(panel)
+  })
+  observer.observe(document.body, { childList: true, subtree: true })
+}
+
 export async function initializeReportsExports(panel = document.querySelector('#result-panel-reports')) {
-  if (initialized || !panel || typeof document === 'undefined') return
+  if (initialized || typeof document === 'undefined') return null
+  if (!panel) {
+    waitForReportsPanel()
+    return null
+  }
+
+  const existing = {
+    reportButton: $('#export-note-button', panel),
+    csvButton: $('#export-csv-button', panel),
+  }
   initialized = true
   createWorkspace(panel)
   installProjectPackageCard()
-  const controls = installResultArtifacts()
+  const controls = installResultArtifacts(existing)
 
   try {
     const response = await fetch('./build-info.json', { cache: 'no-store' })
@@ -308,4 +315,5 @@ export async function initializeReportsExports(panel = document.querySelector('#
     currentSnapshot = snapshot
     updateAvailability(snapshot, controls)
   }, { replay: true })
+  return Object.freeze({ controls })
 }

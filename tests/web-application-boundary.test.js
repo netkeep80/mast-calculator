@@ -69,13 +69,16 @@ test('guy-wire page uses the shared DOM ProjectInput adapter and application cal
   assert.doesNotMatch(guys, /packages\/(?:engineering|numerics|structural-analysis)\//)
 })
 
-test('joint bootstrap renders application-owned physical previews instead of engineering formulas', () => {
+test('joint bootstrap is a presenter over application previews and completed result state', () => {
   const bootstrap = source('apps/web/app-bootstrap.js')
 
   assert.match(bootstrap, /previewJointConfiguration/)
   assert.match(bootstrap, /getJointConfigurationOptions/)
   assert.match(bootstrap, /getJointClearanceNutOptions/)
+  assert.match(bootstrap, /readProjectInputFromForm/)
+  assert.match(bootstrap, /subscribeCalculationResult/)
   assert.doesNotMatch(bootstrap, /calculateBoltCapacity|checkJointNutSections|buildJointHardwareGeometry/)
+  assert.doesNotMatch(bootstrap, /JointAwareWorker|globalThis\.Worker\s*=|class .*Worker|message\.action/)
   assert.doesNotMatch(bootstrap, /packages\/(?:engineering|numerics|structural-analysis)\//)
 })
 
@@ -89,6 +92,7 @@ test('all Web JavaScript stays above engineering, numerics and structural-analys
     'main-project-form.js',
     'project-form-dom.js',
     'project-form.js',
+    'result-channel.js',
     'usage-scenarios.js',
     'web-state.js',
   ]

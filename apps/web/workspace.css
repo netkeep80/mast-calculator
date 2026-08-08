@@ -534,7 +534,7 @@ body[data-web-ui='2.0'] .parameters > .button-row.scenario-actions {
   display: none;
 }
 
-@media (max-width: 1540px) {
+@media (max-width: 1180px) {
   .app-bar {
     align-items: start;
   }
@@ -544,7 +544,7 @@ body[data-web-ui='2.0'] .parameters > .button-row.scenario-actions {
   }
 
   .workspace-layout {
-    grid-template-columns: minmax(290px, 340px) minmax(0, 1fr);
+    grid-template-columns: minmax(280px, 330px) minmax(0, 1fr);
     grid-template-areas:
       'project view'
       'summary summary'
@@ -560,8 +560,9 @@ body[data-web-ui='2.0'] .parameters > .button-row.scenario-actions {
   }
 }
 
-@media (max-width: 1120px) {
+@media (max-width: 900px) {
   .app-bar {
+    position: static;
     grid-template-columns: 1fr;
   }
 
@@ -593,16 +594,6 @@ body[data-web-ui='2.0'] .parameters > .button-row.scenario-actions {
   .workspace-visual-card #mast-canvas {
     height: 520px;
     min-height: 420px;
-  }
-}
-
-@media (max-width: 900px) {
-  .app-bar {
-    position: static;
-  }
-
-  .workspace-project-card .form-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

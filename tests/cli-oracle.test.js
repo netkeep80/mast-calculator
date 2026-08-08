@@ -89,7 +89,7 @@ test('CLI calculate uses package.guys and matches direct guyed application summa
         anchorRadiusM: 5,
         guyCount: 3,
         pretensionN: 500,
-        wireId: '6x19s-iwrc-4',
+        wireId: 'galv-6x19-iwrc-6',
       }],
     },
   })

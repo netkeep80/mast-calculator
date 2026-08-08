@@ -19,5 +19,9 @@ function loadReportsStyles() {
  */
 export async function initializeProcurementExport() {
   await loadReportsStyles()
-  return initializeReportsExports()
+  const workspace = await initializeReportsExports()
+  if (globalThis.location?.hash === '#reports') {
+    document.querySelector('#result-tab-reports')?.click()
+  }
+  return workspace
 }

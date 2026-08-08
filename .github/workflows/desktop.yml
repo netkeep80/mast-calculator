@@ -77,6 +77,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24.x'
+      - name: Generate cross-platform desktop icons
+        run: npm run prepare:desktop:icons
       - name: Install Linux Tauri prerequisites
         if: runner.os == 'Linux'
         shell: bash

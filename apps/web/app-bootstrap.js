@@ -4,7 +4,8 @@ import {
   previewJointConfiguration,
 } from '../../packages/application/index.js'
 import { JointViewer } from './joint-viewer.js'
-import { projectInputFromFlatValues } from './project-form.js'
+import { readProjectInputFromForm } from './project-form-dom.js'
+import { subscribeCalculationResult } from './result-channel.js'
 import {
   enrichAndRenderUsageResult,
   initializeUsageExperience,
@@ -117,16 +118,6 @@ function selectedNumber(element, fallback = null) {
   return Number.isFinite(value) ? value : fallback
 }
 
-function strengthParametersFromUi() {
-  return {
-    jointTighteningTorqueNm: selectedNumber(tighteningTorque, jointOptions.defaults.tighteningTorqueNm),
-    jointNutFactor: selectedNumber(nutFactor, jointOptions.defaults.nutFactor),
-    jointPreloadVariation: selectedNumber(preloadVariation, jointOptions.defaults.preloadVariation),
-    jointNutSectionAreaRatio: selectedNumber(nutSectionAreaRatio, jointOptions.defaults.nutSectionAreaRatio),
-    weldToRibAreaRatio: selectedNumber(weldToRibAreaRatio, jointOptions.defaults.weldToRibAreaRatio),
-  }
-}
-
 function rebuildClearanceNutOptions(preferred = null) {
   const diameter = selectedNumber(boltDiameter, 24)
   const options = getJointClearanceNutOptions(diameter)
@@ -139,27 +130,8 @@ function rebuildClearanceNutOptions(preferred = null) {
   else if (options[0]) clearanceNut.value = String(options[0].threadDiameterMm)
 }
 
-function currentPreviewInput() {
-  const manual = modeSelect.value === 'manual'
-  return projectInputFromFlatValues({
-    barDiameterMm: selectedNumber(barDiameter, 12),
-    jointConfiguratorMode: modeSelect.value || 'auto',
-    jointBoltDiameterMm: selectedNumber(boltDiameter, 24),
-    jointBoltClass: boltClass.value || '8.8',
-    ...(manual ? {
-      jointClearanceNutThreadMm: selectedNumber(clearanceNut),
-      jointBoltLengthMm: selectedNumber(boltLength),
-    } : {}),
-    jointThreadEngagementFactor: selectedNumber(engagement, 2),
-    ...(weldConsumable?.value ? { weldConsumableId: weldConsumable.value } : {}),
-    weldLegMm: selectedNumber(weldLeg, 4),
-    weldSegmentsPerEnd: selectedNumber(weldSegments, 3),
-    ...strengthParametersFromUi(),
-  })
-}
-
 function currentPreview() {
-  return previewJointConfiguration(currentPreviewInput())
+  return previewJointConfiguration(readProjectInputFromForm(form))
 }
 
 function syncControlsFromGeometry(geometry, preserveManualLength = false) {
@@ -249,23 +221,6 @@ function syncMode() {
   syncJointPreview()
 }
 
-function readJointUiParameters() {
-  const preview = currentPreview()
-  const geometry = preview.geometry
-  const strength = strengthParametersFromUi()
-  return {
-    configuratorMode: modeSelect.value,
-    clearanceNutThreadMm: selectedNumber(clearanceNut, geometry.bottomClearanceNut.threadDiameterMm),
-    boltLengthMm: selectedNumber(boltLength, geometry.bolt.lengthMm),
-    threadEngagementFactor: selectedNumber(engagement, geometry.threadEngagementFactor),
-    tighteningTorqueNm: strength.jointTighteningTorqueNm,
-    nutFactor: strength.jointNutFactor,
-    preloadVariation: strength.jointPreloadVariation,
-    nutSectionAreaRatio: strength.jointNutSectionAreaRatio,
-    weldToRibAreaRatio: strength.weldToRibAreaRatio,
-  }
-}
-
 function synchronizeFromResult(result) {
   const configurator = result?.connections?.configurator
   if (!configurator?.geometry) return
@@ -293,38 +248,11 @@ function synchronizeFromResult(result) {
   syncMode()
 }
 
-const NativeWorker = globalThis.Worker
-class JointAwareWorker extends NativeWorker {
-  constructor(url, options) {
-    super(url, options)
-    this.addEventListener('message', (event) => {
-      if (event.data?.type === 'result' && event.data?.result) {
-        synchronizeFromResult(event.data.result)
-        enrichAndRenderUsageResult(event.data.result)
-      }
-    })
-  }
-
-  postMessage(message, transfer) {
-    let outgoing = message
-    if (message?.parameters) {
-      outgoing = {
-        ...message,
-        parameters: {
-          ...message.parameters,
-          connection: {
-            ...message.parameters.connection,
-            ...readJointUiParameters(),
-            configuratorMode: message.action === 'optimize' ? 'auto' : modeSelect.value,
-          },
-        },
-      }
-    }
-    if (transfer === undefined) super.postMessage(outgoing)
-    else super.postMessage(outgoing, transfer)
-  }
-}
-globalThis.Worker = JointAwareWorker
+subscribeCalculationResult(({ result }) => {
+  if (!result) return
+  synchronizeFromResult(result)
+  enrichAndRenderUsageResult(result)
+})
 
 modeSelect.addEventListener('change', syncMode)
 for (const control of [
@@ -342,9 +270,6 @@ optimizeButton.addEventListener('click', () => {
   syncMode()
 }, { capture: true })
 
-// app.js remains the owner of the main form and result rendering. This bootstrap
-// owns only browser controls/viewer synchronization; physical preview data comes
-// from presentation-neutral application queries.
 await import('./app.js')
 rebuildClearanceNutOptions(30)
 syncMode()

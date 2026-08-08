@@ -1,5 +1,6 @@
 import type { DesignPackageV1 } from './contracts.js'
 import { DESIGN_PACKAGE_SCHEMA } from './contracts.js'
+export { DESIGN_PACKAGE_SCHEMA } from './contracts.js'
 import { calculateAssemblyMass } from './assembly-mass.js'
 
 type AssemblyMassInput = Parameters<typeof calculateAssemblyMass>[0]

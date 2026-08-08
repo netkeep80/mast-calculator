@@ -241,7 +241,7 @@ function isProductionFile(file) {
 }
 
 function isPublicPackageEntrypoint(file) {
-  if (/^packages\/[^/]+\/index\.(?:js|ts|mjs|mts|cjs|cts)$/.test(file)) return true
+  if (/^packages\/[^/]+\/(?:index|contracts)\.(?:js|ts|mjs|mts|cjs|cts)$/.test(file)) return true
   return /^packages\/structural-analysis\/testing\.(?:js|ts|mjs|mts|cjs|cts)$/.test(file)
 }
 

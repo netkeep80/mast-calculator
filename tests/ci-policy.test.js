@@ -10,10 +10,17 @@ const workflowFiles = fs.readdirSync(workflowDir)
   .filter((name) => /\.ya?ml$/i.test(name))
   .sort()
 const workflows = new Map(workflowFiles.map((name) => [name, fs.readFileSync(path.join(workflowDir, name), 'utf8')]))
+const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
+const scripts = packageJson.scripts ?? {}
+const durableDocs = new Map([
+  ['README.md', fs.readFileSync(path.join(root, 'README.md'), 'utf8')],
+  ['CONTRIBUTING.md', fs.readFileSync(path.join(root, 'CONTRIBUTING.md'), 'utf8')],
+  ['AGENTS.md', fs.readFileSync(path.join(root, 'AGENTS.md'), 'utf8')],
+])
 
 function jobBlocks(workflow) {
   const jobsIndex = workflow.indexOf('\njobs:')
-  assert.notEqual(jobsIndex, -1, 'workflow должен содержать jobs')
+  assert.notEqual(jobsIndex, -1, 'workflow must contain jobs')
   const lines = workflow.slice(jobsIndex + '\njobs:'.length).split(/\r?\n/)
   const jobs = []
   let current = null
@@ -28,6 +35,10 @@ function jobBlocks(workflow) {
   }
   if (current) jobs.push(current)
   return jobs
+}
+
+function npmRunReferences(text) {
+  return [...text.matchAll(/\bnpm run ([A-Za-z0-9:_-]+)/g)].map((match) => match[1])
 }
 
 test('CI/CD workflows use least-privilege contents: read by default', () => {
@@ -65,8 +76,8 @@ test('primary PR CI has one functional regression owner and durable responsibili
   assert.ok(ci)
   assert.match(ci, /scripts\/simulate-fresh-merge\.sh/)
   assert.equal((ci.match(/run:\s*npm test\s*$/gm) ?? []).length, 1, 'full npm test must run exactly once')
-  for (const job of ['quality:', 'security:', 'regression:', 'performance:', 'platform-equivalence:', 'static-site:']) {
-    assert.match(ci, new RegExp(`^  ${job.replace(':', '\\:')}`, 'm'), `ci.yml missing ${job}`)
+  for (const job of ['quality', 'security', 'regression', 'performance', 'platform-equivalence', 'static-site']) {
+    assert.match(ci, new RegExp(`^  ${job}:`, 'm'), `ci.yml missing ${job}`)
   }
   assert.doesNotMatch(ci, /^  (?:triple-fem|joint-configurator|support-statics|usage-ux):/m)
   assert.match(ci, /npm run test:performance/)
@@ -93,6 +104,26 @@ test('migration-era issue workflows are gone after Foundation purge', () => {
       /name:\s*(?:Joint strength checks|Static load simplification checks|3D and construction documentation)/,
       `${filename}: migration-era workflow must be folded into durable gates`,
     )
+  }
+})
+
+test('npm run references resolve to current scripts', () => {
+  for (const [name, text] of [...workflows, ...durableDocs]) {
+    for (const script of npmRunReferences(text)) {
+      assert.ok(Object.hasOwn(scripts, script), `${name}: references removed npm script ${script}`)
+    }
+  }
+})
+
+test('focused test scripts have a durable CI or contributor-facing owner', () => {
+  const ownershipText = [
+    ...workflows.values(),
+    ...durableDocs.values(),
+  ].join('\n')
+  const forbiddenMigrationAliases = /^(?:test:(?:emitted|foundation|properties|canonical|triple|joint|joint-strength|issue\d+|statics|ux|mixed-diameters|guys|obj|viewer))$/
+  for (const script of Object.keys(scripts).filter((name) => name.startsWith('test:')).sort()) {
+    assert.doesNotMatch(script, forbiddenMigrationAliases, `${script}: migration-era alias should be deleted`)
+    assert.match(ownershipText, new RegExp(`npm run ${script.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`), `${script}: no durable CI/docs owner`)
   }
 })
 

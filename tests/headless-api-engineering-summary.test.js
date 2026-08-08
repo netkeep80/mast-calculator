@@ -4,8 +4,10 @@ import {
   ENGINEERING_SUMMARY_SCHEMA,
   calculateGuyedProject,
   calculateProject,
+  createBareResultSummary,
   createEngineeringSummary,
   createProjectInput,
+  createProjectPackage,
 } from '../packages/application/index.js'
 
 const input = createProjectInput({
@@ -97,4 +99,19 @@ test('bare special capacities remain explicitly bare when a guyed envelope is pr
   assert.equal(summary.capacities.heightDesignMaximumM, bare.heightCapacity.design.maximumHeightM)
   assert.equal(summary.capacities.craneMaximumEndPayloadMassKg, bare.craneBoomCapacity.maximumEndPayloadMassKg)
   assert.equal(summary.capacities.guyedCapacitiesAvailable, false)
+})
+
+test('result-summary/v1 keeps its historical four-criterion passes meaning', () => {
+  const expectedLegacyPasses = bare.envelope.maxUtilization <= 1
+    && bare.envelope.minimumBucklingFactor >= bare.parameters.minimumBucklingFactor
+    && bare.envelope.maxTopDisplacementM * 1000 <= bare.parameters.displacementLimitMm
+    && bare.connections?.passes !== false
+  const machine = createBareResultSummary(createProjectPackage(input), bare, {
+    provenance: {
+      toolVersion: 'test',
+      coreVersion: 'test',
+      command: 'calculate',
+    },
+  })
+  assert.equal(machine.result.passes, expectedLegacyPasses)
 })

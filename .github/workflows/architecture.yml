@@ -48,7 +48,11 @@ jobs:
         run: npm run test:architecture
       - name: Enforce current architecture baseline
         run: npm run audit:architecture
-      - name: Publish human-readable snapshot to job summary
+      - name: Publish architecture snapshot to job summary
         if: always()
         shell: bash
         run: npm run audit:architecture:report >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish Foundation metrics and API surface
+        if: always()
+        shell: bash
+        run: node scripts/foundation-metrics.mjs | tee -a "$GITHUB_STEP_SUMMARY"

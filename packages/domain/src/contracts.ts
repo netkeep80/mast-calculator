@@ -1,4 +1,9 @@
-import type { Sp20TerrainType, Sp20WindRegion, WindActionMode } from './wind-action.js'
+import type {
+  Sp20TerrainType,
+  Sp20WindRegion,
+  WindActionMode,
+  WindActionProvenance,
+} from './wind-action.js'
 
 export type Millimeters = number
 export type Meters = number
@@ -121,6 +126,7 @@ export interface ResolvedProject {
   readonly windActionMode: WindActionMode
   readonly windRegion: Sp20WindRegion | null
   readonly windTerrainType: Sp20TerrainType | null
+  readonly windActionProvenance: WindActionProvenance
   readonly equipmentLoadFactor: number
   readonly windPresetId: string
   readonly windPresetLabel: string

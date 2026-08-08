@@ -4,12 +4,19 @@ import path from 'node:path'
 
 const root = process.cwd()
 const output = path.join(root, '.build')
-const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx'
+const npmCli = process.env.npm_execpath
+
+if (!npmCli) {
+  throw new Error('build:core must run under npm so the portable npm CLI path is available')
+}
 
 fs.rmSync(output, { recursive: true, force: true })
-execFileSync(npx, [
+execFileSync(process.execPath, [
+  npmCli,
+  'exec',
   '--yes',
-  '--package', 'typescript@7.0.2',
+  '--package=typescript@7.0.2',
+  '--',
   'tsc',
   '-p', 'tsconfig.build.json',
 ], {

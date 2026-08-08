@@ -56,6 +56,7 @@ export function createProcurementEstimateFromCalculation(
 ) {
   const geometry = result.connections?.configurator?.geometry
   const criticalWeld = result.connections?.weld?.critical?.check
+  const weld = getWeldConsumable(result.parameters.weldConsumableId)
   return buildProcurementEstimate({
     moduleCount: result.parameters.moduleCount,
     stockBarLengthMm: result.parameters.stockBarLengthMm,
@@ -67,7 +68,7 @@ export function createProcurementEstimateFromCalculation(
     densityKgM3: result.parameters.densityKgM3,
     reservePercent: options.reservePercent ?? 0,
     geometry,
-    weldConsumable: getWeldConsumable(result.parameters.weldConsumableId),
+    weldConsumable: { label: weld.label, process: weld.process },
     weldLegMm: result.parameters.weldLegMm,
     weldPhysicalLengthPerEndMm: criticalWeld?.requiredPhysicalLengthMm ?? 0,
     boltClass: result.parameters.jointBoltClass,

@@ -37,8 +37,11 @@ export function calculateProjectWithGuys(
     ...immutableOptions,
     ...cancellationOptions,
     onProgress: (progress) => options.onProgress?.({
-      ...progress,
-      fraction: clamp01(progress.fraction * bareShare),
+      phase: progress.phase,
+      label: progress.label,
+      fraction: clamp01(
+        bareShare * Number(progress.completed ?? 0) / Math.max(1, Number(progress.total ?? 1)),
+      ),
     }),
   })
 

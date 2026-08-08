@@ -20,7 +20,7 @@ function runCalculation(jobId, parameters) {
   const result = calculateProject(parameters, {
     onProgress: (progress) => postProgress(jobId, progress),
   })
-  self.postMessage({ type: 'result', jobId, result, optimization: null })
+  self.postMessage({ type: 'result', jobId, projectInput: parameters, result, optimization: null })
 }
 
 function runOptimization(jobId, parameters) {
@@ -30,6 +30,7 @@ function runOptimization(jobId, parameters) {
   self.postMessage({
     type: 'result',
     jobId,
+    projectInput: output.projectInput,
     result: output.result,
     optimization: output.optimization,
   })

@@ -9,6 +9,7 @@ import {
   readProjectInputFromForm,
 } from './project-form-dom.js'
 import { initializeRuntimeInfo } from './runtime-info.js'
+import './workspace-shell.js'
 
 void initializeRuntimeInfo()
 
@@ -35,8 +36,8 @@ function dispatchFormSynchronization(form) {
 }
 
 export function initializeProjectPackageUi(form, fileAdapter = defaultFileAdapter) {
-  const exportRow = document.querySelector('.export-row')
-  if (!exportRow || !form || !fileAdapter) return null
+  const actions = document.querySelector('#project-file-actions') ?? document.querySelector('.export-row')
+  if (!actions || !form || !fileAdapter) return null
 
   let retainedMetadata = undefined
   let retainedGuys = undefined
@@ -45,18 +46,19 @@ export function initializeProjectPackageUi(form, fileAdapter = defaultFileAdapte
   downloadButton.type = 'button'
   downloadButton.id = 'export-project-package-button'
   downloadButton.className = 'secondary'
-  downloadButton.textContent = 'Сохранить проект JSON'
-  downloadButton.title = 'Versioned project/v1: только пользовательские исходные данные'
+  downloadButton.textContent = 'Сохранить'
+  downloadButton.title = 'Сохранить project/v1: пользовательские исходные данные проекта'
 
   const openButton = document.createElement('button')
   openButton.type = 'button'
   openButton.id = 'open-project-package-button'
   openButton.className = 'secondary'
-  openButton.textContent = 'Открыть проект JSON'
+  openButton.textContent = 'Открыть'
+  openButton.title = 'Открыть project/v1 JSON'
 
   const status = document.createElement('p')
   status.id = 'project-package-status'
-  status.className = 'hint practical-note'
+  status.className = 'hint practical-note project-package-status'
   status.hidden = true
 
   downloadButton.addEventListener('click', async () => {
@@ -91,7 +93,7 @@ export function initializeProjectPackageUi(form, fileAdapter = defaultFileAdapte
       retainedGuys = packageValue.guys
       applyProjectInputToForm(form, packageValue.project)
       dispatchFormSynchronization(form)
-      status.textContent = `Открыт ${packageValue.schema}${opened.path ? `: ${opened.path}` : ''}${packageValue.guys ? '; параметры растяжек сохранены в пакете' : ''}. Нажмите «Проверить конкретную мачту» для перерасчёта.`
+      status.textContent = `Открыт ${packageValue.schema}${opened.path ? `: ${opened.path}` : ''}${packageValue.guys ? '; параметры растяжек сохранены в пакете' : ''}. Запустите расчёт для обновления результата.`
       status.hidden = false
     } catch (error) {
       status.textContent = error instanceof Error ? error.message : String(error)
@@ -99,8 +101,11 @@ export function initializeProjectPackageUi(form, fileAdapter = defaultFileAdapte
     }
   })
 
-  exportRow.append(downloadButton, openButton)
-  exportRow.after(status)
+  actions.append(openButton, downloadButton)
+  const statusHost = document.querySelector('.workspace-project-pane') ?? actions.parentElement
+  const projectCard = statusHost?.querySelector('.workspace-project-card')
+  if (statusHost && projectCard) statusHost.insertBefore(status, projectCard)
+  else actions.after(status)
 
   return Object.freeze({
     get retainedMetadata() { return retainedMetadata },

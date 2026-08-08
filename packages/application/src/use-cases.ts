@@ -219,7 +219,7 @@ export function optimizeAndCalculateProject(
         label: 'Подбор завершён: подходящий комплект арматуры и узла не найден',
         fraction: 1,
       })
-      return immutablePublicResult({ result: null, optimization: summary }, options)
+      return immutablePublicResult({ projectInput: automaticInput, result: null, optimization: summary }, options)
     }
 
     const diameter = optimization.recommended.diameter
@@ -251,7 +251,7 @@ export function optimizeAndCalculateProject(
       label: `Подбор завершён: арматура Ø${diameter} мм${jointLabel}`,
       fraction: 1,
     })
-    return immutablePublicResult({ result, optimization: summary }, options)
+    return immutablePublicResult({ projectInput: selectedInput, result, optimization: summary }, options)
   } catch (error) {
     throw toApplicationError(error)
   }

@@ -1,11 +1,15 @@
 import {
   DEFAULT_PROJECT_FORM_VALUES,
+  OPTIONAL_PROJECT_FORM_FIELDS,
   projectInputFromFlatValues,
   projectInputToFlatValues,
 } from './project-form.js'
 
 const STRING_FIELDS = new Set([
   'reinforcementClass',
+  'windActionMode',
+  'windRegion',
+  'windTerrainType',
   'windPresetId',
   'jointConfiguratorMode',
   'jointBoltClass',
@@ -52,6 +56,10 @@ export function readProjectInputFromForm(form) {
   for (const [name, fallback] of Object.entries(DEFAULT_PROJECT_FORM_VALUES)) {
     const value = readFieldValue(form, name, fallback)
     if (value !== undefined) values[name] = value
+  }
+  for (const name of OPTIONAL_PROJECT_FORM_FIELDS) {
+    const value = readFieldValue(form, name, undefined)
+    if (value !== undefined && value !== '') values[name] = value
   }
   return projectInputFromFlatValues(values)
 }

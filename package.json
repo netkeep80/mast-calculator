@@ -25,7 +25,7 @@
     "test:guys": "node scripts/run-selected-emitted-tests.mjs tests/guy-wires-issue23.test.js",
     "test:obj": "node scripts/run-selected-emitted-tests.mjs tests/obj-export.test.js",
     "test:viewer": "node scripts/run-selected-emitted-tests.mjs tests/integrated-3d-viewer.test.js",
-    "test:architecture": "node --test tests/architecture-audit.test.js",
+    "test:architecture": "node --test tests/architecture-audit.test.js tests/typescript-package-source.test.js",
     "test:contracts": "node scripts/run-selected-emitted-tests.mjs tests/contracts.test.js",
     "typecheck": "npx --yes --package typescript@7.0.2 tsc -p tsconfig.json --noEmit",
     "build:core": "node scripts/build-core.mjs",

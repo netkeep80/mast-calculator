@@ -5,7 +5,6 @@ import {
   DEFAULT_GUY_WIRE_ID,
   calculateGuyWireCapacity,
   getGuyWireSpec,
-  resolveCalculationParameters,
   type GuyWireCapacity,
   type GuyWireSpec,
 } from '../../domain/index.js'
@@ -64,9 +63,7 @@ export interface GuyTierInput {
   terminationEfficiency?: number
 }
 
-export interface GuyCalculationOptions extends Partial<GuyAnalysisOptions> {
-  resolvedProject?: ResolvedProject
-}
+export type GuyCalculationOptions = Partial<GuyAnalysisOptions>
 
 interface NormalizedTier {
   id: string
@@ -602,11 +599,10 @@ function cableEnvelopeFor(cases: readonly GuyedLoadCase[], definition: GuyCable)
 }
 
 export function calculateGuyedMast(
-  inputParameters: Record<string, unknown>,
+  parameters: ResolvedProject,
   tiers: readonly GuyTierInput[] = [],
   inputOptions: GuyCalculationOptions = {},
 ) {
-  const parameters = inputOptions.resolvedProject ?? resolveCalculationParameters(inputParameters)
   const model = generateMastModel(parameters)
   const cableSystem = buildGuyWireSystem(model, parameters, tiers, inputOptions)
   const directions = guyWindDirections(parameters)

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS, resolveCalculationParameters } from '../packages/application/index.js'
 import { generateMastModel } from '../packages/structural-analysis/index.js'
 import { calculateLateralCapacity } from '../packages/engineering/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 function solidCantileverFromMast(parameters) {
   const edgeM = parameters.ribCutLengthMm / 1000
@@ -46,8 +46,7 @@ test('толсторёберная frame-модель мачты и цельны
   // общий criticalForceN=min(member, global buckling, bolt). Иначе слабый
   // штатный M24 закономерно ломает предельную толсторёберную геометрию и
   // перестаёт проверяться исходный инвариант масштабов FEM.
-  const parameters = resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
+  const parameters = resolvedProject({
     stockBarLengthMm: 1200,
     stockBarPieces: 4,
     moduleCount: 4,

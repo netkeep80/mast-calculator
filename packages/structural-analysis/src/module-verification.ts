@@ -63,8 +63,14 @@ interface WindActionProvenanceShape {
   readonly windRegion: string | null
   readonly terrainType: string | null
   readonly basicWindPressurePa: number | null
+  readonly referenceHeightM: number | null
+  readonly referenceHeightCoefficient: number | null
+  readonly referenceCharacteristicMeanPressurePa: number
   readonly loadReliabilityFactor: number
   readonly aerodynamicCoefficientsAppliedSeparately: boolean
+  readonly aerodynamicCoefficientSource: string
+  readonly memberAerodynamicCoefficient: number | null
+  readonly equipmentAerodynamicCoefficient: number | null
 }
 
 interface VerificationResult {

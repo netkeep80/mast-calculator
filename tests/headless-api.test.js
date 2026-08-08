@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   calculateGuyedProject,
   calculateProject,
+  createDesignPackage,
   createProjectInput,
   createVerification,
   getJointClearanceNutOptions,
@@ -11,6 +12,7 @@ import {
   optimizeProject,
   previewJointConfiguration,
   previewProjectConfiguration,
+  previewRibFabrication,
 } from '../packages/application/index.js'
 
 const compactInput = createProjectInput({
@@ -73,6 +75,8 @@ test('application owns optimize-then-calculate job semantics used by adapters', 
   assert.equal(output.optimization.recommendedDiameter, 12)
   assert.equal(output.optimization.variants[0].diameter, 12)
   assert.ok(output.result)
+  assert.equal(output.projectInput.geometry.barDiameterMm, 12)
+  assert.equal(output.projectInput.connection.configuratorMode, 'auto')
   assert.equal(output.result.parameters.barDiameterMm, 12)
   assert.equal(output.result.parameters.jointConfiguratorMode, 'auto')
   assert.equal(Object.isFrozen(output), true)
@@ -94,6 +98,34 @@ test('application owns form-derived fabrication, material and weather preview', 
   assert.equal(preview.weather.speedMs, result.parameters.windSpeedMs)
   assert.equal(preview.weather.custom, true)
   assert.equal(Object.isFrozen(preview), true)
+})
+
+test('application owns rib fabrication preview used by adapters', () => {
+  const preview = previewRibFabrication(compactInput)
+  const result = calculateProject(compactInput)
+
+  assert.equal(preview.diameterMm, result.parameters.barDiameterMm)
+  assert.equal(preview.ribCutLengthMm, result.parameters.ribCutLengthMm)
+  assert.equal(preview.massPerMeterKg, result.assemblyMass.rib.massPerMeterKg)
+  assert.equal(preview.ribMassKg, result.assemblyMass.rib.massKg)
+  assert.equal(Object.isFrozen(preview), true)
+})
+
+test('application builds a versioned immutable design package without browser storage', () => {
+  const result = calculateProject(compactInput)
+  const designPackage = createDesignPackage(result, {
+    createdAt: '2026-08-08T00:00:00.000Z',
+    repository: 'netkeep80/mast-calculator',
+    ref: 'test',
+    sha: 'deadbeef',
+  })
+
+  assert.equal(designPackage.schema, 'mast-calculator/design-package/v1')
+  assert.equal(designPackage.source.ref, 'test')
+  assert.equal(designPackage.source.sha, 'deadbeef')
+  assert.equal(designPackage.result.parameters.moduleCount, 1)
+  assert.equal(Object.isFrozen(designPackage), true)
+  assert.equal(Object.isFrozen(designPackage.result), true)
 })
 
 test('application owns joint configuration options and physical preview', () => {

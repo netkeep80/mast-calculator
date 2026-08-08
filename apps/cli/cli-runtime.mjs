@@ -55,7 +55,7 @@ async function readProjectPackage(file, application) {
   } catch (error) {
     const wrapped = new Error(`Не удалось прочитать ${file}: ${error instanceof Error ? error.message : String(error)}`)
     wrapped.code = 'project-read-failed'
-    wrapped.category = 'input-validation'
+    wrapped.category = 'io-error'
     throw wrapped
   }
   return application.parseProjectPackage(text)
@@ -70,18 +70,25 @@ function guyOptions(projectPackage) {
   }
 }
 
-function calculateFromPackage(projectPackage, application) {
+function progressReporter(hooks) {
+  return typeof hooks?.onProgress === 'function' ? hooks.onProgress : () => {}
+}
+
+function calculateFromPackage(projectPackage, application, onProgress) {
   if (projectPackage.guys) {
-    return {
-      mode: 'guyed',
-      result: application.calculateGuyedProject(
-        projectPackage.project,
-        projectPackage.guys.tiers,
-        guyOptions(projectPackage),
-      ),
-    }
+    onProgress({ phase: 'guyed', label: 'Расчёт мачты с растяжками', fraction: 0 })
+    const result = application.calculateGuyedProject(
+      projectPackage.project,
+      projectPackage.guys.tiers,
+      guyOptions(projectPackage),
+    )
+    onProgress({ phase: 'guyed', label: 'Расчёт мачты с растяжками завершён', fraction: 1 })
+    return { mode: 'guyed', result }
   }
-  return { mode: 'bare', result: application.calculateProject(projectPackage.project) }
+  return {
+    mode: 'bare',
+    result: application.calculateProject(projectPackage.project, { onProgress }),
+  }
 }
 
 function humanCalculation(summary) {
@@ -146,8 +153,9 @@ function artifactResult(content, mediaType, suggestedExtension, human) {
   return { kind: 'artifact', content, mediaType, suggestedExtension, human }
 }
 
-export async function executeCliRequest(request) {
+export async function executeCliRequest(request, hooks = {}) {
   const { command, projectFile, json = false } = request
+  const onProgress = progressReporter(hooks)
   const { application, design, reporting, domain, version } = await loadCore()
   const projectPackage = await readProjectPackage(projectFile, application)
   const source = provenance(command, version)
@@ -162,7 +170,7 @@ export async function executeCliRequest(request) {
   }
 
   if (command === 'calculate') {
-    const calculated = calculateFromPackage(projectPackage, application)
+    const calculated = calculateFromPackage(projectPackage, application, onProgress)
     const summary = calculated.mode === 'guyed'
       ? application.createGuyedResultSummary(projectPackage, calculated.result, { provenance: source })
       : application.createBareResultSummary(projectPackage, calculated.result, { provenance: source })
@@ -175,18 +183,20 @@ export async function executeCliRequest(request) {
   }
 
   if (command === 'optimize') {
-    const output = application.optimizeAndCalculateProject(projectPackage.project)
+    const output = application.optimizeAndCalculateProject(projectPackage.project, { onProgress })
     let summary = application.createOptimizationResultSummary(projectPackage, output, { provenance: source })
     if (projectPackage.guys && output.result) {
       const effectivePackage = application.createProjectPackage(output.projectInput, {
         metadata: projectPackage.metadata,
         guys: projectPackage.guys,
       })
+      onProgress({ phase: 'guyed', label: 'Проверка выбранной конструкции с растяжками', fraction: 0 })
       const guyed = application.calculateGuyedProject(
         output.projectInput,
         projectPackage.guys.tiers,
         guyOptions(projectPackage),
       )
+      onProgress({ phase: 'guyed', label: 'Проверка выбранной конструкции с растяжками завершена', fraction: 1 })
       summary = application.createGuyedResultSummary(effectivePackage, guyed, {
         provenance: source,
         optimization: output.optimization,
@@ -203,7 +213,7 @@ export async function executeCliRequest(request) {
     }
   }
 
-  const bareResult = application.calculateProject(projectPackage.project)
+  const bareResult = application.calculateProject(projectPackage.project, { onProgress })
   const generatedAt = stableGeneratedAt(projectPackage)
 
   if (command === 'design') {
@@ -249,9 +259,12 @@ export async function executeCliRequest(request) {
   }
 
   if (command === 'export-procurement') {
-    const guyed = projectPackage.guys
-      ? application.calculateGuyedProject(projectPackage.project, projectPackage.guys.tiers, guyOptions(projectPackage))
-      : null
+    let guyed = null
+    if (projectPackage.guys) {
+      onProgress({ phase: 'guyed', label: 'Расчёт растяжек для закупочной сметы', fraction: 0 })
+      guyed = application.calculateGuyedProject(projectPackage.project, projectPackage.guys.tiers, guyOptions(projectPackage))
+      onProgress({ phase: 'guyed', label: 'Расчёт растяжек для закупочной сметы завершён', fraction: 1 })
+    }
     const estimate = design.buildProcurementEstimate(procurementInput(bareResult, domain, guyed))
     return artifactResult(
       design.createProcurementEstimateHtml(estimate, generatedAt),

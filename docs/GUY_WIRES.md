@@ -1,10 +1,38 @@
-# Дополнительные растяжки мачты — issue #23
+# Дополнительные растяжки мачты
 
 ## Назначение
 
-Страница `apps/web/guys.html` добавляет инженерный режим расчёта модульной мачты с дополнительными стальными растяжками.
+Растяжки являются опциональной частью того же переносимого `mast-calculator/project/v1`, а не отдельным приложением. Основной Web project editor позволяет включить растяжки, задать число ярусов, высоту крепления, 3–6 растяжек на ярус, расстояние до анкеров, поворот по азимуту, тип/диаметр троса, преднатяг, коэффициент запаса и эффективность заделки.
 
-Пользователь задаёт число ярусов, высоту крепления, 3–6 растяжек на ярус, расстояние до анкеров, поворот по азимуту, тип/диаметр троса, преднатяг, коэффициент запаса и эффективность заделки. Для каждой растяжки выводятся фактический узел и высота, длина, угол, минимальное/максимальное натяжение по ветровой огибающей, рабочая нагрузка, использование, факт полного разгружения и реакции узла/анкера.
+Один Calculate job возвращает два разных результата:
+
+```text
+CalculationResult    — полный обычный расчёт мачты, соединений, пределов и отчётов
+GuyedResult          — дополнительная нелинейная tension-only cable envelope
+```
+
+Эти контракты намеренно не смешиваются. В частности, существующие bare-frame `staticPayloadCapacity`, `lateralCapacity`, `craneBoomCapacity` и `heightCapacity` не переименовываются в «пределы мачты с растяжками»: для этого понадобились бы отдельные guyed capacity searches.
+
+Старый URL `guys.html` сохранён только как compatibility deep-link и перенаправляет в основной workspace `index.html#guys`; второй mast form и второй calculation orchestration удалены.
+
+## Project package
+
+Пользовательская конфигурация хранится в optional `ProjectPackage.guys`:
+
+```text
+tiers[]:
+  id
+  heightM
+  guyCount
+  anchorRadiusM
+  pretensionN
+  azimuthOffsetDeg
+  wireId
+safetyFactor
+terminationEfficiency
+```
+
+В package не записываются derived length/angle/tension/reaction/envelope values. Open/Save работает через тот же редактор, из которого запускается расчёт.
 
 ## Привязка к узлам
 
@@ -15,7 +43,7 @@ level = round(Hrequested / hmodule)
 Hactual = level * hmodule
 ```
 
-3–6 растяжек распределяются между тремя физическими узлами максимально равномерно. Циклический сдвиг выбирается по минимальной суммарной угловой разнице между узлами и анкерами, поэтому повёрнутый на 60° уровень не превращает симметричные три растяжки в случайную схему `2+1+0`.
+3–6 растяжек распределяются между тремя физическими узлами максимально равномерно. Циклический сдвиг выбирается по минимальной суммарной угловой разнице между узлами и анкерами, поэтому повёрнутый уровень не превращает симметричные три растяжки в случайную схему `2+1+0`.
 
 ## Геометрия и трос
 
@@ -93,7 +121,7 @@ absolute displacement change <= 1e-8 m
 relative tension change <= 1e-6
 ```
 
-Несходимость делает расчёт непроходным.
+Несходимость делает guyed расчёт непроходным.
 
 ## Реакции
 
@@ -119,24 +147,46 @@ lambda_cr >= lambda_required
 Newton converged for every wind case
 ```
 
-UI также выполняет штатный `calculateMast()` для тех же исходных параметров и показывает прогиб без растяжек рядом с результатом.
+Основной workspace показывает отдельный guyed summary: общий PASS/FAIL, `Umember`, `Uwire`, прогиб, `lambda_cr`, cable envelope и предупреждения. Для сравнения также сохраняется обычный bare `CalculationResult` тех же исходных данных.
+
+## Web/application architecture
+
+```text
+canonical project form
+      + optional ProjectGuysInput
+                ↓
+      calculation-controller
+                ↓ one Worker job
+      calculateProjectWithGuys()
+           ┌────┴────────┐
+           ↓             ↓
+ CalculationResult    GuyedResult
+           ↓             ↓
+ reports/limits      guy summary/envelope
+ procurement ←────── guy cable materials
+```
+
+Worker не импортирует engineering/numerics/structural-analysis и не содержит второй расчёт. Application layer владеет композиционной семантикой. Web хранит оба результата отдельно.
+
+Uniform optimize пока не является guy-aware optimizer. Если растяжки включены, попытка `optimize` завершается явной ошибкой вместо скрытого подбора голой мачты.
 
 ## Границы модели
 
-Пока не учитываются catenary/провисание и распределённое действие собственного веса троса, ветер и лёд на самом тросе, динамика/вибрации/galloping, пластичность и усталость проволок, податливость грунта/анкера/талрепов/заделок и местная прочность детали крепления. Масса троса показывается как ведомость материала, но не превращается в распределённую FEM-нагрузку.
+Пока не учитываются catenary/провисание и распределённое действие собственного веса троса, ветер и лёд на самом тросе, динамика/вибрации/galloping, пластичность и усталость проволок, податливость грунта/анкера/талрепов/заделок и местная прочность детали крепления. Масса троса попадает в material/procurement output, но не превращается в распределённую FEM-нагрузку.
+
+Отдельно от этой модели развиваются нормативная динамика ветра и монтажный tilt-up load case; их нельзя считать закрытыми наличием эксплуатационных растяжек.
 
 ## Файлы и проверки
 
 ```text
-packages/domain/src/guy-wire-catalog.js   справочник тросов
-packages/structural-analysis/src/guy-wire-system.js    геометрия, Newton, tension-only, реакции
-apps/web/guys.html                    пользовательская страница
-apps/web/guys-app.js                  UI и сравнение с основной FEM
-tests/guy-wires-issue23.test.js   regression/physics tests
+packages/domain/src/guy-wire-catalog.ts      canonical wire catalog
+packages/engineering/src/guy-wire-system.ts nonlinear cable solver
+packages/application/src/project-with-guys.ts adapter-neutral orchestration
+apps/web/guy-editor.js                       ProjectGuysInput editor
+apps/web/guy-result-panel.js                 guyed result presentation
+tests/guy-wires-issue23.test.js              physics regressions
+tests/headless-api-guys.test.js              application composition oracle
+tests/calculation-controller-guys.test.js    Web transport contract
 ```
 
-```bash
-npm run test:guys
-npm test
-npm run check
-```
+Полный `npm test`, architecture/typecheck, canonical platform gates and Web/Desktop adapter oracles remain mandatory.

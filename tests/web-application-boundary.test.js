@@ -43,9 +43,10 @@ test('main Web controller delegates form, job and state ownership to cohesive ad
 test('calculation Worker transports application jobs but owns no optimization policy', () => {
   const worker = source('apps/web/calculation-worker.js')
 
-  assert.match(worker, /calculateProject/)
+  assert.match(worker, /calculateProjectWithGuys/)
   assert.match(worker, /optimizeAndCalculateProject/)
   assert.match(worker, /projectInput/)
+  assert.match(worker, /projectGuys/)
   assert.doesNotMatch(worker, /STANDARD_DIAMETERS_MM/)
   assert.doesNotMatch(worker, /moduleDiametersMm/)
   assert.doesNotMatch(worker, /configuratorMode/)
@@ -54,19 +55,24 @@ test('calculation Worker transports application jobs but owns no optimization po
   assert.doesNotMatch(worker, /packages\/(?:domain|engineering|numerics|structural-analysis)\//)
 })
 
-test('guy-wire page uses the shared DOM ProjectInput adapter and application calculation path', () => {
-  const guys = source('apps/web/guys-app.js')
+test('guy wires use the same canonical project editor and one application calculation transport', () => {
+  const editor = source('apps/web/guy-editor.js')
+  const guyState = source('apps/web/guy-project-state.js')
+  const controller = source('apps/web/calculation-controller.js')
+  const worker = source('apps/web/calculation-worker.js')
+  const legacyPage = source('apps/web/guys.html')
 
-  assert.match(guys, /readProjectInputFromForm/)
-  assert.match(guys, /applyDefaultProjectInputToForm/)
-  assert.match(guys, /calculateProject\(projectInput\)/)
-  assert.match(guys, /calculateGuyedProject\(projectInput, tiers, guyOptions\)/)
-  assert.match(guys, /previewProjectGeometry/)
-  assert.doesNotMatch(guys, /\bfunction readParameters\b|projectInputFromFlatValues/)
-  assert.doesNotMatch(guys, /DEFAULT_PARAMETERS|resolveCalculationParameters/)
-  assert.doesNotMatch(guys, /\bcalculateMast\s*\(/)
-  assert.doesNotMatch(guys, /theoreticalCutLengthMm|regularOctahedronHeightMm/)
-  assert.doesNotMatch(guys, /packages\/(?:engineering|numerics|structural-analysis)\//)
+  assert.match(editor, /readProjectInputFromForm/)
+  assert.match(editor, /previewProjectGeometry/)
+  assert.match(guyState, /getGuyEditor\(\)\?\.read\(\)/)
+  assert.match(controller, /currentProjectGuys\(\)/)
+  assert.match(controller, /guys: projectGuys/)
+  assert.match(worker, /calculateProjectWithGuys/)
+  assert.match(legacyPage, /index\.html#guys/)
+  assert.doesNotMatch(legacyPage, /<form|guys-app\.js/)
+  assert.equal(fs.existsSync(path.join(sourceRoot, 'apps', 'web', 'guys-app.js')), false)
+  assert.doesNotMatch(editor + guyState + controller + worker, /mastFieldMap/)
+  assert.doesNotMatch(editor + guyState + controller + worker, /packages\/(?:engineering|numerics|structural-analysis)\//)
 })
 
 test('joint bootstrap is a presenter over application previews and completed result state', () => {
@@ -90,13 +96,18 @@ test('all Web JavaScript stays above engineering, numerics and structural-analys
     'app-bootstrap.js',
     'calculation-controller.js',
     'calculation-worker.js',
-    'guys-app.js',
+    'guy-editor.js',
+    'guy-project-state.js',
+    'guy-result-panel.js',
     'main-project-form.js',
+    'procurement-export.js',
     'project-form-dom.js',
     'project-form.js',
+    'project-package-ui.js',
     'result-channel.js',
     'usage-scenarios.js',
     'web-state.js',
+    'workspace-shell.js',
   ]
   for (const file of webFiles) {
     assert.doesNotMatch(

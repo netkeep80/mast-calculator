@@ -1,5 +1,5 @@
 import {
-  calculateProject,
+  calculateProjectWithGuys,
   optimizeAndCalculateProject,
 } from '../../packages/application/index.js'
 
@@ -16,14 +16,25 @@ function postProgress(jobId, progress) {
   })
 }
 
-function runCalculation(jobId, parameters) {
-  const result = calculateProject(parameters, {
+function runCalculation(jobId, parameters, guys) {
+  const output = calculateProjectWithGuys(parameters, guys, {
     onProgress: (progress) => postProgress(jobId, progress),
   })
-  self.postMessage({ type: 'result', jobId, projectInput: parameters, result, optimization: null })
+  self.postMessage({
+    type: 'result',
+    jobId,
+    projectInput: parameters,
+    projectGuys: guys ?? null,
+    result: output.result,
+    guyResult: output.guyedResult,
+    optimization: null,
+  })
 }
 
-function runOptimization(jobId, parameters) {
+function runOptimization(jobId, parameters, guys) {
+  if (guys?.tiers?.length) {
+    throw new Error('Автоподбор единого диаметра пока не оптимизирует конфигурацию растяжек. Отключите растяжки или выполните обычный расчёт.')
+  }
   const output = optimizeAndCalculateProject(parameters, {
     onProgress: (progress) => postProgress(jobId, progress),
   })
@@ -31,20 +42,22 @@ function runOptimization(jobId, parameters) {
     type: 'result',
     jobId,
     projectInput: output.projectInput,
+    projectGuys: null,
     result: output.result,
+    guyResult: null,
     optimization: output.optimization,
   })
 }
 
 self.onmessage = (event) => {
-  const { jobId, action, parameters } = event.data ?? {}
+  const { jobId, action, parameters, guys } = event.data ?? {}
   try {
     if (action === 'calculate') {
-      runCalculation(jobId, parameters)
+      runCalculation(jobId, parameters, guys)
       return
     }
     if (action === 'optimize') {
-      runOptimization(jobId, parameters)
+      runOptimization(jobId, parameters, guys)
       return
     }
     throw new Error(`Неизвестная операция расчёта: ${action}`)

@@ -1,3 +1,4 @@
+import { currentProjectGuys } from './guy-project-state.js'
 import { publishCalculationResult } from './result-channel.js'
 
 export function createCalculationController({
@@ -32,13 +33,16 @@ export function createCalculationController({
     return true
   }
 
-  function start(action, projectInput) {
+  function start(action, projectInput, options = {}) {
     if (state.snapshot.activeJob || activeWorker) cancel({ notify: false })
+    const projectGuys = Object.prototype.hasOwnProperty.call(options, 'projectGuys')
+      ? options.projectGuys
+      : currentProjectGuys()
 
     const jobId = ++nextJobId
     const worker = createWorker()
     activeWorker = worker
-    state.beginJob({ jobId, action, projectInput, startedAt: now() })
+    state.beginJob({ jobId, action, projectInput, projectGuys, startedAt: now() })
     onStart(state.snapshot.activeJob)
 
     worker.onmessage = (event) => {
@@ -62,7 +66,9 @@ export function createCalculationController({
         const activeJob = state.snapshot.activeJob
         const completed = state.completeJob(jobId, {
           projectInput: message.projectInput,
+          projectGuys: message.projectGuys,
           result: message.result,
+          guyResult: message.guyResult,
           optimization: message.optimization,
         })
         if (!completed) return
@@ -80,7 +86,7 @@ export function createCalculationController({
       onError(event.message || 'Ошибка Web Worker', activeJob)
     }
 
-    worker.postMessage({ jobId, action, parameters: projectInput })
+    worker.postMessage({ jobId, action, parameters: projectInput, guys: projectGuys })
     return jobId
   }
 

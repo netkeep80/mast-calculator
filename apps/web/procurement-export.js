@@ -8,6 +8,7 @@ export function initializeProcurementExport() {
   if (!exportRow || document.querySelector('#export-procurement-button')) return null
 
   let currentResult = null
+  let currentGuyResult = null
   const button = document.createElement('button')
   button.id = 'export-procurement-button'
   button.type = 'button'
@@ -15,15 +16,18 @@ export function initializeProcurementExport() {
   button.disabled = true
   button.textContent = 'Сохранить закупочную смету'
 
-  const unsubscribe = subscribeCalculationResult(({ result }) => {
+  const unsubscribe = subscribeCalculationResult(({ result, guyResult }) => {
     currentResult = result ?? null
+    currentGuyResult = guyResult ?? null
     button.disabled = currentResult == null
   })
 
   button.addEventListener('click', async () => {
     if (!currentResult) return
     try {
-      const estimate = createProcurementEstimateFromCalculation(currentResult)
+      const estimate = createProcurementEstimateFromCalculation(currentResult, {
+        guyedResult: currentGuyResult,
+      })
       const html = createProcurementEstimateHtml(estimate, new Date().toISOString())
       await fileAdapter.saveText({
         suggestedName: `mast-${currentResult.parameters.moduleCount}-procurement.html`,

@@ -4,7 +4,7 @@ Status: implemented by #96 as the **mean-wind foundation** for parent #71. Pulsa
 
 ## Normative source and model identity
 
-The model is based on СП 20.13330.2016 «Нагрузки и воздействия», current project baseline with Amendment №6, section 11.
+The project baseline is СП 20.13330.2016 «Нагрузки и воздействия», Amendment №6, approved by Ministry of Construction order №597/пр dated 05.09.2024 and effective from 25.09.2024; the wind action model in this slice follows section 11.
 
 The calculation result records the exact identifier:
 
@@ -12,7 +12,7 @@ The calculation result records the exact identifier:
 sp20-mean-v1
 ```
 
-and structured provenance containing the normative source, wind region, terrain type, basic characteristic pressure `w0`, reference height, `k(ze)` at the reference height, characteristic mean pressure, and load reliability factor `γf`.
+and structured provenance containing the normative source/edition, wind region, terrain type, basic characteristic pressure `w0`, reference height, `k(ze)` at the reference height, characteristic mean pressure, load reliability factor `γf`, and the separately supplied aerodynamic coefficients.
 
 ## Quantities kept separate
 
@@ -38,6 +38,18 @@ For the supported range:
 
 For the frame model, a member carries a uniform distributed load. Its characteristic mean pressure is therefore evaluated at the member midpoint height. Equipment pressure is evaluated at the actual top elevation. `γf` is applied after characteristic pressure; aerodynamic coefficients remain separate.
 
+## Aerodynamic coefficient provenance
+
+This slice does **not** claim automatic normative selection of aerodynamic coefficients from an SP20 annex or a special mast/tower standard. The current member and equipment coefficients remain explicit ProjectInput values and are recorded as:
+
+```text
+aerodynamicCoefficientSource = project-input-not-sp20-annex
+```
+
+with the actual member/equipment coefficient values copied into `windActionProvenance`.
+
+This distinction is intentional: the normative provenance of `w0`, `k(ze)` and `γf` must not make a user-supplied `Cx/Cd` look normatively selected when it is not.
+
 ## Manual / legacy-compatible mode
 
 Existing projects without `windActionMode` resolve to:
@@ -56,7 +68,7 @@ windRegion
 windTerrainType
 ```
 
-so existing `mast-calculator/project/v1` packages remain readable without a schema migration.
+so existing `mast-calculator/project/v1` packages remain readable without a schema migration. `windPressurePa` is required for manual/custom input but may be omitted when `sp20-mean-v1` derives the characteristic mean pressure from region/terrain/height.
 
 ## Provenance and reporting
 

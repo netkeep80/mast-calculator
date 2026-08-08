@@ -86,6 +86,23 @@ function buildOptimizationSummary(optimization: ReturnType<typeof selectUniformD
   }
 }
 
+/** Lightweight presentation-neutral query for forms that need canonical derived geometry. */
+export function previewProjectGeometry(input: ProjectInput) {
+  try {
+    const parameters = resolveValidatedProject(input)
+    return immutablePublicResult({
+      moduleCount: parameters.moduleCount,
+      ribCutLengthMm: parameters.ribCutLengthMm,
+      moduleHeightMm: parameters.moduleHeightMm,
+      mastHeightM: parameters.moduleCount * parameters.moduleHeightMm / 1000,
+      barDiameterMm: parameters.barDiameterMm,
+      reinforcementClass: parameters.reinforcementClass,
+    })
+  } catch (error) {
+    throw toApplicationError(error)
+  }
+}
+
 /**
  * Canonical headless project calculation entrypoint.
  * ProjectInput is validated and resolved exactly once at the application boundary.

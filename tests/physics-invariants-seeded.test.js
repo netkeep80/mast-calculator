@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {
-  DEFAULT_PARAMETERS,
-  calculateMast,
-  resolveCalculationParameters,
-} from '../packages/application/index.js'
+import { calculateMast } from '../packages/application/index.js'
 import { generateMastModel } from '../packages/structural-analysis/index.js'
 import { buildLoadCase } from '../packages/structural-analysis/index.js'
 import { assertClose } from './helpers/regression-tolerances.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 const SEED = 0x51A7E2
 const GRAVITY = 9.80665
@@ -38,9 +35,8 @@ function rotateZ(position, angleRad) {
   return [c * x - s * y, s * x + c * y, z]
 }
 
-function scenario(random, index) {
-  return resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
+function scenario(random) {
+  return resolvedProject({
     moduleCount: 1 + Math.floor(random() * 6),
     barDiameterMm: pick(random, [10, 12, 14, 16, 18]),
     windPresetId: 'custom',
@@ -51,14 +47,13 @@ function scenario(random, index) {
     equipmentWindAreaM2: random() * 1.2,
     iceThicknessMm: Math.round(random() * 10),
     heightSearchMaxModules: 12,
-    _seedCase: index,
   })
 }
 
 test(`seeded physical invariants remain valid (seed=${SEED})`, () => {
   const random = seededRandom()
   for (let index = 0; index < 6; index += 1) {
-    const parameters = scenario(random, index)
+    const parameters = scenario(random)
     const label = `seed=${SEED}, case=${index}, modules=${parameters.moduleCount}, d=${parameters.barDiameterMm}`
     const model = generateMastModel(parameters)
 

@@ -102,18 +102,19 @@ export function renderGuyedConnectionProjection(snapshot) {
   const metrics = make('div', 'key-metric-grid')
   metrics.append(
     metric('Физический узел', selectedJointText(envelope), `исходный режим: ${envelope.requestedMode}; проверка: ${envelope.checkMode}`),
-    metric('Болт по guyed actions', `U = ${format(envelope.maximumBoltUtilization, 3)}`, envelope.passes ? 'лимит ≤ 1' : 'превышен один из критериев connection layer'),
+    metric('Болт по guyed actions', `U = ${format(envelope.maximumBoltUtilization, 3)}`, envelope.passes ? 'лимит ≤ 1' : `причина: ${envelope.statusReason ?? 'connection-failed'}`),
     metric('Расчётных случаев', String(envelope.caseCount ?? '—'), envelope.method ?? '—'),
   )
+  const reason = make('p', 'material-summary', `Статус: ${envelope.statusReason ?? (envelope.passes ? 'pass' : 'fail')}${envelope.failureReasons?.length ? ` · ${envelope.failureReasons.join(', ')}` : ''}`)
   const demand = make('p', 'material-summary', `Определяющий болт: ${demandSummary(envelope)}`)
   const weld = make('p', 'material-summary', `Критический сварной конец: ${weldSummary(envelope)}`)
-  connection.replaceChildren(title, explanation, metrics, demand, weld)
+  connection.replaceChildren(title, explanation, metrics, reason, demand, weld)
 
   const body = $('.guyed-connection-provenance-body', provenance)
   if (body) {
     const checked = make('p', '', `Проверено: ${envelope.scope?.checked ?? 'межмодульный узел по nonlinear frame actions'}.`)
     const excluded = make('p', '', `Не входит в этот критерий: ${envelope.scope?.excluded ?? 'local guy hardware, anchors and soil'}.`)
-    const source = make('p', '', `Provenance: ${envelope.method}; physicalJointSource=${envelope.physicalJointSource}; caseCount=${envelope.caseCount}. Определяющий demand: ${demandSummary(envelope)}`)
+    const source = make('p', '', `Provenance: ${envelope.method}; physicalJointSource=${envelope.physicalJointSource}; caseCount=${envelope.caseCount}; statusReason=${envelope.statusReason}. Определяющий demand: ${demandSummary(envelope)}`)
     body.replaceChildren(checked, excluded, source)
   }
 }

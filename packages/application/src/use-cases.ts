@@ -1,5 +1,10 @@
 import type { ProjectInput, ResolvedProject } from '../../domain/contracts.js'
-import { resolveProjectInput, validateProjectInput } from '../../domain/index.js'
+import {
+  CUSTOM_WIND_PRESET_ID,
+  getReinforcementClass,
+  resolveProjectInput,
+  validateProjectInput,
+} from '../../domain/index.js'
 import { calculateGuyedMast } from '../../engineering/index.js'
 import { augmentVerificationWithModuleChecks } from '../../structural-analysis/index.js'
 import { calculateCompleteMastWithConfiguredJoint } from './complete-calculation.js'
@@ -97,6 +102,45 @@ export function previewProjectGeometry(input: ProjectInput) {
       mastHeightM: parameters.moduleCount * parameters.moduleHeightMm / 1000,
       barDiameterMm: parameters.barDiameterMm,
       reinforcementClass: parameters.reinforcementClass,
+    })
+  } catch (error) {
+    throw toApplicationError(error)
+  }
+}
+
+/**
+ * Presentation-neutral resolved form preview. Browser/CLI/Desktop adapters use this
+ * instead of reproducing fabrication, material-catalogue or weather conversions.
+ */
+export function previewProjectConfiguration(input: ProjectInput) {
+  try {
+    const parameters = resolveValidatedProject(input)
+    const material = getReinforcementClass(parameters.reinforcementClass)
+    return immutablePublicResult({
+      geometry: {
+        moduleCount: parameters.moduleCount,
+        ribCutLengthMm: parameters.ribCutLengthMm,
+        moduleHeightMm: parameters.moduleHeightMm,
+        mastHeightM: parameters.moduleCount * parameters.moduleHeightMm / 1000,
+      },
+      material: {
+        id: parameters.reinforcementClass,
+        label: material.label,
+        standard: parameters.reinforcementStandard,
+        yieldStrengthMPa: parameters.yieldStrengthMPa,
+        tensileStrengthMPa: parameters.tensileStrengthMPa,
+        youngModulusGPa: parameters.youngModulusGPa,
+        poissonRatio: parameters.poissonRatio,
+        weldabilityGuaranteed: parameters.reinforcementWeldabilityGuaranteed,
+      },
+      weather: {
+        presetId: parameters.windPresetId,
+        label: parameters.windPresetLabel,
+        beaufortForce: parameters.beaufortForce,
+        pressurePa: parameters.windPressurePa,
+        speedMs: parameters.windSpeedMs,
+        custom: parameters.windPresetId === CUSTOM_WIND_PRESET_ID,
+      },
     })
   } catch (error) {
     throw toApplicationError(error)

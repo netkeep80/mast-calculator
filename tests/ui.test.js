@@ -4,6 +4,8 @@ import test from 'node:test'
 
 const html = fs.readFileSync(new URL('../apps/web/index.html', import.meta.url), 'utf8')
 const app = fs.readFileSync(new URL('../apps/web/app.js', import.meta.url), 'utf8')
+const mainForm = fs.readFileSync(new URL('../apps/web/main-project-form.js', import.meta.url), 'utf8')
+const calculationController = fs.readFileSync(new URL('../apps/web/calculation-controller.js', import.meta.url), 'utf8')
 const bootstrap = fs.readFileSync(new URL('../apps/web/app-bootstrap.js', import.meta.url), 'utf8')
 const usage = fs.readFileSync(new URL('../apps/web/usage-scenarios.js', import.meta.url), 'utf8')
 const viewer = fs.readFileSync(new URL('../apps/web/viewer.js', import.meta.url), 'utf8')
@@ -42,7 +44,8 @@ test('конфигуратор узла использует выпадающи�
   assert.match(html, /длинн(?:ая|ой) соединительн(?:ая|ой) гайк/i)
   assert.match(bootstrap, /modeSelect\.value = 'auto'/)
   assert.match(bootstrap, /jointConfiguratorMode/)
-  assert.match(bootstrap, /message\.action === 'optimize' \? 'auto'/)
+  assert.match(bootstrap, /subscribeCalculationResult/)
+  assert.doesNotMatch(bootstrap, /message\.action|JointAwareWorker|globalThis\.Worker\s*=/)
 })
 
 test('эффективный радиус и длинная гайка являются производными параметрами', () => {
@@ -128,16 +131,19 @@ test('интерфейс показывает максимальную прое�
 
 test('погодные явления выбираются из выпадающего списка вплоть до урагана', () => {
   assert.match(html, /<select name="windPresetId"><\/select>/)
-  assert.match(app, /WEATHER_PRESETS/)
-  assert.match(app, /getWeatherPreset/)
+  assert.match(mainForm, /WEATHER_PRESETS/)
+  assert.match(mainForm, /getWeatherPreset/)
   assert.match(html, /Скорость:/)
   assert.match(html, /name="windSpeedMs"[^>]*readonly/)
 })
 
 test('ручное ветровое давление сохраняется как отдельный пользовательский режим', () => {
-  assert.match(app, /CUSTOM_WIND_PRESET_ID/)
-  assert.match(app, /windPressureFromSpeedMs/)
-  assert.match(app, /windSpeedFromPressurePa/)
+  assert.match(mainForm, /CUSTOM_WIND_PRESET_ID/)
+  assert.match(mainForm, /previewProjectConfiguration/)
+  assert.match(mainForm, /resolved\.weather\.custom/)
+  assert.match(mainForm, /resolved\.weather\.pressurePa/)
+  assert.match(mainForm, /resolved\.weather\.speedMs/)
+  assert.doesNotMatch(mainForm, /windPressureFromSpeedMs|windSpeedFromPressurePa/)
 })
 
 test('боковой и статический расчёты предыдущей версии остаются в интерфейсе', () => {
@@ -170,9 +176,11 @@ test('многоуровневый паспорт верификации ост�
 })
 
 test('тяжёлый расчёт остаётся в модульном Web Worker и проходит через application API', () => {
-  assert.match(app, /new Worker\('\.\/calculation-worker\.js', \{ type: 'module' \}\)/)
+  assert.match(app, /createCalculationController/)
+  assert.match(calculationController, /new Worker\('\.\/calculation-worker\.js', \{ type: 'module' \}\)/)
   assert.match(worker, /calculateProject/)
-  assert.match(worker, /optimizeProject/)
+  assert.match(worker, /optimizeAndCalculateProject/)
+  assert.doesNotMatch(worker, /\boptimizeProject\b/)
   assert.doesNotMatch(worker, /augmentVerificationWithModuleChecks/)
   assert.doesNotMatch(worker, /calculateCompleteMastWithConfiguredJoint/)
   assert.doesNotMatch(worker, /selectUniformDiameter/)
@@ -187,7 +195,9 @@ test('progress показывает отдельный этап поиска м�
   ]) assert.match(html, new RegExp(`id="${id}"`))
   assert.match(app, /height-capacity/)
   assert.match(app, /Поиск максимальной высоты/)
-  assert.match(app, /activeWorker\.terminate\(\)/)
+  assert.match(calculationController, /\.terminate\(\)/)
+  assert.match(calculationController, /function cancel/)
+  assert.doesNotMatch(app, /activeWorker/)
 })
 
 test('бумажный проект доступен, пользовательского JSON-экспорта нет', () => {

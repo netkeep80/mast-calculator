@@ -1,7 +1,6 @@
 import {
   calculateProject,
-  optimizeProject,
-  STANDARD_DIAMETERS_MM,
+  optimizeAndCalculateProject,
 } from '../../packages/application/index.js'
 
 const clamp01 = (value) => Math.min(1, Math.max(0, Number(value) || 0))
@@ -17,97 +16,24 @@ function postProgress(jobId, progress) {
   })
 }
 
-function calculationProgress(jobId, progress, start = 0, span = 1, prefix = '') {
-  const fraction = progress.completed / Math.max(1, progress.total)
-  postProgress(jobId, {
-    phase: progress.phase,
-    label: prefix ? `${prefix}: ${progress.label}` : progress.label,
-    fraction: start + span * fraction,
-  })
-}
-
-function summarizeOptimization(optimization) {
-  return {
-    recommendedDiameter: optimization.recommended?.diameter ?? null,
-    evaluatedCount: optimization.evaluatedCount,
-    availableCount: optimization.availableCount,
-    variants: optimization.variants.map((variant) => ({
-      diameter: variant.diameter,
-      passesStrength: variant.passesStrength,
-      passesDisplacement: variant.passesDisplacement,
-      passesBuckling: variant.passesBuckling,
-      passesConnection: variant.passesConnection,
-      utilization: variant.result.envelope.maxUtilization,
-      displacementMm: variant.result.envelope.maxTopDisplacementM * 1000,
-      bucklingFactor: variant.result.envelope.minimumBucklingFactor,
-      jointBoltDiameterMm: variant.result.connections?.configurator?.geometry?.bolt?.diameterMm ?? null,
-      jointBoltClass: variant.result.connections?.configurator?.selected?.boltClass ?? null,
-    })),
-  }
-}
-
 function runCalculation(jobId, parameters) {
   const result = calculateProject(parameters, {
-    onProgress: (progress) => calculationProgress(jobId, progress),
+    onProgress: (progress) => postProgress(jobId, progress),
   })
-  self.postMessage({ type: 'result', jobId, result, optimization: null })
+  self.postMessage({ type: 'result', jobId, projectInput: parameters, result, optimization: null })
 }
 
 function runOptimization(jobId, parameters) {
-  const optimizationShare = 0.78
-  const { moduleDiametersMm: _ignoredMixedProfile, ...uniformGeometry } = parameters.geometry
-  const automaticParameters = {
-    ...parameters,
-    geometry: uniformGeometry,
-    connection: { ...parameters.connection, configuratorMode: 'auto' },
-  }
-  postProgress(jobId, {
-    phase: 'optimize',
-    label: `Подбор арматуры и соединительного узла: до ${STANDARD_DIAMETERS_MM.length} стандартных вариантов`,
-    fraction: 0,
+  const output = optimizeAndCalculateProject(parameters, {
+    onProgress: (progress) => postProgress(jobId, progress),
   })
-  const optimization = optimizeProject(automaticParameters, {
-    diameters: STANDARD_DIAMETERS_MM,
-    stopAtFirstPassing: true,
-    onProgress: (event) => {
-      postProgress(jobId, {
-        phase: 'optimize',
-        label: `Подбор Ø${event.diameter} мм (${event.variantIndex + 1}/${event.variantCount}): ${event.inner.label}`,
-        fraction: optimizationShare * event.fraction,
-      })
-    },
+  self.postMessage({
+    type: 'result',
+    jobId,
+    projectInput: output.projectInput,
+    result: output.result,
+    optimization: output.optimization,
   })
-  const summary = summarizeOptimization(optimization)
-  if (!optimization.recommended) {
-    postProgress(jobId, { phase: 'done', label: 'Подбор завершён: подходящий комплект арматуры и узла не найден', fraction: 1 })
-    self.postMessage({ type: 'result', jobId, result: null, optimization: summary })
-    return
-  }
-
-  const diameter = optimization.recommended.diameter
-  postProgress(jobId, {
-    phase: 'optimize',
-    label: `Минимальный проходящий комплект найден после ${optimization.evaluatedCount} вариантов: арматура Ø${diameter} мм`,
-    fraction: optimizationShare,
-  })
-  const result = calculateProject({
-    ...automaticParameters,
-    geometry: { ...automaticParameters.geometry, barDiameterMm: diameter },
-  }, {
-    onProgress: (progress) => calculationProgress(
-      jobId,
-      progress,
-      optimizationShare,
-      1 - optimizationShare,
-      `Итоговый расчёт Ø${diameter} мм`,
-    ),
-  })
-  const joint = result.connections?.configurator
-  const jointLabel = joint?.geometry
-    ? `; болт M${joint.geometry.bolt.diameterMm}×${joint.geometry.bolt.lengthMm} ${joint.selected.boltClass}`
-    : ''
-  postProgress(jobId, { phase: 'done', label: `Подбор завершён: арматура Ø${diameter} мм${jointLabel}`, fraction: 1 })
-  self.postMessage({ type: 'result', jobId, result, optimization: summary })
 }
 
 self.onmessage = (event) => {

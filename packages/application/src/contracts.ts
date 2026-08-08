@@ -19,6 +19,7 @@ export type ApplicationErrorCategory =
   | 'numerical-failure'
   | 'convergence-failure'
   | 'schema-error'
+  | 'cancelled'
   | 'internal-invariant'
 
 export interface ApplicationErrorShape {
@@ -27,6 +28,11 @@ export interface ApplicationErrorShape {
   readonly code: string
   readonly message: string
   readonly details?: Readonly<Record<string, unknown>>
+}
+
+export interface ApplicationAbortSignal {
+  readonly aborted: boolean
+  readonly reason?: unknown
 }
 
 export interface CalculationProgress {
@@ -38,6 +44,7 @@ export interface CalculationProgress {
 
 export interface SolverOptions {
   readonly onProgress?: (progress: CalculationProgress) => void
+  readonly signal?: ApplicationAbortSignal
 }
 
 export interface VerificationOptions {

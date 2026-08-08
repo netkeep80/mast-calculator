@@ -1,31 +1,15 @@
-import { DEFAULT_PROJECT_INPUT, createProjectInput } from '../../packages/application/index.js'
+import { getBoltSize } from '../../packages/domain/index.js'
 import {
-  flattenProjectInput,
-  getReinforcementClass,
-  regularOctahedronHeightMm,
-  REINFORCEMENT_CLASS_IDS,
-  STANDARD_DIAMETERS_MM,
-  STOCK_BAR_DIVISIONS,
-  STOCK_BAR_LENGTHS_MM,
-  theoreticalCutLengthMm,
-} from '../../packages/domain/index.js'
-import {
-  BOLT_DIAMETERS_MM,
-  BOLT_PROPERTY_CLASS_IDS,
-  getBoltSize,
-  WELD_CONSUMABLES,
-} from '../../packages/domain/index.js'
-import { createCalculationProjectHtml } from '../../packages/reporting/index.js'
-import { buildMaterialSummary, buildMemberEnvelope, createCalculationCsv } from '../../packages/reporting/index.js'
-import {
-  CUSTOM_WIND_PRESET_ID,
-  getWeatherPreset,
-  WEATHER_PRESETS,
-  windPressureFromSpeedMs,
-  windSpeedFromPressurePa,
-} from '../../packages/domain/index.js'
+  buildMaterialSummary,
+  buildMemberEnvelope,
+  createCalculationCsv,
+  createCalculationProjectHtml,
+} from '../../packages/reporting/index.js'
+import { createCalculationController } from './calculation-controller.js'
+import { createMainProjectFormController } from './main-project-form.js'
 import { ModuleViewer } from './module-viewer.js'
 import { MastViewer } from './viewer.js'
+import { createWebApplicationState } from './web-state.js'
 
 const $ = (selector) => document.querySelector(selector)
 const form = $('#parameters-form')
@@ -67,14 +51,8 @@ const progressDetail = $('#progress-detail')
 const progressElapsed = $('#progress-elapsed')
 const progressEta = $('#progress-eta')
 
-let selectedModuleIndex = 0
-let lastResult = null
-let lastParameters = null
-let activeWorker = null
-let activeJobId = 0
-let activeJobStartedAt = 0
+const state = createWebApplicationState()
 let progressTimer = null
-let latestProgressFraction = 0
 let buildInfo = {
   repository: 'netkeep80/mast-calculator', ref: 'local', sha: 'development', runId: 'local',
 }
@@ -83,66 +61,12 @@ const moduleViewer = new ModuleViewer($('#module-canvas'))
 const mastViewer = new MastViewer($('#mast-canvas'), {
   onModuleSelect: (moduleIndex) => selectModule(moduleIndex),
 })
+const projectForm = createMainProjectFormController(form, { materialInfoBox })
 
 fetch('./build-info.json', { cache: 'no-store' })
   .then((response) => response.ok ? response.json() : null)
   .then((value) => { if (value) buildInfo = { ...buildInfo, ...value } })
   .catch(() => {})
-
-const DEFAULT_FORM_PARAMETERS = Object.freeze(flattenProjectInput(DEFAULT_PROJECT_INPUT))
-const numericFieldNames = [
-  'moduleCount', 'stockBarLengthMm', 'stockBarPieces', 'barDiameterMm',
-  'materialSafetyFactor', 'deadLoadFactor', 'windLoadFactor', 'equipmentLoadFactor',
-  'windPressurePa', 'dragCoefficient', 'windDirectionDeg', 'windEnvelopeStepDeg',
-  'lateralCapacityStepDeg', 'heightSearchMaxModules', 'equipmentMassKg',
-  'equipmentWindAreaM2', 'equipmentDragCoefficient', 'iceThicknessMm', 'iceDensityKgM3',
-  'displacementLimitMm', 'minimumBucklingFactor', 'jointBoltDiameterMm',
-  'jointBoltShearPlanes', 'connectionConditionFactor', 'weldLegMm',
-  'weldSegmentsPerEnd', 'weldBetaF', 'weldBetaZ',
-]
-
-function populateSelect(name, values, label = String) {
-  const select = form.elements.namedItem(name)
-  select.replaceChildren(...values.map((value) => {
-    const option = document.createElement('option')
-    option.value = value
-    option.textContent = label(value)
-    return option
-  }))
-}
-
-populateSelect('stockBarLengthMm', STOCK_BAR_LENGTHS_MM, (value) => `${value / 1000} м`)
-populateSelect('stockBarPieces', STOCK_BAR_DIVISIONS, String)
-populateSelect('barDiameterMm', STANDARD_DIAMETERS_MM, (value) => `Ø${value}`)
-populateSelect('reinforcementClass', REINFORCEMENT_CLASS_IDS, (value) => getReinforcementClass(value).label)
-populateSelect('jointBoltDiameterMm', BOLT_DIAMETERS_MM, (value) => {
-  const size = getBoltSize(value)
-  return `M${size.diameterMm}×${size.pitchMm}`
-})
-populateSelect('jointBoltClass', BOLT_PROPERTY_CLASS_IDS, String)
-populateSelect('weldConsumableId', WELD_CONSUMABLES.map((item) => item.id), (id) => (
-  WELD_CONSUMABLES.find((item) => item.id === id)?.label ?? id
-))
-populateSelect(
-  'windPresetId',
-  [CUSTOM_WIND_PRESET_ID, ...WEATHER_PRESETS.map((preset) => preset.id)],
-  (id) => {
-    const preset = getWeatherPreset(id)
-    return preset.id === CUSTOM_WIND_PRESET_ID
-      ? preset.label
-      : `Бофорт ${preset.beaufort}: ${preset.label} · ${preset.range}`
-  },
-)
-
-for (const name of numericFieldNames) {
-  const input = form.elements.namedItem(name)
-  if (input && DEFAULT_FORM_PARAMETERS[name] != null) input.value = DEFAULT_FORM_PARAMETERS[name]
-}
-form.elements.namedItem('reinforcementClass').value = DEFAULT_PROJECT_INPUT.material.reinforcementClass
-form.elements.namedItem('jointBoltClass').value = DEFAULT_PROJECT_INPUT.connection.boltClass
-form.elements.namedItem('weldConsumableId').value = DEFAULT_PROJECT_INPUT.connection.weldConsumableId
-form.elements.namedItem('windPresetId').value = DEFAULT_PROJECT_INPUT.environment.windPresetId
-form.elements.namedItem('windEnvelopeEnabled').checked = DEFAULT_PROJECT_INPUT.environment.windEnvelopeEnabled
 
 const format = (value, digits = 2) => Number.isFinite(Number(value))
   ? new Intl.NumberFormat('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)
@@ -158,105 +82,6 @@ function formatDuration(milliseconds) {
   return `${Math.floor(seconds / 60)} мин ${seconds % 60} с`
 }
 
-function syncWindFields() {
-  const envelope = form.elements.namedItem('windEnvelopeEnabled').checked
-  form.elements.namedItem('windDirectionDeg').disabled = envelope
-  form.elements.namedItem('windEnvelopeStepDeg').disabled = !envelope
-}
-
-function syncWindPresetFields() {
-  const preset = getWeatherPreset(form.elements.namedItem('windPresetId').value)
-  const pressureInput = form.elements.namedItem('windPressurePa')
-  const speedInput = form.elements.namedItem('windSpeedMs')
-  const custom = preset.id === CUSTOM_WIND_PRESET_ID
-  pressureInput.readOnly = !custom
-  if (custom) {
-    speedInput.value = windSpeedFromPressurePa(Number(pressureInput.value)).toFixed(2)
-  } else {
-    pressureInput.value = windPressureFromSpeedMs(preset.designSpeedMs).toFixed(1)
-    speedInput.value = preset.designSpeedMs.toFixed(1)
-  }
-}
-
-function syncFabricationFields() {
-  const stockLength = Number(form.elements.namedItem('stockBarLengthMm').value)
-  const pieces = Number(form.elements.namedItem('stockBarPieces').value)
-  const cutLength = theoreticalCutLengthMm(stockLength, pieces)
-  const moduleHeight = regularOctahedronHeightMm(cutLength)
-  form.elements.namedItem('ribCutLengthMm').value = cutLength.toFixed(2)
-  form.elements.namedItem('moduleHeightMm').value = moduleHeight.toFixed(2)
-  const material = getReinforcementClass(form.elements.namedItem('reinforcementClass').value)
-  materialInfoBox.textContent = `${material.label}, ${material.standard}: Ry = ${material.yieldStrengthMPa} МПа, Rm = ${material.tensileStrengthMPa} МПа, E = ${material.youngModulusGPa} ГПа, ν = ${material.poissonRatio}.`
-}
-
-function numericFormValue(name, fallback) {
-  const element = form.elements.namedItem(name)
-  if (!element) return fallback
-  const value = Number(element.value)
-  if (!Number.isFinite(value)) throw new Error(`Поле «${element.labels?.[0]?.textContent ?? name}» заполнено неверно`)
-  return value
-}
-
-function readParameters() {
-  const defaults = DEFAULT_PROJECT_INPUT
-  return createProjectInput({
-    geometry: {
-      moduleCount: Math.floor(numericFormValue('moduleCount', defaults.geometry.moduleCount)),
-      stockBarLengthMm: numericFormValue('stockBarLengthMm', defaults.geometry.stockBarLengthMm),
-      stockBarPieces: Math.floor(numericFormValue('stockBarPieces', defaults.geometry.stockBarPieces)),
-      barDiameterMm: numericFormValue('barDiameterMm', defaults.geometry.barDiameterMm),
-    },
-    material: {
-      reinforcementClass: form.elements.namedItem('reinforcementClass').value,
-      materialSafetyFactor: numericFormValue('materialSafetyFactor', defaults.material.materialSafetyFactor),
-    },
-    environment: {
-      deadLoadFactor: numericFormValue('deadLoadFactor', defaults.environment.deadLoadFactor),
-      windLoadFactor: numericFormValue('windLoadFactor', defaults.environment.windLoadFactor),
-      windPresetId: form.elements.namedItem('windPresetId').value,
-      windPressurePa: numericFormValue('windPressurePa', defaults.environment.windPressurePa),
-      dragCoefficient: numericFormValue('dragCoefficient', defaults.environment.dragCoefficient),
-      windDirectionDeg: numericFormValue('windDirectionDeg', defaults.environment.windDirectionDeg),
-      windEnvelopeEnabled: form.elements.namedItem('windEnvelopeEnabled').checked,
-      windEnvelopeStepDeg: numericFormValue('windEnvelopeStepDeg', defaults.environment.windEnvelopeStepDeg),
-      lateralCapacityStepDeg: numericFormValue('lateralCapacityStepDeg', defaults.environment.lateralCapacityStepDeg),
-      iceThicknessMm: numericFormValue('iceThicknessMm', defaults.environment.iceThicknessMm),
-      iceDensityKgM3: numericFormValue('iceDensityKgM3', defaults.environment.iceDensityKgM3),
-    },
-    equipment: {
-      massKg: numericFormValue('equipmentMassKg', defaults.equipment.massKg),
-      windAreaM2: numericFormValue('equipmentWindAreaM2', defaults.equipment.windAreaM2),
-      dragCoefficient: numericFormValue('equipmentDragCoefficient', defaults.equipment.dragCoefficient),
-      loadFactor: numericFormValue('equipmentLoadFactor', defaults.equipment.loadFactor),
-    },
-    connection: {
-      configuratorMode: form.elements.namedItem('jointConfiguratorMode')?.value ?? defaults.connection.configuratorMode,
-      boltDiameterMm: numericFormValue('jointBoltDiameterMm', defaults.connection.boltDiameterMm),
-      boltClass: form.elements.namedItem('jointBoltClass').value,
-      clearanceNutThreadMm: numericFormValue('jointClearanceNutThreadMm', defaults.connection.clearanceNutThreadMm),
-      boltLengthMm: numericFormValue('jointBoltLengthMm', defaults.connection.boltLengthMm),
-      threadEngagementFactor: numericFormValue('jointThreadEngagementFactor', defaults.connection.threadEngagementFactor),
-      boltShearPlanes: Math.floor(numericFormValue('jointBoltShearPlanes', defaults.connection.boltShearPlanes)),
-      conditionFactor: numericFormValue('connectionConditionFactor', defaults.connection.conditionFactor),
-      weldConsumableId: form.elements.namedItem('weldConsumableId').value,
-      weldLegMm: numericFormValue('weldLegMm', defaults.connection.weldLegMm),
-      weldSegmentsPerEnd: Math.floor(numericFormValue('weldSegmentsPerEnd', defaults.connection.weldSegmentsPerEnd)),
-      weldBetaF: numericFormValue('weldBetaF', defaults.connection.weldBetaF),
-      weldBetaZ: numericFormValue('weldBetaZ', defaults.connection.weldBetaZ),
-      tighteningTorqueNm: numericFormValue('jointTighteningTorqueNm', undefined),
-      nutFactor: numericFormValue('jointNutFactor', undefined),
-      preloadVariation: numericFormValue('jointPreloadVariation', undefined),
-      nutSectionAreaRatio: numericFormValue('jointNutSectionAreaRatio', undefined),
-      weldToRibAreaRatio: numericFormValue('weldToRibAreaRatio', undefined),
-    },
-    criteria: {
-      displacementLimitMm: numericFormValue('displacementLimitMm', defaults.criteria.displacementLimitMm),
-      minimumBucklingFactor: numericFormValue('minimumBucklingFactor', defaults.criteria.minimumBucklingFactor),
-      heightSearchMaxModules: Math.floor(numericFormValue('heightSearchMaxModules', defaults.criteria.heightSearchMaxModules)),
-    },
-  })
-}
-
 function downloadText(filename, content, type) {
   const blob = new Blob([content], { type })
   const url = URL.createObjectURL(blob)
@@ -270,8 +95,9 @@ function downloadText(filename, content, type) {
 }
 
 function exportFilename(extension) {
-  const modules = lastParameters?.moduleCount ?? 'mast'
-  const cutLength = lastParameters?.ribCutLengthMm ? Math.round(lastParameters.ribCutLengthMm) : ''
+  const parameters = state.snapshot.result?.parameters
+  const modules = parameters?.moduleCount ?? 'mast'
+  const cutLength = parameters?.ribCutLengthMm ? Math.round(parameters.ribCutLengthMm) : ''
   return `mast-project-${modules}x-${cutLength}mm.${extension}`
 }
 
@@ -375,32 +201,32 @@ function actionRows(actions, side) {
 }
 
 function renderSelectedModule() {
-  if (!lastResult?.model?.modules?.length) return
-  const module = lastResult.model.modules[selectedModuleIndex]
-  const loadCase = lastResult.envelope.governing
-  const state = loadCase.analysis.moduleResults?.[selectedModuleIndex]
-  if (!module || !state) return
+  const { result, selectedModuleIndex } = state.snapshot
+  if (!result?.model?.modules?.length) return
+  const module = result.model.modules[selectedModuleIndex]
+  const loadCase = result.envelope.governing
+  const moduleState = loadCase.analysis.moduleResults?.[selectedModuleIndex]
+  if (!module || !moduleState) return
 
-  moduleDetailTitle.textContent = `Подробно: модуль ${module.number} из ${lastResult.model.moduleCount}`
+  moduleDetailTitle.textContent = `Подробно: модуль ${module.number} из ${result.model.moduleCount}`
   moduleViewer.setModule(selectedModuleIndex)
   mastViewer.setSelectedModule(selectedModuleIndex)
   moduleSelector.value = String(selectedModuleIndex)
 
   moduleInterfaceBody.replaceChildren(
-    ...actionRows(state.topAppliedFromAbove, 'сверху'),
-    ...actionRows(state.bottomReactionFromBelow, 'снизу'),
+    ...actionRows(moduleState.topAppliedFromAbove, 'сверху'),
+    ...actionRows(moduleState.bottomReactionFromBelow, 'снизу'),
   )
 
   const memberRows = module.memberIds.map((memberId) => {
-    const member = lastResult.model.members[memberId]
-    const result = loadCase.analysis.memberResults[memberId]
+    const memberResult = loadCase.analysis.memberResults[memberId]
     const row = document.createElement('tr')
-    if (result.utilization > 1) row.classList.add('danger-row')
+    if (memberResult.utilization > 1) row.classList.add('danger-row')
     const values = [
       memberId,
-      member.role === 'top-ring' ? 'верхний треугольник' : 'ножка',
-      format(result.axialForceN / 1000, 3), format(result.maxShearN / 1000, 3),
-      format(result.maxTorsionNm, 2), format(result.maxBendingNm, 2), format(result.utilization, 4),
+      result.model.members[memberId].role === 'top-ring' ? 'верхний треугольник' : 'ножка',
+      format(memberResult.axialForceN / 1000, 3), format(memberResult.maxShearN / 1000, 3),
+      format(memberResult.maxTorsionNm, 2), format(memberResult.maxBendingNm, 2), format(memberResult.utilization, 4),
     ]
     row.replaceChildren(...values.map((value) => {
       const cell = document.createElement('td')
@@ -411,15 +237,15 @@ function renderSelectedModule() {
   })
   moduleMemberBody.replaceChildren(...memberRows)
 
-  const topF = state.topResultantFromAbove.forceN
-  const bottomF = state.bottomResultantFromBelow.forceN
-  const topM = state.topResultantFromAbove.momentNm
-  moduleDetailSummary.textContent = `Определяющий эксплуатационный случай: ветер ${angle(loadCase.windDirectionDeg)}. От всего стека выше на верхнюю грань приходит |F|=${format(norm3(topF) / 1000, 3)} кН и |M|=${format(norm3(topM), 2)} Н·м; снизу модуль уравновешивается реакцией |F|=${format(norm3(bottomF) / 1000, 3)} кН. Критическое ребро #${state.criticalMemberId}, U=${format(state.maxUtilization, 4)}. Для вертикальной перегрузки этого модуля сравниваются потеря устойчивости ножки U=${format(state.maxBucklingUtilization, 4)} и растягивающий разрыв U=${format(state.maxRuptureUtilization, 4)}; раньше наступает ${limitModeLabel(state.verticalFailureMode)}.`
+  const topF = moduleState.topResultantFromAbove.forceN
+  const bottomF = moduleState.bottomResultantFromBelow.forceN
+  const topM = moduleState.topResultantFromAbove.momentNm
+  moduleDetailSummary.textContent = `Определяющий эксплуатационный случай: ветер ${angle(loadCase.windDirectionDeg)}. От всего стека выше на верхнюю грань приходит |F|=${format(norm3(topF) / 1000, 3)} кН и |M|=${format(norm3(topM), 2)} Н·м; снизу модуль уравновешивается реакцией |F|=${format(norm3(bottomF) / 1000, 3)} кН. Критическое ребро #${moduleState.criticalMemberId}, U=${format(moduleState.maxUtilization, 4)}. Для вертикальной перегрузки этого модуля сравниваются потеря устойчивости ножки U=${format(moduleState.maxBucklingUtilization, 4)} и растягивающий разрыв U=${format(moduleState.maxRuptureUtilization, 4)}; раньше наступает ${limitModeLabel(moduleState.verticalFailureMode)}.`
 }
 
 function selectModule(moduleIndex) {
-  if (!lastResult) return
-  selectedModuleIndex = Math.max(0, Math.min(lastResult.model.moduleCount - 1, Number(moduleIndex) || 0))
+  if (!state.snapshot.result) return
+  state.selectModule(moduleIndex)
   renderSelectedModule()
 }
 
@@ -432,9 +258,9 @@ function populateModuleSelector(result) {
   }))
   const strengthCase = result.envelope.strength
   const criticalMember = result.model.members[strengthCase.analysis.criticalMemberId]
-  selectedModuleIndex = Number.isInteger(criticalMember?.moduleIndex)
+  state.selectModule(Number.isInteger(criticalMember?.moduleIndex)
     ? criticalMember.moduleIndex
-    : Math.min(selectedModuleIndex, result.model.moduleCount - 1)
+    : state.snapshot.selectedModuleIndex)
 }
 
 function renderConnections(result) {
@@ -603,8 +429,6 @@ function renderResult(result) {
   const parameters = result.parameters
   const lateral = result.lateralCapacity
   const staticPayload = result.staticPayloadCapacity
-  lastResult = result
-  lastParameters = { ...parameters }
   exportNoteButton.disabled = false
   exportCsvButton.disabled = false
   mastViewer.setResult(result)
@@ -669,11 +493,13 @@ function renderResult(result) {
 }
 
 function updateProgressClock() {
-  if (!activeWorker) return
-  const elapsed = performance.now() - activeJobStartedAt
+  const activeJob = state.snapshot.activeJob
+  if (!activeJob) return
+  const elapsed = performance.now() - activeJob.startedAt
+  const fraction = state.snapshot.progress?.fraction ?? 0
   progressElapsed.textContent = `Прошло: ${formatDuration(elapsed)}`
-  if (latestProgressFraction >= 0.03 && elapsed >= 300) {
-    const eta = elapsed * (1 - latestProgressFraction) / Math.max(latestProgressFraction, 1e-6)
+  if (fraction >= 0.03 && elapsed >= 300) {
+    const eta = elapsed * (1 - fraction) / Math.max(fraction, 1e-6)
     progressEta.textContent = `Осталось: ≈ ${formatDuration(eta)}`
   } else progressEta.textContent = 'Осталось: оценивается…'
 }
@@ -686,15 +512,13 @@ function showProgress(label) {
   progressDetail.textContent = label
   progressElapsed.textContent = 'Прошло: 0 с'
   progressEta.textContent = 'Осталось: оценивается…'
-  latestProgressFraction = 0
-  activeJobStartedAt = performance.now()
   clearInterval(progressTimer)
   progressTimer = setInterval(updateProgressClock, 500)
 }
 
 function renderProgress(progress) {
-  latestProgressFraction = Math.min(1, Math.max(0, progress.fraction ?? 0))
-  const percent = Math.round(latestProgressFraction * 100)
+  const fraction = Math.min(1, Math.max(0, progress?.fraction ?? 0))
+  const percent = Math.round(fraction * 100)
   progressBar.value = percent
   progressPercent.textContent = `${percent}%`
   if (progress.phase === 'optimize') progressStage.textContent = 'Подбор диаметра'
@@ -713,12 +537,11 @@ function setBusy(busy) {
   cancelCalculationButton.disabled = !busy
 }
 
-function finishProgress(label, success = true) {
+function finishProgress(label, success = true, startedAt = performance.now()) {
   clearInterval(progressTimer)
   progressTimer = null
-  const elapsed = performance.now() - activeJobStartedAt
+  const elapsed = performance.now() - startedAt
   if (success) {
-    latestProgressFraction = 1
     progressBar.value = 100
     progressPercent.textContent = '100%'
   }
@@ -726,26 +549,6 @@ function finishProgress(label, success = true) {
   progressDetail.textContent = label
   progressElapsed.textContent = `Прошло: ${formatDuration(elapsed)}`
   progressEta.textContent = success ? 'Осталось: 0 с' : 'Осталось: —'
-}
-
-function stopActiveWorker() {
-  if (activeWorker) activeWorker.terminate()
-  activeWorker = null
-  setBusy(false)
-}
-
-function cancelActiveJob() {
-  if (!activeWorker) return
-  activeJobId += 1
-  stopActiveWorker()
-  finishProgress('Расчёт отменён пользователем.', false)
-}
-
-function failWorker(message) {
-  stopActiveWorker()
-  finishProgress('Расчёт завершён с ошибкой.', false)
-  errorBox.textContent = message
-  errorBox.hidden = false
 }
 
 function renderOptimization(summary, result) {
@@ -762,40 +565,44 @@ function renderOptimization(summary, result) {
   optimizationBox.textContent = `Минимальный найденный единый диаметр арматуры: ${diameter} мм. U=${format(result.envelope.maxUtilization, 3)}, прогиб ${format(result.envelope.maxTopDisplacementM * 1000, 2)} мм, λcr=${formatFactor(result.envelope.minimumBucklingFactor)}, боковой предел ${formatForce(result.lateralCapacity.criticalForceKgf, 1)} кгс${heightText}. Болт и сварка проверяются итоговым расчётом.`
 }
 
-function startWorkerJob(action, parameters) {
-  if (activeWorker) cancelActiveJob()
-  errorBox.hidden = true
-  optimizationBox.hidden = true
-  const jobId = ++activeJobId
-  const worker = new Worker('./calculation-worker.js', { type: 'module' })
-  activeWorker = worker
-  setBusy(true)
-  showProgress(action === 'optimize' ? 'Запуск подбора стандартного диаметра…' : 'Запуск расчёта…')
-
-  worker.onmessage = (event) => {
-    const message = event.data ?? {}
-    if (message.jobId !== jobId || worker !== activeWorker) return
-    if (message.type === 'progress') return renderProgress(message.progress)
-    if (message.type === 'error') return failWorker(message.message ?? 'Неизвестная ошибка worker')
-    if (message.type === 'result') {
-      if (message.result) renderResult(message.result)
-      if (message.optimization) renderOptimization(message.optimization, message.result)
-      stopActiveWorker()
-      finishProgress(message.optimization
-        ? 'Подбор, итоговый расчёт и поиск предельной высоты завершены.'
-        : 'Расчёт, модульный cross-check, соединения и предельная высота завершены.')
+const calculationController = createCalculationController({
+  state,
+  onStart: (job) => {
+    errorBox.hidden = true
+    optimizationBox.hidden = true
+    setBusy(true)
+    showProgress(job.action === 'optimize' ? 'Запуск подбора стандартного диаметра…' : 'Запуск расчёта…')
+  },
+  onProgress: (progress) => renderProgress(progress),
+  onResult: (snapshot, job) => {
+    if (snapshot.result) {
+      renderResult(snapshot.result)
+    } else {
+      resultsSection.hidden = true
+      exportNoteButton.disabled = true
+      exportCsvButton.disabled = true
     }
-  }
-  worker.onerror = (event) => {
-    if (worker !== activeWorker) return
-    failWorker(event.message || 'Ошибка Web Worker')
-  }
-  worker.postMessage({ jobId, action, parameters })
-}
+    if (snapshot.optimization) renderOptimization(snapshot.optimization, snapshot.result)
+    setBusy(false)
+    finishProgress(snapshot.optimization
+      ? 'Подбор, итоговый расчёт и поиск предельной высоты завершены.'
+      : 'Расчёт, модульный cross-check, соединения и предельная высота завершены.', true, job?.startedAt)
+  },
+  onError: (message, job) => {
+    setBusy(false)
+    finishProgress('Расчёт завершён с ошибкой.', false, job?.startedAt)
+    errorBox.textContent = message
+    errorBox.hidden = false
+  },
+  onCancel: (job) => {
+    setBusy(false)
+    finishProgress('Расчёт отменён пользователем.', false, job?.startedAt)
+  },
+})
 
 function runCalculation() {
   try {
-    startWorkerJob('calculate', readParameters())
+    calculationController.start('calculate', projectForm.readProjectInput())
   } catch (error) {
     errorBox.textContent = error instanceof Error ? error.message : String(error)
     errorBox.hidden = false
@@ -804,7 +611,7 @@ function runCalculation() {
 
 function runOptimization() {
   try {
-    startWorkerJob('optimize', readParameters())
+    calculationController.start('optimize', projectForm.readProjectInput())
   } catch (error) {
     errorBox.textContent = error instanceof Error ? error.message : String(error)
     errorBox.hidden = false
@@ -813,39 +620,30 @@ function runOptimization() {
 
 calculateButton.addEventListener('click', runCalculation)
 optimizeButton.addEventListener('click', runOptimization)
-cancelCalculationButton.addEventListener('click', cancelActiveJob)
+cancelCalculationButton.addEventListener('click', () => calculationController.cancel())
 exportNoteButton.addEventListener('click', () => {
-  if (!lastResult || !lastParameters) return
+  const result = state.snapshot.result
+  if (!result) return
   downloadText(
     exportFilename('html'),
-    createCalculationProjectHtml(lastResult, lastParameters, new Date().toISOString(), buildInfo),
+    createCalculationProjectHtml(result, result.parameters, new Date().toISOString(), buildInfo),
     'text/html;charset=utf-8',
   )
 })
 exportCsvButton.addEventListener('click', () => {
-  if (!lastResult) return
-  downloadText(exportFilename('csv'), createCalculationCsv(lastResult), 'text/csv;charset=utf-8')
+  const result = state.snapshot.result
+  if (!result) return
+  downloadText(exportFilename('csv'), createCalculationCsv(result), 'text/csv;charset=utf-8')
 })
-form.elements.namedItem('windEnvelopeEnabled').addEventListener('change', syncWindFields)
-form.elements.namedItem('windPresetId').addEventListener('change', syncWindPresetFields)
-form.elements.namedItem('windPressurePa').addEventListener('input', () => {
-  if (form.elements.namedItem('windPresetId').value === CUSTOM_WIND_PRESET_ID) syncWindPresetFields()
-})
-form.elements.namedItem('stockBarLengthMm').addEventListener('change', syncFabricationFields)
-form.elements.namedItem('stockBarPieces').addEventListener('change', syncFabricationFields)
-form.elements.namedItem('reinforcementClass').addEventListener('change', syncFabricationFields)
 showBucklingMode.addEventListener('change', () => mastViewer.setBucklingMode(showBucklingMode.checked))
 moduleSelector.addEventListener('change', () => selectModule(Number(moduleSelector.value)))
-memberGroupMode.addEventListener('change', () => { if (lastResult) renderMemberReport(lastResult) })
-memberSortField.addEventListener('change', () => { if (lastResult) renderMemberReport(lastResult) })
-memberSortDirection.addEventListener('change', () => { if (lastResult) renderMemberReport(lastResult) })
+memberGroupMode.addEventListener('change', () => { if (state.snapshot.result) renderMemberReport(state.snapshot.result) })
+memberSortField.addEventListener('change', () => { if (state.snapshot.result) renderMemberReport(state.snapshot.result) })
+memberSortDirection.addEventListener('change', () => { if (state.snapshot.result) renderMemberReport(state.snapshot.result) })
 form.addEventListener('submit', (event) => {
   event.preventDefault()
   runCalculation()
 })
 
-syncWindFields()
-syncWindPresetFields()
-syncFabricationFields()
 setBusy(false)
 runCalculation()

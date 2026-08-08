@@ -1,13 +1,10 @@
 import {
-  calculateAssemblyMass,
-  reinforcementMassPerMeterKg,
-} from '../../packages/design/index.js'
-import {
-  getReinforcementClass,
-  theoreticalCutLengthMm,
-} from '../../packages/domain/index.js'
-import { saveDesignResult } from './design-storage.js'
+  createDesignPackage,
+  previewRibFabrication,
+} from '../../packages/application/index.js'
+import { saveDesignPackage } from './design-storage.js'
 import './navigation.js'
+import { readProjectInputFromForm } from './project-form-dom.js'
 import { renderReferenceCatalogs } from './reference-catalog.js'
 
 const $ = (selector) => document.querySelector(selector)
@@ -27,6 +24,7 @@ const referenceDetails = $('#reference-details')
 const jointInputDetails = $('#joint-input-details')
 let designWorkspaceButton = null
 let designWorkspaceNote = null
+let lastUsageResult = null
 
 const SCENARIOS = Object.freeze({
   check: {
@@ -281,8 +279,11 @@ function renderIssue36DetailedResult(result) {
 }
 
 function renderAssemblyMass(result) {
-  const mass = result.assemblyMass ?? calculateAssemblyMass(result)
-  result.assemblyMass = mass
+  const mass = result.assemblyMass
+  if (!mass) {
+    $('#assembly-mass-explanation').textContent = 'В полном результате отсутствует оценка сборочной массы.'
+    return
+  }
   $('#metric-rib-mass').textContent = `${format(mass.rib.massKg, 3)} кг`
   $('#metric-rib-weight').textContent = `${format(mass.rib.weightN, 1)} Н; ${format(mass.rib.massPerMeterKg, 3)} кг/м`
   $('#metric-joint-mass').textContent = `${format(mass.intermoduleJoint.totalMassKg, 3)} кг`
@@ -293,13 +294,8 @@ function renderAssemblyMass(result) {
 
 function syncRibMassPreview() {
   try {
-    const stockLength = Number(form.elements.namedItem('stockBarLengthMm')?.value)
-    const pieces = Number(form.elements.namedItem('stockBarPieces')?.value)
-    const diameter = Number(form.elements.namedItem('barDiameterMm')?.value)
-    const material = getReinforcementClass(form.elements.namedItem('reinforcementClass')?.value)
-    const lengthM = theoreticalCutLengthMm(stockLength, pieces) / 1000
-    const mass = reinforcementMassPerMeterKg(diameter, material.densityKgM3) * lengthM
-    $('#preview-rib-mass').textContent = `${format(mass, 3)} кг`
+    const preview = previewRibFabrication(readProjectInputFromForm(form))
+    $('#preview-rib-mass').textContent = `${format(preview.ribMassKg, 3)} кг`
   } catch {
     $('#preview-rib-mass').textContent = '—'
   }
@@ -318,15 +314,16 @@ function syncScenarioControls() {
   optimizeButton.textContent = design ? 'Подобрать конструкцию' : 'Подобрать арматуру и узел'
   if (scenario === 'verify') referenceDetails.open = true
   if (scenario === 'design') jointInputDetails.open = false
-  if (scenarioAnswer.hidden === false && globalThis.__mastLastUsageResult) {
-    renderScenarioResult(globalThis.__mastLastUsageResult)
+  if (scenarioAnswer.hidden === false && lastUsageResult) {
+    renderScenarioResult(lastUsageResult)
   }
 }
 
 function publishDesignWorkspace(result) {
   if (!designWorkspaceButton) return
   try {
-    const saved = saveDesignResult(result)
+    const designPackage = createDesignPackage(result)
+    const saved = saveDesignPackage(designPackage)
     designWorkspaceButton.disabled = false
     designWorkspaceButton.title = `Открыть подробную 3D-модель, OBJ и КД; пакет ${(saved.bytes / 1024).toFixed(0)} КиБ`
     if (designWorkspaceNote) designWorkspaceNote.textContent = 'Расчётный проект отделён от КД. Последняя рассчитанная конструкция сохранена для модуля «3D и КД»; там доступны просмотр, OBJ, пакет JSON и отдельный комплект ЕСКД.'
@@ -352,14 +349,9 @@ export function initializeUsageExperience() {
 
 export function enrichAndRenderUsageResult(result) {
   if (!result) return result
-  try {
-    result.assemblyMass = calculateAssemblyMass(result)
-    renderAssemblyMass(result)
-  } catch (error) {
-    $('#assembly-mass-explanation').textContent = `Не удалось оценить сборочную массу: ${error instanceof Error ? error.message : String(error)}`
-  }
+  renderAssemblyMass(result)
   publishDesignWorkspace(result)
-  globalThis.__mastLastUsageResult = result
+  lastUsageResult = result
   renderScenarioResult(result)
   queueMicrotask(() => renderIssue36DetailedResult(result))
   return result

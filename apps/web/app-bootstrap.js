@@ -1,30 +1,14 @@
 import {
-  JOINT_CONFIGURATOR_MODES,
-} from '../../packages/engineering/index.js'
-import {
-  buildJointHardwareGeometry,
-  clearanceNutOptionsForBolt,
-  JOINT_BOLT_LENGTHS_MM,
-  THREAD_ENGAGEMENT_FACTORS,
-  WELD_LEG_SIZES_MM,
-  WELD_SEGMENT_COUNTS,
-} from '../../packages/domain/index.js'
-import {
-  DEFAULT_NUT_FACTOR,
-  DEFAULT_PRELOAD_VARIATION,
-  DEFAULT_TIGHTENING_TORQUE_NM,
-} from '../../packages/engineering/index.js'
-import { calculateBoltCapacity } from '../../packages/engineering/index.js'
-import {
-  checkJointNutSections,
-  DEFAULT_NUT_TO_RIB_AREA_RATIO,
-} from '../../packages/engineering/index.js'
-import {
-  DEFAULT_WELD_TO_RIB_AREA_RATIO,
-  MAX_WELD_TO_RIB_AREA_RATIO,
-  MIN_WELD_TO_RIB_AREA_RATIO,
-} from '../../packages/engineering/index.js'
+  getJointClearanceNutOptions,
+  getJointConfigurationOptions,
+  previewJointConfiguration,
+} from '../../packages/application/index.js'
 import { JointViewer } from './joint-viewer.js'
+import {
+  applyProjectInputToForm,
+  readProjectInputFromForm,
+} from './project-form-dom.js'
+import { subscribeCalculationResult } from './result-channel.js'
 import {
   enrichAndRenderUsageResult,
   initializeUsageExperience,
@@ -32,6 +16,7 @@ import {
 
 const $ = (selector) => document.querySelector(selector)
 const form = $('#parameters-form')
+const jointOptions = getJointConfigurationOptions()
 
 function createNumericControl(name, title, attributes = {}) {
   const label = document.createElement('label')
@@ -112,47 +97,33 @@ function fillSelect(select, values, label = String) {
   }))
 }
 
-fillSelect(modeSelect, JOINT_CONFIGURATOR_MODES.map((item) => item.id), (id) => (
-  JOINT_CONFIGURATOR_MODES.find((item) => item.id === id)?.label ?? id
+fillSelect(modeSelect, jointOptions.modes.map((item) => item.id), (id) => (
+  jointOptions.modes.find((item) => item.id === id)?.label ?? id
 ))
-fillSelect(boltLength, JOINT_BOLT_LENGTHS_MM, (value) => `${value} мм`)
-fillSelect(engagement, THREAD_ENGAGEMENT_FACTORS, (value) => `${value}d`)
-fillSelect(weldLeg, WELD_LEG_SIZES_MM, (value) => `${value} мм`)
-fillSelect(weldSegments, WELD_SEGMENT_COUNTS, (value) => `${value}`)
-fillSelect(nutSectionAreaRatio, [2, 2.5, 3], (value) => `${value}× сечения ребра`)
-fillSelect(
-  weldToRibAreaRatio,
-  [MIN_WELD_TO_RIB_AREA_RATIO, DEFAULT_WELD_TO_RIB_AREA_RATIO, MAX_WELD_TO_RIB_AREA_RATIO],
-  (value) => `${value}× сечения ребра`,
-)
+fillSelect(boltLength, jointOptions.boltLengthsMm, (value) => `${value} мм`)
+fillSelect(engagement, jointOptions.threadEngagementFactors, (value) => `${value}d`)
+fillSelect(weldLeg, jointOptions.weldLegSizesMm, (value) => `${value} мм`)
+fillSelect(weldSegments, jointOptions.weldSegmentCounts, (value) => `${value}`)
+fillSelect(nutSectionAreaRatio, jointOptions.nutSectionAreaRatios, (value) => `${value}× сечения ребра`)
+fillSelect(weldToRibAreaRatio, jointOptions.weldToRibAreaRatios, (value) => `${value}× сечения ребра`)
 modeSelect.value = 'auto'
 engagement.value = '2'
 weldLeg.value = '4'
 weldSegments.value = '3'
-tighteningTorque.value = String(DEFAULT_TIGHTENING_TORQUE_NM)
-nutFactor.value = String(DEFAULT_NUT_FACTOR)
-preloadVariation.value = String(DEFAULT_PRELOAD_VARIATION)
-nutSectionAreaRatio.value = String(DEFAULT_NUT_TO_RIB_AREA_RATIO)
-weldToRibAreaRatio.value = String(DEFAULT_WELD_TO_RIB_AREA_RATIO)
+tighteningTorque.value = String(jointOptions.defaults.tighteningTorqueNm)
+nutFactor.value = String(jointOptions.defaults.nutFactor)
+preloadVariation.value = String(jointOptions.defaults.preloadVariation)
+nutSectionAreaRatio.value = String(jointOptions.defaults.nutSectionAreaRatio)
+weldToRibAreaRatio.value = String(jointOptions.defaults.weldToRibAreaRatio)
 
 function selectedNumber(element, fallback = null) {
   const value = Number(element?.value)
   return Number.isFinite(value) ? value : fallback
 }
 
-function strengthParametersFromUi() {
-  return {
-    jointTighteningTorqueNm: selectedNumber(tighteningTorque, DEFAULT_TIGHTENING_TORQUE_NM),
-    jointNutFactor: selectedNumber(nutFactor, DEFAULT_NUT_FACTOR),
-    jointPreloadVariation: selectedNumber(preloadVariation, DEFAULT_PRELOAD_VARIATION),
-    jointNutSectionAreaRatio: selectedNumber(nutSectionAreaRatio, DEFAULT_NUT_TO_RIB_AREA_RATIO),
-    weldToRibAreaRatio: selectedNumber(weldToRibAreaRatio, DEFAULT_WELD_TO_RIB_AREA_RATIO),
-  }
-}
-
 function rebuildClearanceNutOptions(preferred = null) {
   const diameter = selectedNumber(boltDiameter, 24)
-  const options = clearanceNutOptionsForBolt(diameter)
+  const options = getJointClearanceNutOptions(diameter)
   fillSelect(clearanceNut, options.map((item) => item.threadDiameterMm), (value) => {
     const item = options.find((candidate) => candidate.threadDiameterMm === value)
     return `M${value} · проход ${item?.basicMinorDiameterMm.toFixed(1)} мм`
@@ -162,16 +133,8 @@ function rebuildClearanceNutOptions(preferred = null) {
   else if (options[0]) clearanceNut.value = String(options[0].threadDiameterMm)
 }
 
-function currentGeometry() {
-  const diameter = selectedNumber(boltDiameter, 24)
-  const manual = modeSelect.value === 'manual'
-  return buildJointHardwareGeometry({
-    boltDiameterMm: diameter,
-    boltClass: boltClass.value || '8.8',
-    clearanceNutThreadMm: manual ? selectedNumber(clearanceNut) : undefined,
-    boltLengthMm: manual ? selectedNumber(boltLength) : undefined,
-    threadEngagementFactor: selectedNumber(engagement, 2),
-  })
+function currentPreview() {
+  return previewJointConfiguration(readProjectInputFromForm(form))
 }
 
 function syncControlsFromGeometry(geometry, preserveManualLength = false) {
@@ -192,22 +155,11 @@ function geometryText(geometry, mode = modeSelect.value) {
   return `${mode === 'auto' ? 'Автоподбор' : 'Ручной режим'}: болт M${bolt.diameterMm}×${bolt.lengthMm} мм; на ножке проходная гайка M${bottom.threadDiameterMm} (${bottom.ribCount} ребра, зазор ${bottom.diametralClearanceMm.toFixed(1)} мм); верхний узел — длинная M${top.threadDiameterMm}×${top.lengthMm} мм (${top.ribCount} ребра); зацепление ${geometry.threadEngagementMm.toFixed(0)} мм ≈ ${geometry.engagedThreadTurns.toFixed(1)} витка; ${status}.`
 }
 
-function previewStrengthText(geometry) {
-  const strength = strengthParametersFromUi()
-  const diameter = selectedNumber(barDiameter, 12)
-  const sections = checkJointNutSections(geometry, diameter, {
-    requiredRatio: strength.jointNutSectionAreaRatio,
-  })
-  const bolt = calculateBoltCapacity({
-    diameterMm: geometry.bolt.diameterMm,
-    boltClass: boltClass.value || '8.8',
-    tighteningTorqueNm: strength.jointTighteningTorqueNm,
-    nutFactor: strength.jointNutFactor,
-    preloadVariation: strength.jointPreloadVariation,
-  })
-  const preload = bolt.preload.maximumPreloadN / 1000
-  const reserve = bolt.externalTensionReserveN == null ? null : bolt.externalTensionReserveN / 1000
-  return `Проверки issue #33: min(Anut/Arib)=${sections.minimumRatio.toFixed(2)} при требовании ≥${sections.requiredRatio.toFixed(1)}; T=${strength.jointTighteningTorqueNm.toFixed(0)} Н·м, K=${strength.jointNutFactor.toFixed(2)} → F0,max≈${preload.toFixed(1)} кН${reserve == null ? '' : `, остаток расчётного растягивающего резерва ≈${reserve.toFixed(1)} кН`}; эффективная площадь шва требуется ≥${strength.weldToRibAreaRatio.toFixed(1)}×Arib.`
+function previewStrengthText(preview) {
+  const strength = preview.strength
+  const preload = strength.maximumPreloadN / 1000
+  const reserve = strength.externalTensionReserveN == null ? null : strength.externalTensionReserveN / 1000
+  return `Проверки issue #33: min(Anut/Arib)=${strength.minimumNutSectionRatio.toFixed(2)} при требовании ≥${strength.requiredNutSectionRatio.toFixed(1)}; T=${strength.tighteningTorqueNm.toFixed(0)} Н·м, K=${strength.nutFactor.toFixed(2)} → F0,max≈${preload.toFixed(1)} кН${reserve == null ? '' : `, остаток расчётного растягивающего резерва ≈${reserve.toFixed(1)} кН`}; эффективная площадь шва требуется ≥${strength.weldToRibAreaRatio.toFixed(1)}×Arib.`
 }
 
 function viewerConfiguration(geometry, result = null) {
@@ -246,7 +198,8 @@ function syncJointPreview() {
   if (!boltDiameter.value) return
   try {
     if (!clearanceNut.options.length) rebuildClearanceNutOptions()
-    const geometry = currentGeometry()
+    const preview = currentPreview()
+    const geometry = preview.geometry
     if (modeSelect.value === 'auto') syncControlsFromGeometry(geometry)
     else {
       effectiveRadius.value = geometry.effectiveRadiusMm.toFixed(1)
@@ -254,7 +207,7 @@ function syncJointPreview() {
     }
     jointSummary.textContent = geometryText(geometry)
     jointVisualSummary.textContent = geometryText(geometry)
-    jointStrengthSummary.textContent = previewStrengthText(geometry)
+    jointStrengthSummary.textContent = previewStrengthText(preview)
     viewer.setConfiguration(viewerConfiguration(geometry))
   } catch (error) {
     jointSummary.textContent = error instanceof Error ? error.message : String(error)
@@ -271,22 +224,6 @@ function syncMode() {
   syncJointPreview()
 }
 
-function readJointUiParameters() {
-  const geometry = currentGeometry()
-  const strength = strengthParametersFromUi()
-  return {
-    configuratorMode: modeSelect.value,
-    clearanceNutThreadMm: selectedNumber(clearanceNut, geometry.bottomClearanceNut.threadDiameterMm),
-    boltLengthMm: selectedNumber(boltLength, geometry.bolt.lengthMm),
-    threadEngagementFactor: selectedNumber(engagement, geometry.threadEngagementFactor),
-    tighteningTorqueNm: strength.jointTighteningTorqueNm,
-    nutFactor: strength.jointNutFactor,
-    preloadVariation: strength.jointPreloadVariation,
-    nutSectionAreaRatio: strength.jointNutSectionAreaRatio,
-    weldToRibAreaRatio: strength.weldToRibAreaRatio,
-  }
-}
-
 function synchronizeFromResult(result) {
   const configurator = result?.connections?.configurator
   if (!configurator?.geometry) return
@@ -301,11 +238,11 @@ function synchronizeFromResult(result) {
   if (resolved.weldConsumableId) weldConsumable.value = resolved.weldConsumableId
   if (resolved.weldLegMm != null) weldLeg.value = String(resolved.weldLegMm)
   if (resolved.weldSegmentsPerEnd != null) weldSegments.value = String(resolved.weldSegmentsPerEnd)
-  tighteningTorque.value = String(resolved.jointTighteningTorqueNm ?? DEFAULT_TIGHTENING_TORQUE_NM)
-  nutFactor.value = String(resolved.jointNutFactor ?? DEFAULT_NUT_FACTOR)
-  preloadVariation.value = String(resolved.jointPreloadVariation ?? DEFAULT_PRELOAD_VARIATION)
-  nutSectionAreaRatio.value = String(resolved.jointNutSectionAreaRatio ?? DEFAULT_NUT_TO_RIB_AREA_RATIO)
-  weldToRibAreaRatio.value = String(resolved.weldToRibAreaRatio ?? DEFAULT_WELD_TO_RIB_AREA_RATIO)
+  tighteningTorque.value = String(resolved.jointTighteningTorqueNm ?? jointOptions.defaults.tighteningTorqueNm)
+  nutFactor.value = String(resolved.jointNutFactor ?? jointOptions.defaults.nutFactor)
+  preloadVariation.value = String(resolved.jointPreloadVariation ?? jointOptions.defaults.preloadVariation)
+  nutSectionAreaRatio.value = String(resolved.jointNutSectionAreaRatio ?? jointOptions.defaults.nutSectionAreaRatio)
+  weldToRibAreaRatio.value = String(resolved.weldToRibAreaRatio ?? jointOptions.defaults.weldToRibAreaRatio)
   syncControlsFromGeometry(geometry, true)
   jointSummary.textContent = `${configurator.explanation} ${geometryText(geometry, configurator.mode)}`
   jointVisualSummary.textContent = jointSummary.textContent
@@ -314,38 +251,12 @@ function synchronizeFromResult(result) {
   syncMode()
 }
 
-const NativeWorker = globalThis.Worker
-class JointAwareWorker extends NativeWorker {
-  constructor(url, options) {
-    super(url, options)
-    this.addEventListener('message', (event) => {
-      if (event.data?.type === 'result' && event.data?.result) {
-        synchronizeFromResult(event.data.result)
-        enrichAndRenderUsageResult(event.data.result)
-      }
-    })
-  }
-
-  postMessage(message, transfer) {
-    let outgoing = message
-    if (message?.parameters) {
-      outgoing = {
-        ...message,
-        parameters: {
-          ...message.parameters,
-          connection: {
-            ...message.parameters.connection,
-            ...readJointUiParameters(),
-            configuratorMode: message.action === 'optimize' ? 'auto' : modeSelect.value,
-          },
-        },
-      }
-    }
-    if (transfer === undefined) super.postMessage(outgoing)
-    else super.postMessage(outgoing, transfer)
-  }
-}
-globalThis.Worker = JointAwareWorker
+subscribeCalculationResult(({ projectInput, result }) => {
+  if (projectInput) applyProjectInputToForm(form, projectInput)
+  if (!result) return
+  synchronizeFromResult(result)
+  enrichAndRenderUsageResult(result)
+})
 
 modeSelect.addEventListener('change', syncMode)
 for (const control of [
@@ -363,9 +274,6 @@ optimizeButton.addEventListener('click', () => {
   syncMode()
 }, { capture: true })
 
-// app.js остаётся владельцем основной формы и расчётной визуализации.
-// Bootstrap добавляет физический конфигуратор и сценарный UX; экспорт 3D/КД
-// принадлежит отдельному design workspace issue #47.
 await import('./app.js')
 rebuildClearanceNutOptions(30)
 syncMode()

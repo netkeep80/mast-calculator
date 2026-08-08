@@ -7,6 +7,7 @@ export const APPLICATION_ERROR_CATEGORIES = Object.freeze([
   'numerical-failure',
   'convergence-failure',
   'schema-error',
+  'cancelled',
   'internal-invariant',
 ] as const satisfies readonly ApplicationErrorCategory[])
 

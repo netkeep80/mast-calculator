@@ -60,10 +60,12 @@ test('справочники арматуры, крепежа и сварочн�
   assert.doesNotMatch(reference, /rbtMPa:\s*451/)
 })
 
-test('сценарный слой не создаёт второй FEM solver', () => {
+test('сценарный слой не создаёт второй FEM solver или инженерный расчётный путь', () => {
   assert.doesNotMatch(scenarios, /analyzeFrame/)
   assert.doesNotMatch(scenarios, /compileFrameSystem/)
   assert.doesNotMatch(scenarios, /solveModuleStack/)
-  assert.match(scenarios, /calculateAssemblyMass/)
+  assert.doesNotMatch(scenarios, /calculateAssemblyMass|reinforcementMassPerMeterKg|theoreticalCutLengthMm/)
+  assert.match(scenarios, /previewRibFabrication/)
+  assert.match(scenarios, /result\.assemblyMass/)
   assert.match(scenarios, /renderScenarioResult/)
 })

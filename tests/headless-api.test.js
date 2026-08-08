@@ -3,9 +3,16 @@ import test from 'node:test'
 import {
   calculateGuyedProject,
   calculateProject,
+  createDesignPackage,
   createProjectInput,
   createVerification,
+  getJointClearanceNutOptions,
+  getJointConfigurationOptions,
+  optimizeAndCalculateProject,
   optimizeProject,
+  previewJointConfiguration,
+  previewProjectConfiguration,
+  previewRibFabrication,
 } from '../packages/application/index.js'
 
 const compactInput = createProjectInput({
@@ -55,4 +62,99 @@ test('public application API exposes optimization and guyed calculation without 
   assert.equal(guyed.cableSystem.cables.length, 0)
   assert.ok(Number.isFinite(guyed.envelope.maxTopDisplacementM))
   assert.equal(Object.isFrozen(guyed), true)
+})
+
+test('application owns optimize-then-calculate job semantics used by adapters', () => {
+  const progress = []
+  const output = optimizeAndCalculateProject(compactInput, {
+    diameters: [12],
+    onProgress: (event) => progress.push(event),
+  })
+
+  assert.equal(output.optimization.evaluatedCount, 1)
+  assert.equal(output.optimization.recommendedDiameter, 12)
+  assert.equal(output.optimization.variants[0].diameter, 12)
+  assert.ok(output.result)
+  assert.equal(output.projectInput.geometry.barDiameterMm, 12)
+  assert.equal(output.projectInput.connection.configuratorMode, 'auto')
+  assert.equal(output.result.parameters.barDiameterMm, 12)
+  assert.equal(output.result.parameters.jointConfiguratorMode, 'auto')
+  assert.equal(Object.isFrozen(output), true)
+  assert.equal(progress.at(-1).phase, 'done')
+  assert.equal(progress.at(-1).fraction, 1)
+})
+
+test('application owns form-derived fabrication, material and weather preview', () => {
+  const preview = previewProjectConfiguration(compactInput)
+  const result = calculateProject(compactInput)
+
+  assert.equal(preview.geometry.ribCutLengthMm, result.parameters.ribCutLengthMm)
+  assert.equal(preview.geometry.moduleHeightMm, result.parameters.moduleHeightMm)
+  assert.equal(preview.geometry.mastHeightM, result.parameters.moduleHeightMm / 1000)
+  assert.equal(preview.material.id, result.parameters.reinforcementClass)
+  assert.equal(preview.material.standard, result.parameters.reinforcementStandard)
+  assert.equal(preview.material.yieldStrengthMPa, result.parameters.yieldStrengthMPa)
+  assert.equal(preview.weather.pressurePa, result.parameters.windPressurePa)
+  assert.equal(preview.weather.speedMs, result.parameters.windSpeedMs)
+  assert.equal(preview.weather.custom, true)
+  assert.equal(Object.isFrozen(preview), true)
+})
+
+test('application owns rib fabrication preview used by adapters', () => {
+  const preview = previewRibFabrication(compactInput)
+  const result = calculateProject(compactInput)
+
+  assert.equal(preview.diameterMm, result.parameters.barDiameterMm)
+  assert.equal(preview.ribCutLengthMm, result.parameters.ribCutLengthMm)
+  assert.equal(preview.massPerMeterKg, result.assemblyMass.rib.massPerMeterKg)
+  assert.equal(preview.ribMassKg, result.assemblyMass.rib.massKg)
+  assert.equal(Object.isFrozen(preview), true)
+})
+
+test('application builds a versioned immutable design package without browser storage', () => {
+  const result = calculateProject(compactInput)
+  const designPackage = createDesignPackage(result, {
+    createdAt: '2026-08-08T00:00:00.000Z',
+    repository: 'netkeep80/mast-calculator',
+    ref: 'test',
+    sha: 'deadbeef',
+  })
+
+  assert.equal(designPackage.schema, 'mast-calculator/design-package/v1')
+  assert.equal(designPackage.source.ref, 'test')
+  assert.equal(designPackage.source.sha, 'deadbeef')
+  assert.equal(designPackage.result.parameters.moduleCount, 1)
+  assert.equal(Object.isFrozen(designPackage), true)
+  assert.equal(Object.isFrozen(designPackage.result), true)
+})
+
+test('application owns joint configuration options and physical preview', () => {
+  const options = getJointConfigurationOptions()
+  const preview = previewJointConfiguration(compactInput)
+  const clearance = getJointClearanceNutOptions(preview.geometry.bolt.diameterMm)
+
+  assert.ok(options.boltLengthsMm.length > 0)
+  assert.ok(clearance.some((item) => item.threadDiameterMm === preview.geometry.bottomClearanceNut.threadDiameterMm))
+  assert.ok(preview.strength.maximumPreloadN > 0)
+  assert.ok(preview.strength.minimumNutSectionRatio > 0)
+  assert.equal(Object.isFrozen(preview), true)
+})
+
+test('manual joint preview exactly matches the geometry and preload used by canonical calculation', () => {
+  const manualInput = createProjectInput({
+    ...compactInput,
+    geometry: { ...compactInput.geometry, moduleCount: 2 },
+    connection: { ...compactInput.connection, configuratorMode: 'manual' },
+  })
+  const preview = previewJointConfiguration(manualInput)
+  const result = calculateProject(manualInput)
+
+  assert.equal(result.connections.configurator.mode, 'manual')
+  assert.deepEqual(preview.geometry, result.connections.configurator.geometry)
+  assert.equal(preview.strength.minimumNutSectionRatio, result.connections.nutSections.minimumRatio)
+  assert.equal(preview.strength.requiredNutSectionRatio, result.connections.nutSections.requiredRatio)
+  assert.equal(
+    preview.strength.maximumPreloadN,
+    result.connections.bolt.selected.governingCheck.preload.maximumPreloadN,
+  )
 })

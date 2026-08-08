@@ -33,7 +33,7 @@ const FAST_ENVIRONMENT = Object.freeze({
   windPresetId: 'custom',
   windPressurePa: 250,
   windEnvelopeEnabled: false,
-  lateralCapacityStepDeg: 90,
+  lateralCapacityStepDeg: 60,
 })
 const FAST_CRITERIA = Object.freeze({ heightSearchMaxModules: 2 })
 

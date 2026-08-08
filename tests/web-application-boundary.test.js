@@ -100,14 +100,15 @@ test('all Web JavaScript stays above engineering, numerics and structural-analys
     'guy-project-state.js',
     'guy-result-panel.js',
     'main-project-form.js',
-    'procurement-export.js',
     'project-form-dom.js',
     'project-form.js',
     'project-package-ui.js',
+    'reports-exports.js',
     'result-channel.js',
+    'result-tabs.js',
     'usage-scenarios.js',
     'web-state.js',
-    'workspace-shell.js',
+    'workspace-behavior.js',
   ]
   for (const file of webFiles) {
     assert.doesNotMatch(
@@ -115,5 +116,8 @@ test('all Web JavaScript stays above engineering, numerics and structural-analys
       /packages\/(?:engineering|numerics|structural-analysis)\//,
       `${file} must use application/public presentation packages instead of lower engineering layers`,
     )
+  }
+  for (const removed of ['procurement-export.js', 'workspace-shell.js']) {
+    assert.equal(fs.existsSync(path.join(sourceRoot, 'apps', 'web', removed)), false, `${removed} must stay deleted`)
   }
 })

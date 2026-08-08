@@ -35,6 +35,23 @@ test('builds importers, exports and line counts across packages and web adapter'
   assert.deepEqual(evaluatePolicy(report, {}), [])
 })
 
+test('TypeScript source is audited and NodeNext .js specifiers resolve to .ts files', () => {
+  const root = fixture({
+    'packages/domain/index.ts': "export { b } from './src/b.js'\n",
+    'packages/domain/src/b.ts': 'export interface Shape { value: number }\nexport const b = 1\n',
+    'packages/application/index.ts': "export { a } from './src/a.js'\n",
+    'packages/application/src/a.ts': "import { b } from '../../domain/index.js'\nexport const a = b + 1\n",
+  })
+  const report = analyzeRepository(root)
+  assert.equal(report.productionModuleCount, 4)
+  assert.deepEqual(
+    report.modules.find((item) => item.path === 'packages/domain/src/b.ts').importers,
+    ['packages/domain/index.ts'],
+  )
+  assert.deepEqual(report.modules.find((item) => item.path === 'packages/domain/src/b.ts').exports, ['Shape', 'b'])
+  assert.deepEqual(evaluatePolicy(report, {}), [])
+})
+
 test('negative fixture detects a circular dependency', () => {
   const root = fixture({
     'packages/engineering/src/a.js': "import './b.js'\nexport const a = 1\n",

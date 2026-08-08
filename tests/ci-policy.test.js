@@ -150,7 +150,7 @@ test('static-site smoke serves static Web UI 2.0 and public package APIs', () =>
     'packages/reporting/index.js',
   ]) assert.ok(ci.includes(modulePath), `ci.yml smoke missing ${modulePath}`)
   assert.match(ci, /<title>Калькулятор мачты<\/title>/)
-  assert.match(ci, /<body data-web-ui=\\"2\.0\\">/)
+  assert.ok(ci.includes('<body data-web-ui="2.0">'))
   assert.match(ci, /legacy scenario-first hero returned/)
   assert.match(ci, /hardcoded prototype version returned/)
   assert.match(ci, /legacy design URL no longer redirects to Reports/)

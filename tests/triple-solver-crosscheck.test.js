@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import path from 'node:path'
 import test from 'node:test'
-import {
-  DEFAULT_PARAMETERS,
-  resolveCalculationParameters,
-} from '../packages/application/index.js'
+import { fileURLToPath } from 'node:url'
 import { generateMastModel } from '../packages/structural-analysis/index.js'
 import { buildLoadCase } from '../packages/structural-analysis/index.js'
 import { compileModuleStack, solveModuleStack } from '../packages/structural-analysis/index.js'
@@ -13,7 +11,10 @@ import {
   compileIndependentDenseSystem,
 } from '../packages/structural-analysis/testing.js'
 import { analyzeFrame, compileFrameSystem } from '../packages/structural-analysis/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
+const runtimeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const sourceRoot = path.basename(runtimeRoot) === '.build' ? path.dirname(runtimeRoot) : runtimeRoot
 const flatten = (values) => values.flatMap((value) => value)
 const maxAbs = (values) => Math.max(0, ...values.map((value) => Math.abs(value)))
 const pointLoadAt = (forceN, directionDeg, verticalDownN = 0) => {
@@ -59,8 +60,7 @@ function memberForceVector(globalAnalysis) {
 }
 
 function runThreeWays(overrides, { compareBuckling = false, topPointLoadN = [0, 0, 0] } = {}) {
-  const parameters = resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
+  const parameters = resolvedProject({
     windPresetId: 'custom',
     windEnvelopeEnabled: false,
     ...overrides,
@@ -136,10 +136,10 @@ function assertBucklingIdentity(state) {
 }
 
 test('третий solver действительно независим от production global/Schur implementation', () => {
-  const source = fs.readFileSync(new URL('../packages/structural-analysis/src/reference-frame.js', import.meta.url), 'utf8')
+  const source = fs.readFileSync(path.join(sourceRoot, 'packages/structural-analysis/src/reference-frame.ts'), 'utf8')
   assert.doesNotMatch(source, /from ['"]\.\/solver\.js['"]/)
   assert.doesNotMatch(source, /from ['"]\.\/module-stack\.js['"]/)
-  assert.doesNotMatch(source, /from ['"]\.\/banded\.js['"]/)
+  assert.doesNotMatch(source, /from ['"]\.\.\/\.\.\/numerics\/src\/banded\.js['"]/)
   assert.match(source, /independent-dense-gaussian-reference-v1/)
 })
 

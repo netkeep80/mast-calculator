@@ -1,12 +1,17 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-const SOURCE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs'])
-const STATIC_IMPORT_RE = /(?:^|\n)\s*import\s+(?:[^'";]+?\s+from\s+)?['"]([^'"]+)['"]/g
-const EXPORT_FROM_RE = /(?:^|\n)\s*export\s+(?:\*|\{[^}]*\})\s+from\s+['"]([^'"]+)['"]/g
+const SOURCE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'])
+const TYPESCRIPT_BY_RUNTIME_EXTENSION = Object.freeze({
+  '.js': '.ts',
+  '.mjs': '.mts',
+  '.cjs': '.cts',
+})
+const STATIC_IMPORT_RE = /(?:^|\n)\s*import\s+(?:type\s+)?(?:[^'";]+?\s+from\s+)?['"]([^'"]+)['"]/g
+const EXPORT_FROM_RE = /(?:^|\n)\s*export\s+(?:type\s+)?(?:\*|\{[^}]*\})\s+from\s+['"]([^'"]+)['"]/g
 const DYNAMIC_IMPORT_RE = /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g
-const EXPORT_DECL_RE = /(?:^|\n)\s*export\s+(?:async\s+)?(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/g
-const EXPORT_LIST_RE = /(?:^|\n)\s*export\s*\{([^}]+)\}(?!\s*from)/g
+const EXPORT_DECL_RE = /(?:^|\n)\s*export\s+(?:declare\s+)?(?:async\s+)?(?:const|let|var|function|class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/g
+const EXPORT_LIST_RE = /(?:^|\n)\s*export\s*(?:type\s*)?\{([^}]+)\}(?!\s*from)/g
 const NODE_PROCESS_ACCESS_RE = /\bprocess\s*(?:\?\.|\.|\[)/
 
 const ENVIRONMENT_GLOBALS = [
@@ -48,7 +53,7 @@ function walk(root, relative = '') {
   if (!fs.existsSync(directory)) return []
   const files = []
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === '_site') continue
+    if (entry.name === '.git' || entry.name === 'node_modules' || entry.name === '_site' || entry.name === '.build') continue
     const child = path.join(relative, entry.name)
     if (entry.isDirectory()) files.push(...walk(root, child))
     else files.push(normalizePath(child))
@@ -134,11 +139,20 @@ function parseExports(source) {
   return [...names].sort()
 }
 
+function sourceSiblingForRuntimeSpecifier(base) {
+  const extension = path.posix.extname(base)
+  const sourceExtension = TYPESCRIPT_BY_RUNTIME_EXTENSION[extension]
+  if (!sourceExtension) return null
+  return `${base.slice(0, -extension.length)}${sourceExtension}`
+}
+
 function resolveRelativeImport(fromFile, specifier, knownFiles) {
   if (!specifier.startsWith('.')) return null
   const base = path.posix.normalize(path.posix.join(path.posix.dirname(fromFile), specifier))
+  const sourceSibling = sourceSiblingForRuntimeSpecifier(base)
   const candidates = [
     base,
+    ...(sourceSibling ? [sourceSibling] : []),
     ...[...SOURCE_EXTENSIONS].map((extension) => `${base}${extension}`),
     ...[...SOURCE_EXTENSIONS].map((extension) => `${base}/index${extension}`),
   ]
@@ -227,8 +241,8 @@ function isProductionFile(file) {
 }
 
 function isPublicPackageEntrypoint(file) {
-  if (/^packages\/[^/]+\/index\.js$/.test(file)) return true
-  return file === 'packages/structural-analysis/testing.js'
+  if (/^packages\/[^/]+\/(?:index|contracts)\.(?:js|ts|mjs|mts|cjs|cts)$/.test(file)) return true
+  return /^packages\/structural-analysis\/testing\.(?:js|ts|mjs|mts|cjs|cts)$/.test(file)
 }
 
 export function analyzeRepository(root) {
@@ -264,7 +278,7 @@ export function analyzeRepository(root) {
 
   for (const module of modules) module.importers = [...(importers.get(module.path) ?? [])].sort()
   const tests = allFiles
-    .filter((file) => file.startsWith('tests/') && /\.test\.(?:js|mjs|cjs)$/i.test(file))
+    .filter((file) => file.startsWith('tests/') && /\.test\.(?:js|mjs|cjs|ts|mts|cts)$/i.test(file))
     .sort()
     .map((file) => ({ path: file, category: classifyTest(file) }))
 
@@ -365,22 +379,19 @@ export function evaluatePolicy(report, baseline = {}) {
   ))
 }
 
-export function reportToMarkdown(report, violations = []) {
-  const rows = report.modules.map((module) => (
-    `| \`${module.path}\` | ${module.layer} | ${module.lines} | ${module.importers.length} | ${module.imports.filter((item) => item.relative).length} | ${module.exports.length} | ${[...module.environment.globals, ...module.environment.nodeImports].join(', ') || '—'} |`
-  ))
-  const cycleText = report.cycles.length
-    ? report.cycles.map((cycle) => `- ${cycle.map((item) => `\`${item}\``).join(' → ')}`).join('\n')
-    : '- none'
-  const violationText = violations.length
-    ? violations.map((item) => `- **${item.type}** \`${item.path}\`: ${item.detail}`).join('\n')
-    : '- none'
-  const testText = report.tests.length
-    ? report.tests.map((item) => `- \`${item.path}\` — ${item.category}`).join('\n')
-    : '- none'
-  const packageCounts = PACKAGE_ORDER.map((name) => {
-    const count = report.modules.filter((module) => module.layer === name).length
-    return `- ${name}: **${count}** modules`
-  }).join('\n')
-  return `# Generated architecture snapshot\n\nGenerated: ${report.generatedAt}\n\n- production modules: **${report.productionModuleCount}**\n- production LOC: **${report.productionLineCount}**\n- tests: **${report.tests.length}**\n- detected cycles: **${report.cycles.length}**\n- policy violations outside baseline: **${violations.length}**\n\n## Package counts\n\n${packageCounts}\n\n## Modules\n\n| module | current layer | LOC | importers | relative deps | exports | environment |\n|---|---:|---:|---:|---:|---:|---|\n${rows.join('\n')}\n\n## Cycles\n\n${cycleText}\n\n## Policy violations\n\n${violationText}\n\n## Test inventory\n\n${testText}\n`
+export function createArchitectureSnapshot(report, baseline = {}) {
+  const violations = evaluatePolicy(report, baseline)
+  return {
+    schema: 'mast-calculator/architecture-audit/v2',
+    generatedAt: report.generatedAt,
+    packageOrder: PACKAGE_ORDER,
+    productionModuleCount: report.productionModuleCount,
+    productionLineCount: report.productionLineCount,
+    cycleCount: report.cycles.length,
+    cycles: report.cycles,
+    environmentExceptionCount: (baseline.environmentExceptions ?? []).length,
+    testCategoryCounts: report.testCategoryCounts,
+    violations,
+    modules: report.modules,
+  }
 }

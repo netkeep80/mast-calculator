@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS } from '../packages/application/index.js'
 import { buildLoadCase } from '../packages/structural-analysis/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 const approximately = (actual, expected, relative = 1e-10, absolute = 1e-10) => {
   const tolerance = Math.max(absolute, Math.abs(expected) * relative)
@@ -36,12 +36,11 @@ const quietEquipment = {
 
 test('ветер вдоль оси цилиндрического ребра не создаёт аэродинамической нагрузки', () => {
   const model = oneMemberModel([1, 0, 0])
-  const loads = buildLoadCase(model, {
-    ...DEFAULT_PARAMETERS,
+  const loads = buildLoadCase(model, resolvedProject({
     ...quietEquipment,
     windDirectionDeg: 0,
     iceThicknessMm: 0,
-  })
+  }))
   approximately(loads.memberWindN, 0)
   approximately(loads.memberDistributedLoads[0][0], 0)
   approximately(loads.memberDistributedLoads[0][1], 0)
@@ -51,12 +50,11 @@ test('ветер перпендикулярно ребру даёт q = p·cd·d
   const lengthM = 2
   const diameterM = 0.012
   const model = oneMemberModel([1, 0, 0], lengthM, diameterM)
-  const parameters = {
-    ...DEFAULT_PARAMETERS,
+  const parameters = resolvedProject({
     ...quietEquipment,
     windDirectionDeg: 90,
     iceThicknessMm: 0,
-  }
+  })
   const loads = buildLoadCase(model, parameters)
   const expectedPerM = parameters.windPressurePa
     * parameters.dragCoefficient
@@ -72,11 +70,10 @@ test('наклон ребра уменьшает ветер согласно н�
   const lengthM = 1.5
   const diameterM = 0.012
   const model = oneMemberModel([invSqrt2, invSqrt2, 0], lengthM, diameterM)
-  const parameters = {
-    ...DEFAULT_PARAMETERS,
+  const parameters = resolvedProject({
     ...quietEquipment,
     windDirectionDeg: 0,
-  }
+  })
   const loads = buildLoadCase(model, parameters)
   const fullPerM = parameters.windPressurePa
     * parameters.dragCoefficient
@@ -89,12 +86,11 @@ test('собственный вес стержня совпадает с ρA L g
   const lengthM = 1.8
   const diameterM = 0.016
   const model = oneMemberModel([1, 0, 0], lengthM, diameterM)
-  const parameters = {
-    ...DEFAULT_PARAMETERS,
+  const parameters = resolvedProject({
     ...quietEquipment,
     windPressurePa: 0,
     iceThicknessMm: 0,
-  }
+  })
   const loads = buildLoadCase(model, parameters)
   const areaM2 = Math.PI * diameterM ** 2 / 4
   const expectedN = 7850 * areaM2 * lengthM * 9.80665 * parameters.deadLoadFactor
@@ -107,12 +103,11 @@ test('собственный вес стержня совпадает с ρA L g
 test('слой льда увеличивает наружный диаметр, массу и ветровую нагрузку', () => {
   const model = oneMemberModel([1, 0, 0], 2, 0.012)
   const common = {
-    ...DEFAULT_PARAMETERS,
     ...quietEquipment,
     windDirectionDeg: 90,
   }
-  const clean = buildLoadCase(model, { ...common, iceThicknessMm: 0 })
-  const iced = buildLoadCase(model, { ...common, iceThicknessMm: 8 })
+  const clean = buildLoadCase(model, resolvedProject({ ...common, iceThicknessMm: 0 }))
+  const iced = buildLoadCase(model, resolvedProject({ ...common, iceThicknessMm: 8 }))
 
   assert.ok(iced.iceWeightN > 0)
   assert.ok(iced.memberWindN > clean.memberWindN)
@@ -125,12 +120,11 @@ test('вес и ветер оборудования распределяются
     members: [],
     topNodeIds: [0, 1, 2],
   }
-  const parameters = {
-    ...DEFAULT_PARAMETERS,
+  const parameters = resolvedProject({
     equipmentMassKg: 30,
     equipmentWindAreaM2: 1,
     windDirectionDeg: 0,
-  }
+  })
   const loads = buildLoadCase(model, parameters)
   const expectedWind = parameters.windPressurePa * parameters.equipmentDragCoefficient * parameters.windLoadFactor
   const expectedWeight = parameters.equipmentMassKg * 9.80665 * parameters.equipmentLoadFactor
@@ -147,12 +141,11 @@ test('внутренняя нормированная сила передаёт�
     members: [],
     topNodeIds: [0, 1, 2],
   }
-  const parameters = {
-    ...DEFAULT_PARAMETERS,
+  const parameters = resolvedProject({
     windPressurePa: 0,
     equipmentMassKg: 0,
     equipmentWindAreaM2: 0,
-  }
+  })
   const loads = buildLoadCase(model, parameters, { topPointLoadN: [12, -6, 3] })
 
   for (const load of loads.nodalLoads) {
@@ -163,20 +156,13 @@ test('внутренняя нормированная сила передаёт�
   assert.deepEqual(loads.topPointLoadN, [12, -6, 3])
 })
 
-test('legacy extraHorizontal/extraVertical больше не влияют на пользовательский load case', () => {
-  const model = oneMemberModel([0, 0, 1], 1, 0.012)
-  const common = {
-    ...DEFAULT_PARAMETERS,
-    windPressurePa: 0,
-    equipmentMassKg: 0,
-    equipmentWindAreaM2: 0,
-  }
-  const clean = buildLoadCase(model, common)
-  const legacy = buildLoadCase(model, {
-    ...common,
-    extraHorizontalLoadN: 12345,
-    extraVerticalLoadN: 67890,
-  })
-  assert.deepEqual(legacy.totalAppliedLoad, clean.totalAppliedLoad)
-  assert.deepEqual(legacy.nodalLoads, clean.nodalLoads)
+test('legacy extraHorizontal/extraVertical запрещены уже на fixture boundary', () => {
+  assert.throws(
+    () => resolvedProject({ extraHorizontalLoadN: 12345 }),
+    /derived\/internal ResolvedProject field: extraHorizontalLoadN/,
+  )
+  assert.throws(
+    () => resolvedProject({ extraVerticalLoadN: 67890 }),
+    /derived\/internal ResolvedProject field: extraVerticalLoadN/,
+  )
 })

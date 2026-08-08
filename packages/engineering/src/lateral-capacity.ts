@@ -1,0 +1,248 @@
+import type { ResolvedProject } from '../../domain/contracts.js'
+import { DEFAULT_LATERAL_CAPACITY_STEP_DEG } from '../../domain/index.js'
+export { DEFAULT_LATERAL_CAPACITY_STEP_DEG } from '../../domain/index.js'
+import {
+  evaluateBoltSystemForAnalysis,
+  selectedBoltUtilizationForAnalysis,
+} from './connection-check.js'
+import {
+  buildLoadCase,
+  compileFrameSystem,
+  type GeneratedMastModel,
+} from '../../structural-analysis/index.js'
+import { analyzeCheckedFrame } from './member-check.js'
+
+export const STANDARD_GRAVITY_M_S2 = 9.80665
+const ROTATIONAL_SYMMETRY_DEG = 120
+const MIN_COMPRESSION_FOR_GLOBAL_BUCKLING_N = 1e-9
+
+type FrameSystem = ReturnType<typeof compileFrameSystem>
+type CheckedAnalysis = ReturnType<typeof analyzeCheckedFrame>
+type LateralCase = ReturnType<typeof evaluateDirection>
+
+export interface CapacityProgress {
+  stage: string
+  completed: number
+  total: number
+  directionDeg: number
+}
+
+export interface LateralCapacityOptions {
+  stepDeg?: number
+  frameSystem?: FrameSystem
+  onProgress?: (progress: CapacityProgress) => void
+}
+
+export function lateralDirections(stepDeg: unknown): number[] {
+  const step = Number(stepDeg)
+  if (!Number.isFinite(step) || step <= 0 || step > 60) {
+    throw new Error('Шаг расчёта боковой нагрузки должен быть от 0 до 60°')
+  }
+  const values: number[] = []
+  for (let angle = 0; angle < ROTATIONAL_SYMMETRY_DEG - step / 1000; angle += step) values.push(angle)
+  return values
+}
+
+function pureUnitLateralParameters(parameters: ResolvedProject, directionDeg: number): ResolvedProject {
+  return {
+    ...parameters,
+    deadLoadFactor: 0,
+    windPressurePa: 0,
+    windPresetId: 'custom',
+    windDirectionDeg: directionDeg,
+    windEnvelopeEnabled: false,
+    equipmentMassKg: 0,
+    equipmentWindAreaM2: 0,
+    iceThicknessMm: 0,
+  }
+}
+
+function unitTopPointLoad(directionDeg: number): [number, number, number] {
+  const radians = directionDeg * Math.PI / 180
+  return [Math.cos(radians), Math.sin(radians), 0]
+}
+
+function governingMemberLimit(analysis: CheckedAnalysis) {
+  let critical = analysis.memberResults[0]
+  for (const candidate of analysis.memberResults) {
+    const candidateUtilization = candidate.utilization ?? 0
+    const criticalUtilization = critical?.utilization ?? Number.NEGATIVE_INFINITY
+    if (!critical || candidateUtilization > criticalUtilization) critical = candidate
+  }
+  if (!critical) {
+    return {
+      forceN: Number.POSITIVE_INFINITY,
+      memberId: null,
+      mode: 'none' as const,
+      unitUtilization: 0,
+    }
+  }
+  const utilization = critical.utilization ?? 0
+  if (!(utilization > Number.EPSILON)) {
+    return {
+      forceN: Number.POSITIVE_INFINITY,
+      memberId: critical.memberId ?? null,
+      mode: 'none' as const,
+      unitUtilization: utilization,
+    }
+  }
+  const mode = (critical.bucklingUtilization ?? 0) >= (critical.stressUtilization ?? 0)
+    ? 'local-member-buckling' as const
+    : 'material-strength' as const
+  return {
+    forceN: 1 / utilization,
+    memberId: critical.memberId,
+    mode,
+    unitUtilization: utilization,
+  }
+}
+
+function meaningfulCompressionN(analysis: CheckedAnalysis): number {
+  return Math.max(
+    0,
+    ...analysis.memberResults.map((member) => Math.max(0, -(member.maxCompressionN ?? 0))),
+  )
+}
+
+function selectedBoltExternalLoadFactor(
+  model: GeneratedMastModel,
+  analysis: CheckedAnalysis,
+  parameters: ResolvedProject,
+): number {
+  const evaluation = evaluateBoltSystemForAnalysis(model, analysis, parameters)
+  if (!evaluation.applicable) return Number.POSITIVE_INFINITY
+  if (evaluation.geometry?.passes === false || evaluation.nutSections?.passes === false) return 0
+  return Math.min(...evaluation.checks.map(({ check }) => check.loadFactorToDesignLimit))
+}
+
+function governingMode(memberLimitN: number, globalBucklingN: number, boltLimitN: number) {
+  const minimum = Math.min(memberLimitN, globalBucklingN, boltLimitN)
+  if (boltLimitN <= minimum + 1e-12) return 'bolt-connection' as const
+  if (globalBucklingN <= minimum + 1e-12) return 'global-buckling' as const
+  return null
+}
+
+function evaluateDirection(
+  model: GeneratedMastModel,
+  parameters: ResolvedProject,
+  directionDeg: number,
+  frameSystem: FrameSystem,
+) {
+  const unitParameters = pureUnitLateralParameters(parameters, directionDeg)
+  const loads = buildLoadCase(model, unitParameters, {
+    topPointLoadN: unitTopPointLoad(directionDeg),
+  })
+  const analysis = analyzeCheckedFrame(model, loads, unitParameters, frameSystem)
+  const memberLimit = governingMemberLimit(analysis)
+  const unitCompressionN = meaningfulCompressionN(analysis)
+  const globalBucklingForceN = unitCompressionN > MIN_COMPRESSION_FOR_GLOBAL_BUCKLING_N
+    ? analysis.buckling.criticalLoadFactor
+    : Number.POSITIVE_INFINITY
+  const boltUnitUtilization = selectedBoltUtilizationForAnalysis(model, analysis, unitParameters)
+  const boltLimitForceN = selectedBoltExternalLoadFactor(model, analysis, unitParameters)
+  const criticalForceN = Math.min(memberLimit.forceN, globalBucklingForceN, boltLimitForceN)
+  const connectionOrBucklingMode = governingMode(
+    memberLimit.forceN,
+    globalBucklingForceN,
+    boltLimitForceN,
+  )
+  const mode = connectionOrBucklingMode ?? memberLimit.mode
+
+  return {
+    directionDeg,
+    criticalForceN,
+    criticalForceKgf: criticalForceN / STANDARD_GRAVITY_M_S2,
+    idealizedCraneBoomPayloadKg: criticalForceN / STANDARD_GRAVITY_M_S2,
+    memberLimitForceN: memberLimit.forceN,
+    memberLimitForceKgf: memberLimit.forceN / STANDARD_GRAVITY_M_S2,
+    memberLimitMode: memberLimit.mode,
+    globalBucklingForceN,
+    globalBucklingForceKgf: globalBucklingForceN / STANDARD_GRAVITY_M_S2,
+    boltLimitForceN,
+    boltLimitForceKgf: boltLimitForceN / STANDARD_GRAVITY_M_S2,
+    boltUnitUtilization,
+    governingMode: mode,
+    criticalMemberId: memberLimit.memberId,
+    unitUtilization: memberLimit.unitUtilization,
+    unitCompressionN,
+    unitTopDisplacementM: analysis.maxTopDisplacementM,
+    estimatedTopDisplacementAtLimitM: Number.isFinite(criticalForceN)
+      ? analysis.maxTopDisplacementM * criticalForceN
+      : Number.POSITIVE_INFINITY,
+    eigenResidual: analysis.buckling.residual,
+  }
+}
+
+function minimumCaseBy(
+  cases: readonly LateralCase[],
+  selector: (item: LateralCase) => number,
+): LateralCase {
+  const first = cases[0]
+  if (!first) throw new Error('Не сформирован ни один расчётный случай боковой нагрузки')
+  let best = first
+  for (const candidate of cases.slice(1)) {
+    if (selector(candidate) < selector(best)) best = candidate
+  }
+  return best
+}
+
+export function calculateLateralCapacity(
+  model: GeneratedMastModel,
+  parameters: ResolvedProject,
+  options: LateralCapacityOptions = {},
+) {
+  if (!model.members.length || !model.topNodeIds.length) {
+    throw new Error('Для расчёта боковой нагрузки нужна frame-модель с вершиной')
+  }
+  const stepDeg = options.stepDeg ?? parameters.lateralCapacityStepDeg
+    ?? DEFAULT_LATERAL_CAPACITY_STEP_DEG
+  const directionValues = lateralDirections(stepDeg)
+  const frameSystem = options.frameSystem ?? compileFrameSystem(model, parameters)
+  const cases: LateralCase[] = []
+  for (let index = 0; index < directionValues.length; index += 1) {
+    const direction = directionValues[index]!
+    cases.push(evaluateDirection(model, parameters, direction, frameSystem))
+    options.onProgress?.({
+      stage: 'lateral',
+      completed: index + 1,
+      total: directionValues.length,
+      directionDeg: direction,
+    })
+  }
+
+  const governing = minimumCaseBy(cases, (item) => item.criticalForceN)
+  const memberGoverning = minimumCaseBy(cases, (item) => item.memberLimitForceN)
+  const globalBucklingGoverning = minimumCaseBy(cases, (item) => item.globalBucklingForceN)
+  const boltGoverning = minimumCaseBy(cases, (item) => item.boltLimitForceN)
+
+  return {
+    method: 'unit-horizontal-tip-load-linear-v4-fixed-preload-scaling' as const,
+    stepDeg,
+    symmetrySectorDeg: ROTATIONAL_SYMMETRY_DEG,
+    forceApplication: 'внутренняя нормированная сила 1 Н горизонтально, поровну между тремя узлами верхней треугольной грани',
+    excludedLoads: 'ветер, лёд, собственный вес и оборудование',
+    craneBoomInterpretation: 'Эквивалентная масса концевого груза для идеализированной консольной стрелы получается как Flim/g. Это поперечный unit-load предел без собственного веса горизонтально ориентированной стрелы и не является паспортной грузоподъёмностью крана.',
+    cases,
+    governing,
+    memberGoverning,
+    globalBucklingGoverning,
+    boltGoverning,
+    criticalForceN: governing.criticalForceN,
+    criticalForceKgf: governing.criticalForceKgf,
+    idealizedCraneBoomPayloadKg: governing.idealizedCraneBoomPayloadKg,
+    governingMode: governing.governingMode,
+    directionDeg: governing.directionDeg,
+    criticalMemberId: governing.criticalMemberId,
+    memberLimitForceN: memberGoverning.memberLimitForceN,
+    memberLimitForceKgf: memberGoverning.memberLimitForceKgf,
+    memberLimitMode: memberGoverning.memberLimitMode,
+    memberLimitDirectionDeg: memberGoverning.directionDeg,
+    memberLimitCriticalMemberId: memberGoverning.criticalMemberId,
+    globalBucklingForceN: globalBucklingGoverning.globalBucklingForceN,
+    globalBucklingForceKgf: globalBucklingGoverning.globalBucklingForceKgf,
+    globalBucklingDirectionDeg: globalBucklingGoverning.directionDeg,
+    boltLimitForceN: boltGoverning.boltLimitForceN,
+    boltLimitForceKgf: boltGoverning.boltLimitForceKgf,
+    boltLimitDirectionDeg: boltGoverning.directionDeg,
+  }
+}

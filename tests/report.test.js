@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS } from '../packages/application/index.js'
 import { createCalculationProjectHtml } from '../packages/reporting/index.js'
 import { calculateCompleteMastWithConfiguredJoint } from '../packages/application/index.js'
 import {
@@ -10,9 +9,9 @@ import {
   createCalculationExport,
   createCalculationJson,
 } from '../packages/reporting/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
-const parameters = {
-  ...DEFAULT_PARAMETERS,
+const parameters = resolvedProject({
   moduleCount: 2,
   heightSearchMaxModules: 10,
   windEnvelopeEnabled: true,
@@ -24,7 +23,7 @@ const parameters = {
   jointPreloadVariation: 0.25,
   jointNutSectionAreaRatio: 2,
   weldToRibAreaRatio: 2.5,
-}
+})
 
 const result = calculateCompleteMastWithConfiguredJoint(parameters)
 

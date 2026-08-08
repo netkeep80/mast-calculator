@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS, calculateMast } from '../packages/application/index.js'
+import { calculateMast } from '../packages/application/index.js'
 import { analyzeCheckedFrame } from '../packages/engineering/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 const approximately = (actual, expected, relative = 1e-9, absolute = 1e-12) => {
   const tolerance = Math.max(absolute, Math.abs(expected) * relative)
@@ -62,11 +63,7 @@ function frameLoadCase(model, { nodalLoads, distributedLoads } = {}) {
   }
 }
 
-const frameParameters = {
-  ...DEFAULT_PARAMETERS,
-  materialSafetyFactor: 1,
-  effectiveLengthFactor: 0.5,
-}
+const frameParameters = resolvedProject({ materialSafetyFactor: 1 })
 
 test('frame: одиночный стержень на растяжение совпадает с δ = FL/(EA)', () => {
   const model = singleBeamModel({ lengthM: 2, diameterM: 0.01 })
@@ -147,7 +144,7 @@ test('frame: чистое осевое растяжение не создаёт 
 })
 
 test('frame: глобальное равновесие силы мачты соблюдается', () => {
-  const result = calculateMast({ ...DEFAULT_PARAMETERS, moduleCount: 2, windEnvelopeEnabled: false, windDirectionDeg: 20 })
+  const result = calculateMast(resolvedProject({ moduleCount: 2, windEnvelopeEnabled: false, windDirectionDeg: 20 }))
   const reaction = result.analysis.reactions.reduce(
     (sum, value) => [sum[0] + value[0], sum[1] + value[1], sum[2] + value[2]],
     [0, 0, 0],
@@ -158,13 +155,13 @@ test('frame: глобальное равновесие силы мачты со�
 })
 
 test('frame: глобальное равновесие моментов мачты контролируется', () => {
-  const result = calculateMast({ ...DEFAULT_PARAMETERS, moduleCount: 2, windEnvelopeEnabled: false, windDirectionDeg: 37 })
+  const result = calculateMast(resolvedProject({ moduleCount: 2, windEnvelopeEnabled: false, windDirectionDeg: 37 }))
   assert.ok(result.analysis.diagnostics.globalMomentResidual < 1e-8)
 })
 
 test('обледенение увеличивает вертикальную и ветровую нагрузку', () => {
-  const base = calculateMast({ ...DEFAULT_PARAMETERS, moduleCount: 1, windEnvelopeEnabled: false, iceThicknessMm: 0 })
-  const iced = calculateMast({ ...DEFAULT_PARAMETERS, moduleCount: 1, windEnvelopeEnabled: false, iceThicknessMm: 10 })
+  const base = calculateMast(resolvedProject({ moduleCount: 1, windEnvelopeEnabled: false, iceThicknessMm: 0 }))
+  const iced = calculateMast(resolvedProject({ moduleCount: 1, windEnvelopeEnabled: false, iceThicknessMm: 10 }))
   assert.ok(iced.loads.iceWeightN > 0)
   assert.ok(Math.abs(iced.loads.totalAppliedLoad[2]) > Math.abs(base.loads.totalAppliedLoad[2]))
   assert.ok(iced.loads.memberWindN > base.loads.memberWindN)
@@ -172,24 +169,22 @@ test('обледенение увеличивает вертикальную и 
 
 test('ветер вдоль оси отдельного цилиндрического ребра не создаёт поперечной распределённой силы', () => {
   const model = singleBeamModel({ lengthM: 2, axis: [1, 0, 0] })
-  const result = analyzeCheckedFrame(model, frameLoadCase(model), { ...DEFAULT_PARAMETERS, windDirectionDeg: 0, iceThicknessMm: 0 })
+  const result = analyzeCheckedFrame(model, frameLoadCase(model), resolvedProject({ windDirectionDeg: 0, iceThicknessMm: 0 }))
   assert.ok(result.memberResults[0].maxShearN < 1e-10)
 })
 
 test('огибающая перебирает заданные направления ветра', () => {
-  const result = calculateMast({ ...DEFAULT_PARAMETERS, moduleCount: 1, windEnvelopeEnabled: true, windEnvelopeStepDeg: 90 })
+  const result = calculateMast(resolvedProject({ moduleCount: 1, windEnvelopeEnabled: true, windEnvelopeStepDeg: 90 }))
   assert.equal(result.envelope.caseCount, 4)
   assert.equal(result.cases.length, 4)
   assert.ok(result.cases.every((loadCase) => loadCase.analysis.degreesOfFreedomPerNode === 6))
 })
 
 test('расчёт мачты использует v1.1, banded global solver и модульный Schur cross-check', () => {
-  const result = calculateMast({
-    ...DEFAULT_PARAMETERS,
+  const result = calculateMast(resolvedProject({
     moduleCount: 2,
     windEnvelopeEnabled: false,
-    effectiveLengthFactor: 1.7,
-  })
+  }))
   assert.equal(result.method.id, 'linear-frame-v1.1')
   assert.equal(result.analysis.solver, 'linear-3d-frame-euler-bernoulli')
   assert.equal(result.analysis.linearSystemSolver, 'symmetric-band-cholesky')

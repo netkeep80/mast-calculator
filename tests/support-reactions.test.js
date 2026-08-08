@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS, resolveCalculationParameters } from '../packages/application/index.js'
 import { generateMastModel } from '../packages/structural-analysis/index.js'
 import { buildLoadCase } from '../packages/structural-analysis/index.js'
 import { analyzeIndependentDenseFrame } from '../packages/structural-analysis/testing.js'
 import { analyzeFrame } from '../packages/structural-analysis/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 const GRAVITY_M_S2 = 9.80665
 
@@ -24,8 +24,7 @@ const averagePosition = (nodes) => nodes.reduce(
 const midpoint = (left, right) => left.map((value, axis) => (value + right[axis]) / 2)
 
 function staticsParameters(overrides = {}) {
-  return resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
+  return resolvedProject({
     moduleCount: 4,
     deadLoadFactor: 1,
     windPresetId: 'custom',
@@ -179,8 +178,6 @@ test('статика опор: внутренняя сила F = W·e/H выво
     topCenter[2] - baseCenter[2],
   )
 
-  // Для равностороннего опорного треугольника расстояние от центра до стороны
-  // равно R/2 = a/(2*sqrt(3)). Это и есть требуемый эксцентриситет e.
   const sideM = parameters.triangleSideMm / 1000
   approximately(lever.eccentricityM, sideM / (2 * Math.sqrt(3)), 1e-12, 1e-12)
   approximately(lever.forceN * lever.topHeightM, oracle.weightN * lever.eccentricityM, 1e-12, 1e-8)
@@ -225,8 +222,6 @@ test('статика опор: внутренняя сила F = W·R/H выво
     topCenter[2] - baseCenter[2],
   )
 
-  // В правильном треугольнике R = a/sqrt(3), а inradius = R/2,
-  // поэтому сила для вывода результирующей в вершину ровно вдвое больше.
   const sideM = parameters.triangleSideMm / 1000
   approximately(vertexLever.eccentricityM, sideM / Math.sqrt(3), 1e-12, 1e-12)
   approximately(vertexLever.forceN, 2 * edgeLever.forceN, 1e-12, 1e-8)

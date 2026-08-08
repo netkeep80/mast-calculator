@@ -11,7 +11,7 @@ export interface AssemblyMass {
   readonly weld: Readonly<Record<string, unknown>>
   readonly intermoduleJoint: Readonly<Record<string, unknown>>
   readonly module: Readonly<Record<string, unknown>>
-  readonly mast: Readonly<Record<string, unknown>>
+  readonly mastFabricationEstimate: Readonly<Record<string, unknown>>
   readonly [key: string]: unknown
 }
 

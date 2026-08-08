@@ -10,12 +10,13 @@ import {
   getBoltSize,
   metricThreadStressAreaMm2,
 } from '../packages/domain/index.js'
-import { DEFAULT_PARAMETERS, calculateCompleteMast, calculateMast } from '../packages/application/index.js'
+import { calculateCompleteMast, calculateMast } from '../packages/application/index.js'
 import { splitJointDemandForBolt } from '../packages/engineering/index.js'
 import {
   calculateMinimumWeldLength,
   recommendWeldConsumable,
 } from '../packages/engineering/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 const approximately = (actual, expected, relative = 1e-10, absolute = 1e-9) => {
   const tolerance = Math.max(absolute, Math.abs(expected) * relative)
@@ -97,12 +98,11 @@ test('подбор формируется отдельно для каждого
 })
 
 test('два модуля создают ровно три физических межмодульных болта и каждый передает две верхние диагонали', () => {
-  const result = calculateMast({
-    ...DEFAULT_PARAMETERS,
+  const result = calculateMast(resolvedProject({
     moduleCount: 2,
     windEnvelopeEnabled: false,
     windDirectionDeg: 0,
-  })
+  }))
   assert.equal(result.connections.jointCount, 3)
   assert.equal(result.connections.jointDemandCount, 3)
   assert.equal(result.connections.bolt.selected.applicable, true)
@@ -112,11 +112,10 @@ test('два модуля создают ровно три физических 
 })
 
 test('для одного модуля внутренний соединительный болт не выдумывается', () => {
-  const result = calculateMast({
-    ...DEFAULT_PARAMETERS,
+  const result = calculateMast(resolvedProject({
     moduleCount: 1,
     windEnvelopeEnabled: false,
-  })
+  }))
   assert.equal(result.connections.jointCount, 0)
   assert.equal(result.connections.bolt.selected.applicable, false)
   assert.equal(result.connections.bolt.selected.utilization, 0)
@@ -124,29 +123,28 @@ test('для одного модуля внутренний соединител
 
 test('более прочный и крупный валидный узел повышает отдельный боковой предел соединения', () => {
   const common = {
-    ...DEFAULT_PARAMETERS,
     moduleCount: 2,
     windEnvelopeEnabled: true,
     windEnvelopeStepDeg: 120,
     lateralCapacityStepDeg: 60,
     jointConfiguratorMode: 'manual',
   }
-  const weak = calculateCompleteMast({
+  const weak = calculateCompleteMast(resolvedProject({
     ...common,
     jointBoltDiameterMm: 16,
     jointBoltClass: '5.6',
     jointClearanceNutThreadMm: 20,
     jointBoltLengthMm: 55,
     jointThreadEngagementFactor: 2,
-  })
-  const strong = calculateCompleteMast({
+  }))
+  const strong = calculateCompleteMast(resolvedProject({
     ...common,
     jointBoltDiameterMm: 48,
     jointBoltClass: '12.9',
     jointClearanceNutThreadMm: 56,
     jointBoltLengthMm: 150,
     jointThreadEngagementFactor: 2,
-  })
+  }))
   assert.equal(weak.connections.passesJointGeometry, true)
   assert.equal(strong.connections.passesJointGeometry, true)
   assert.ok(strong.lateralCapacity.boltLimitForceN > weak.lateralCapacity.boltLimitForceN)
@@ -158,8 +156,7 @@ test('слабый межмодульный болт может стать ре�
   // Anut,net >= 2*Arib. Умеренная затяжка почти расходует растягивающий резерв
   // слабого M16 5.6, поэтому тест по-прежнему изолирует bolt-connection как
   // физический первый предел, а не провал геометрии гайки.
-  const result = calculateCompleteMast({
-    ...DEFAULT_PARAMETERS,
+  const result = calculateCompleteMast(resolvedProject({
     stockBarLengthMm: 1200,
     stockBarPieces: 4,
     moduleCount: 4,
@@ -176,7 +173,7 @@ test('слабый межмодульный болт может стать ре�
     jointNutSectionAreaRatio: 2,
     windEnvelopeEnabled: false,
     lateralCapacityStepDeg: 60,
-  })
+  }))
   assert.equal(result.connections.passesJointGeometry, true)
   assert.equal(result.connections.passesNutSections, true)
   assert.equal(result.lateralCapacity.governingMode, 'bolt-connection')
@@ -227,12 +224,11 @@ test('для Run=490 МПа каталог рекомендует Э50А/УОН�
 })
 
 test('огибающая сварки хранит по одному определяющему случаю на каждый физический конец ребра', () => {
-  const result = calculateMast({
-    ...DEFAULT_PARAMETERS,
+  const result = calculateMast(resolvedProject({
     moduleCount: 2,
     windEnvelopeEnabled: true,
     windEnvelopeStepDeg: 60,
-  })
+  }))
   assert.equal(result.connections.weld.envelope.length, result.model.members.length * 2)
   assert.ok(result.connections.weld.critical.check.requiredPhysicalLengthMm >= 40)
   assert.ok(result.connections.weld.envelope.every((item) => Number.isFinite(item.windDirectionDeg)))

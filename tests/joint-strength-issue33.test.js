@@ -19,7 +19,7 @@ import {
   representativeOctahedronJointDirections,
 } from '../packages/design/index.js'
 import { calculateMinimumWeldLength } from '../packages/engineering/index.js'
-import { DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 const approximately = (actual, expected, relative = 1e-10, absolute = 1e-8) => {
   const tolerance = Math.max(absolute, Math.abs(expected) * relative)
@@ -56,8 +56,7 @@ test('issue #33: слишком толстое ребро блокирует в�
     level: 1,
     forceGlobalN: [0, 0, -10_000],
     momentGlobalNm: [0, 0, 0],
-  }], {
-    ...DEFAULT_PARAMETERS,
+  }], resolvedProject({
     barDiameterMm: 40,
     jointConfiguratorMode: 'manual',
     jointBoltDiameterMm: 24,
@@ -68,7 +67,7 @@ test('issue #33: слишком толстое ребро блокирует в�
     jointTighteningTorqueNm: 0,
     jointNutSectionAreaRatio: 2,
     weldToRibAreaRatio: 2.5,
-  }, { baseMetalRunMPa: 490 })
+  }), { baseMetalRunMPa: 490 })
 
   assert.equal(configurator.passesBolt, true)
   assert.equal(configurator.passesNutSections, false)
@@ -168,8 +167,7 @@ test('issue #33: автоконфигуратор учитывает однов�
     level: 1,
     forceGlobalN: [35_000, 0, -70_000],
     momentGlobalNm: [100, 20, 10],
-  }], {
-    ...DEFAULT_PARAMETERS,
+  }], resolvedProject({
     barDiameterMm: 12,
     jointConfiguratorMode: 'auto',
     jointTighteningTorqueNm: 200,
@@ -177,7 +175,7 @@ test('issue #33: автоконфигуратор учитывает однов�
     jointPreloadVariation: 0.25,
     jointNutSectionAreaRatio: 2,
     weldToRibAreaRatio: 2.5,
-  }, { baseMetalRunMPa: 490 })
+  }), { baseMetalRunMPa: 490 })
 
   assert.equal(configurator.passes, true)
   assert.equal(configurator.passesNutSections, true)

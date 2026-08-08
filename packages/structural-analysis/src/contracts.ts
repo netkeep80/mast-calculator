@@ -56,8 +56,8 @@ export interface LoadCase {
 export interface RawMemberResult {
   readonly memberId: number
   readonly lengthM: number
-  readonly localAxes: readonly Vector3[]
-  readonly distributedLoadLocalNPerM: Vector3
+  readonly localAxes: readonly (readonly number[])[]
+  readonly distributedLoadLocalNPerM: readonly number[]
   readonly localEndForces: readonly number[]
   readonly axialForceAtAN: number
   readonly axialForceAtBN: number

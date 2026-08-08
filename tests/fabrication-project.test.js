@@ -1,17 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS } from '../packages/application/index.js'
 import { createCalculationProjectHtml } from '../packages/reporting/index.js'
 import { calculateCompleteMastWithConfiguredJoint } from '../packages/application/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 test('полный пользовательский расчёт содержит сборочную массу и горизонтальную стрелу до экспорта документа', () => {
-  const result = calculateCompleteMastWithConfiguredJoint({
-    ...DEFAULT_PARAMETERS,
+  const result = calculateCompleteMastWithConfiguredJoint(resolvedProject({
     moduleCount: 1,
     heightSearchMaxModules: 3,
     windEnvelopeEnabled: false,
     lateralCapacityStepDeg: 60,
-  })
+  }))
   assert.equal(result.assemblyMass.method, 'fabrication-mass-estimate-v1')
   assert.ok(result.assemblyMass.rib.massKg > 0)
   assert.ok(result.assemblyMass.intermoduleJoint.totalMassKg > 0)
@@ -22,8 +21,7 @@ test('полный пользовательский расчёт содержи�
 })
 
 test('бумажный проект содержит формулы массы сборки, усиленного узла, горизонтальной стрелы и аудит single-source справочников', () => {
-  const result = calculateCompleteMastWithConfiguredJoint({
-    ...DEFAULT_PARAMETERS,
+  const result = calculateCompleteMastWithConfiguredJoint(resolvedProject({
     moduleCount: 2,
     heightSearchMaxModules: 3,
     windEnvelopeEnabled: false,
@@ -33,7 +31,7 @@ test('бумажный проект содержит формулы массы �
     jointPreloadVariation: 0.25,
     jointNutSectionAreaRatio: 2,
     weldToRibAreaRatio: 2.5,
-  })
+  }))
   const html = createCalculationProjectHtml(result, result.parameters)
   assert.match(html, /Масса физической сборки и аудит справочных данных/)
   assert.match(html, /mrib = ρ·πd²\/4·a/)

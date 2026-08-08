@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  createProjectInput,
   getReinforcementClass,
   regularOctahedronHeightMm,
   STANDARD_DIAMETERS_MM,
   STOCK_BAR_DIVISIONS,
   theoreticalCutLengthMm,
 } from '../packages/domain/index.js'
-import { resolveCalculationParameters } from '../packages/application/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 test('закупочный пруток делится на заданное число равных заготовок', () => {
   assert.equal(theoreticalCutLengthMm(12000, 1), 12000)
@@ -35,13 +36,11 @@ test('некорректный раскрой и длина ребра отве�
 })
 
 test('практический ввод разрешается в расчётные параметры из единого каталога', () => {
-  const parameters = resolveCalculationParameters({
+  const parameters = resolvedProject({
     stockBarLengthMm: 11800,
     stockBarPieces: 16,
     reinforcementClass: 'A500C',
     barDiameterMm: 12,
-    moduleHeightMm: 54,
-    effectiveLengthFactor: 2,
   })
 
   assert.equal(parameters.ribCutLengthMm, 737.5)
@@ -55,11 +54,11 @@ test('практический ввод разрешается в расчётн
   assert.equal(parameters.effectiveLengthFactor, 0.5)
 })
 
-test('ручная высота модуля не может изменить геометрию правильного октаэдра', () => {
-  const low = resolveCalculationParameters({ stockBarLengthMm: 12000, stockBarPieces: 16, moduleHeightMm: 1 })
-  const high = resolveCalculationParameters({ stockBarLengthMm: 12000, stockBarPieces: 16, moduleHeightMm: 99999 })
-  assert.equal(low.moduleHeightMm, high.moduleHeightMm)
-  assert.ok(Math.abs(low.moduleHeightMm - 750 * Math.sqrt(2 / 3)) < 1e-12)
+test('ручная высота модуля не является допустимым пользовательским полем', () => {
+  assert.throws(
+    () => createProjectInput({ geometry: { moduleHeightMm: 1 } }),
+    /Неизвестные поля ProjectInput\.geometry: moduleHeightMm/,
+  )
 })
 
 test('каталог содержит практические стандартные диаметры и свариваемые классы', () => {

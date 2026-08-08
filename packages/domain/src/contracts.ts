@@ -115,6 +115,8 @@ export interface ResolvedProject {
   readonly windLoadFactor: number
   readonly equipmentLoadFactor: number
   readonly windPresetId: string
+  readonly windPresetLabel: string
+  readonly beaufortForce: number | null
   readonly windPressurePa: Pascals
   readonly windSpeedMs: number
   readonly dragCoefficient: number

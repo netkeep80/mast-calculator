@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS } from '../packages/application/index.js'
 import { createCalculationProjectHtml } from '../packages/reporting/index.js'
 import { calculateCompleteMastWithConfiguredJoint } from '../packages/application/index.js'
 import {
@@ -11,16 +10,16 @@ import {
   ESKD_STANDARDS,
 } from '../packages/reporting/index.js'
 import { TECHNICAL_PROJECTION_SCHEMA } from '../packages/design/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 function calculation(overrides = {}) {
-  return calculateCompleteMastWithConfiguredJoint({
-    ...DEFAULT_PARAMETERS,
+  return calculateCompleteMastWithConfiguredJoint(resolvedProject({
     moduleCount: 2,
     heightSearchMaxModules: 3,
     windEnvelopeEnabled: false,
     lateralCapacityStepDeg: 60,
     ...overrides,
-  })
+  }))
 }
 
 test('ЕСКД v2 строится из той же detailed mesh геометрии, что 3D/OBJ', () => {

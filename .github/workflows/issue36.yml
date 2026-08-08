@@ -44,8 +44,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -s packages/engineering/src/crane-boom-capacity.js
-          grep --quiet 'calculateCraneBoomCapacity' packages/application/src/complete-calculation.js
-          grep --quiet "from '../../engineering/index.js'" packages/application/src/complete-calculation.js
-          ! grep --quiet "engineering/src/" packages/application/src/complete-calculation.js
+          test -s packages/engineering/src/crane-boom-capacity.ts
+          test ! -e packages/engineering/src/crane-boom-capacity.js
+          test -s packages/application/src/complete-calculation.ts
+          test ! -e packages/application/src/complete-calculation.js
+          grep --quiet 'calculateCraneBoomCapacity' packages/application/src/complete-calculation.ts
+          grep --quiet "from '../../engineering/index.js'" packages/application/src/complete-calculation.ts
+          ! grep --quiet "engineering/src/" packages/application/src/complete-calculation.ts
           grep --quiet 'craneBoomCapacity' apps/web/usage-scenarios.js

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calculateCompleteMast, DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { calculateCompleteMast } from '../packages/application/index.js'
 import { calculateCompleteMastWithConfiguredJoint } from '../packages/application/index.js'
 import {
   buildJointHardwareGeometry,
@@ -9,17 +9,16 @@ import {
   minimumClearanceNutForBolt,
 } from '../packages/domain/index.js'
 import { configureIntermoduleJoint } from '../packages/engineering/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
-const baseParameters = {
-  ...DEFAULT_PARAMETERS,
+const baseParameters = resolvedProject({
   jointBoltShearPlanes: 1,
   connectionConditionFactor: 1,
-  jointBaseMetalTensileStrengthMPa: 490,
   weldConsumableId: 'electrode-e50a-uoni-13-55',
   weldLegMm: 4,
   weldSegmentsPerEnd: 3,
   barDiameterMm: 12,
-}
+})
 
 test('для болта M24 минимальная проходная обычная гайка — M30', () => {
   const options = clearanceNutOptionsForBolt(24)
@@ -109,8 +108,7 @@ test('ручной режим не заменяет выбранные поль�
 })
 
 test('полный расчёт фиксирует один автоматически выбранный физический узел для боковой, статической и высотной проверок', { timeout: 30_000 }, () => {
-  const input = {
-    ...DEFAULT_PARAMETERS,
+  const input = resolvedProject({
     moduleCount: 2,
     windEnvelopeEnabled: false,
     lateralCapacityStepDeg: 60,
@@ -121,7 +119,7 @@ test('полный расчёт фиксирует один автоматиче
     jointPreloadVariation: 0.25,
     jointNutSectionAreaRatio: 2,
     weldToRibAreaRatio: 2.5,
-  }
+  })
   const result = calculateCompleteMastWithConfiguredJoint(input)
   const canonical = calculateCompleteMast(input)
   const geometry = result.connections.configurator.geometry
@@ -154,8 +152,7 @@ test('полный расчёт фиксирует один автоматиче
 })
 
 test('невалидный вручную заданный короткий болт блокирует конструкции, где межмодульный стык действительно существует', { timeout: 30_000 }, () => {
-  const result = calculateCompleteMast({
-    ...DEFAULT_PARAMETERS,
+  const result = calculateCompleteMast(resolvedProject({
     moduleCount: 2,
     windEnvelopeEnabled: false,
     lateralCapacityStepDeg: 60,
@@ -166,16 +163,13 @@ test('невалидный вручную заданный короткий бо
     jointClearanceNutThreadMm: 30,
     jointBoltLengthMm: 70,
     jointThreadEngagementFactor: 2,
-  })
+  }))
 
   assert.equal(result.connections.passesJointGeometry, false)
   assert.equal(result.connections.configurator.geometry.boltLengthPasses, false)
   assert.equal(result.lateralCapacity.boltLimitForceN, 0)
   assert.equal(result.staticPayloadCapacity.maximumTotalTopMassKg, 0)
 
-  // Один модуль не имеет межмодульного стыка вообще, поэтому его нельзя
-  // запрещать из-за неиспользуемого M24×70. Первый вариант, где узел нужен,
-  // — два модуля, и он уже обязан провалиться.
   assert.equal(result.heightCapacity.design.maximumModules, 1)
   assert.equal(result.heightCapacity.design.firstFailModules, 2)
   assert.equal(result.heightCapacity.ultimateResistance.maximumModules, 1)

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS, resolveCalculationParameters } from '../packages/application/index.js'
 import { generateMastModel } from '../packages/structural-analysis/index.js'
 import {
   calculateLateralCapacity,
   STANDARD_GRAVITY_M_S2,
 } from '../packages/engineering/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 const approximately = (actual, expected, relative = 1e-8, absolute = 1e-9) => {
   const tolerance = Math.max(absolute, Math.abs(expected) * relative)
@@ -41,11 +41,10 @@ test('боковая нагрузка круглой консоли совпад
   const lengthM = 2
   const diameterM = 0.02
   const model = verticalCantileverModel({ lengthM, diameterM })
-  const parameters = {
-    ...DEFAULT_PARAMETERS,
+  const parameters = resolvedProject({
     materialSafetyFactor: 1,
     lateralCapacityStepDeg: 30,
-  }
+  })
   const result = calculateLateralCapacity(model, parameters)
   const areaM2 = Math.PI * diameterM ** 2 / 4
   const sectionModulusM3 = Math.PI * diameterM ** 3 / 32
@@ -69,8 +68,7 @@ test('боковая нагрузка круглой консоли совпад
 })
 
 test('расчёт боковой нагрузки мачты строит независимые огибающие первого предела и global buckling', () => {
-  const parameters = resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
+  const parameters = resolvedProject({
     moduleCount: 1,
     windEnvelopeEnabled: false,
     lateralCapacityStepDeg: 30,
@@ -102,14 +100,13 @@ test('расчёт боковой нагрузки мачты строит не�
 
 test('увеличение диаметра ребра увеличивает боковую несущую способность', () => {
   const base = {
-    ...DEFAULT_PARAMETERS,
     moduleCount: 1,
     windEnvelopeEnabled: false,
     lateralCapacityStepDeg: 30,
   }
 
-  const thinParameters = resolveCalculationParameters({ ...base, barDiameterMm: 10 })
-  const thickParameters = resolveCalculationParameters({ ...base, barDiameterMm: 20 })
+  const thinParameters = resolvedProject({ ...base, barDiameterMm: 10 })
+  const thickParameters = resolvedProject({ ...base, barDiameterMm: 20 })
   const thin = calculateLateralCapacity(generateMastModel(thinParameters), thinParameters)
   const thick = calculateLateralCapacity(generateMastModel(thickParameters), thickParameters)
 
@@ -117,13 +114,11 @@ test('увеличение диаметра ребра увеличивает б
 })
 
 test('боковой тест явно не смешивается с погодными и постоянными нагрузками', () => {
-  const parameters = resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
+  const parameters = resolvedProject({
     moduleCount: 1,
     windPresetId: 'bft12',
     iceThicknessMm: 20,
     equipmentMassKg: 100,
-    extraVerticalLoadN: 5000,
     lateralCapacityStepDeg: 60,
   })
   const result = calculateLateralCapacity(generateMastModel(parameters), parameters)

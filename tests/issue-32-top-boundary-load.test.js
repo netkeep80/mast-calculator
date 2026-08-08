@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
-import { calculateMast, DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { calculateMast } from '../packages/application/index.js'
 import { buildLoadCase } from '../packages/structural-analysis/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 const GRAVITY = 9.80665
 const norm3 = (value) => Math.hypot(...value)
@@ -13,14 +14,13 @@ function approximately(actual, expected, relative = 1e-9, absolute = 1e-7) {
 }
 
 function quietParameters(overrides = {}) {
-  return {
-    ...DEFAULT_PARAMETERS,
+  return resolvedProject({
     windEnvelopeEnabled: false,
     windPressurePa: 0,
     equipmentWindAreaM2: 0,
     iceThicknessMm: 0,
     ...overrides,
-  }
+  })
 }
 
 test('issue #32: один модуль с 1000 кг показывает полную нагрузку на верхнюю грань, а не 0 Н', () => {
@@ -62,10 +62,13 @@ test('issue #36: масса оборудования остаётся единс
     members: [],
     topNodeIds: [0, 1, 2],
   }
+  assert.throws(
+    () => quietParameters({ equipmentMassKg: 100, equipmentLoadFactor: 1.25, extraVerticalLoadN: 500 }),
+    /derived\/internal ResolvedProject field: extraVerticalLoadN/,
+  )
   const parameters = quietParameters({
     equipmentMassKg: 100,
     equipmentLoadFactor: 1.25,
-    extraVerticalLoadN: 500,
   })
   const loads = buildLoadCase(model, parameters)
   const expectedEquipmentWeightN = 100 * GRAVITY * 1.25

@@ -127,17 +127,20 @@ test('focused test scripts have a durable CI or contributor-facing owner', () =>
   }
 })
 
-test('static-site smoke serves the canonical Web adapter and public package APIs', () => {
+test('static-site smoke serves static Web UI 2.0 and public package APIs', () => {
   const ci = workflows.get('ci.yml')
   for (const modulePath of [
     'apps/web/app.js',
+    'apps/web/app-bootstrap.js',
+    'apps/web/workspace-behavior.js',
+    'apps/web/workspace.css',
     'apps/web/calculation-worker.js',
     'apps/web/viewer.js',
     'apps/web/result-tabs.js',
     'apps/web/result-tabs.css',
+    'apps/web/guy-result-panel.css',
     'apps/web/reports-exports.js',
     'apps/web/reports-exports.css',
-    'apps/web/design-storage.js',
     'packages/domain/index.js',
     'packages/numerics/index.js',
     'packages/structural-analysis/index.js',
@@ -147,8 +150,13 @@ test('static-site smoke serves the canonical Web adapter and public package APIs
     'packages/reporting/index.js',
   ]) assert.ok(ci.includes(modulePath), `ci.yml smoke missing ${modulePath}`)
   assert.match(ci, /<title>Калькулятор мачты<\/title>/)
-  assert.match(ci, /Проверить конкретную мачту/)
+  assert.match(ci, /<body data-web-ui=\\"2\.0\\">/)
+  assert.match(ci, /legacy scenario-first hero returned/)
+  assert.match(ci, /hardcoded prototype version returned/)
   assert.match(ci, /legacy design URL no longer redirects to Reports/)
+  for (const removed of ['workspace-shell.js', 'procurement-export.js', 'design-storage.js', 'navigation.js']) {
+    assert.match(ci, new RegExp(removed.replace('.', '\\.')), `ci.yml must reject published legacy asset ${removed}`)
+  }
   assert.doesNotMatch(ci, /apps\/web\/design-app\.js/)
   assert.doesNotMatch(ci, /apps\/web\/design\.css/)
 })

@@ -2,6 +2,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
+import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
 
 const COMMANDS = new Set([
@@ -88,14 +89,14 @@ async function runWorker(request) {
   let timer = null
   let cancelled = false
 
-  const terminate = async (message) => {
+  const terminate = async (message, code = 'operation-cancelled') => {
     if (cancelled) return
     cancelled = true
     if (timer) clearTimeout(timer)
     await worker.terminate()
     const error = new Error(message)
     error.category = 'cancelled'
-    error.code = 'operation-cancelled'
+    error.code = code
     throw error
   }
 
@@ -121,6 +122,7 @@ async function runWorker(request) {
       })
       if (request.timeoutMs > 0) {
         timer = setTimeout(() => {
+          cancelled = true
           void worker.terminate().then(() => {
             const error = new Error(`CLI watchdog timeout after ${request.timeoutMs} ms`)
             error.category = 'cancelled'
@@ -171,6 +173,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
 }
 
-if (import.meta.url === new URL(`file://${process.argv[1]?.replaceAll('\\', '/')}`).href) {
-  process.exitCode = await main()
-}
+const invokedAsScript = process.argv[1]
+  ? import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
+  : false
+if (invokedAsScript) process.exitCode = await main()

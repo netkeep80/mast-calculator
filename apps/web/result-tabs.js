@@ -20,8 +20,8 @@ const SCENARIO_TAB = Object.freeze({
 let initialized = false
 let currentSnapshot = null
 let activeTabId = 'summary'
-let tabButtons = new Map()
-let tabPanels = new Map()
+const tabButtons = new Map()
+const tabPanels = new Map()
 
 const $ = (selector, root = document) => root.querySelector(selector)
 
@@ -130,9 +130,7 @@ function createTabWorkspace(results) {
   for (const node of [assembly, allMetrics, memberDetails, moduleVisual, loadSummary, warningsDetails]) {
     if (node) summary.append(node)
   }
-  for (const node of [governing]) {
-    if (node) limits.append(node)
-  }
+  if (governing) limits.append(governing)
   for (const node of [connectionSummary, connectionDetails, jointVisual]) {
     if (node) connections.append(node)
   }
@@ -318,5 +316,5 @@ export function initializeResultTabs() {
       installSelectableTable('#guy-cable-envelope-body', decorateGuyRows)
     }
     queueMicrotask(syncSelectedRows)
-  })
+  }, { replay: true })
 }

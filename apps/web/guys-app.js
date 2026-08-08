@@ -1,4 +1,8 @@
-import { DEFAULT_PARAMETERS, calculateGuyedProject, calculateMast, resolveCalculationParameters } from '../../packages/application/index.js'
+import {
+  calculateGuyedProject,
+  calculateProject,
+  previewProjectGeometry,
+} from '../../packages/application/index.js'
 import {
   REINFORCEMENT_CLASS_IDS,
   STANDARD_DIAMETERS_MM,
@@ -10,6 +14,10 @@ import {
   DEFAULT_GUY_WIRE_ID,
   GUY_WIRE_CATALOG,
 } from '../../packages/domain/index.js'
+import {
+  DEFAULT_PROJECT_FORM_VALUES,
+  projectInputFromFlatValues,
+} from './project-form.js'
 
 const $ = (selector) => document.querySelector(selector)
 const moduleCount = $('#module-count')
@@ -58,29 +66,26 @@ function setValue(element, value) {
   element.value = String(value)
 }
 
-function currentMastHeightM() {
-  const p = resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
-    moduleCount: Math.max(1, Math.floor(Number(moduleCount.value) || DEFAULT_PARAMETERS.moduleCount)),
-    stockBarLengthMm: Number(stockLength.value) || DEFAULT_PARAMETERS.stockBarLengthMm,
-    stockBarPieces: Number(stockPieces.value) || DEFAULT_PARAMETERS.stockBarPieces,
+function previewInput() {
+  return projectInputFromFlatValues({
+    moduleCount: Math.max(1, Math.floor(Number(moduleCount.value) || DEFAULT_PROJECT_FORM_VALUES.moduleCount)),
+    stockBarLengthMm: Number(stockLength.value) || DEFAULT_PROJECT_FORM_VALUES.stockBarLengthMm,
+    stockBarPieces: Number(stockPieces.value) || DEFAULT_PROJECT_FORM_VALUES.stockBarPieces,
+    barDiameterMm: Number(barDiameter.value) || DEFAULT_PROJECT_FORM_VALUES.barDiameterMm,
+    reinforcementClass: reinforcementClass.value || DEFAULT_PROJECT_FORM_VALUES.reinforcementClass,
   })
-  return p.moduleCount * p.moduleHeightMm / 1000
+}
+
+function currentMastHeightM() {
+  return previewProjectGeometry(previewInput()).mastHeightM
 }
 
 function updateGeometryHint() {
   try {
-    const p = resolveCalculationParameters({
-      ...DEFAULT_PARAMETERS,
-      moduleCount: Number(moduleCount.value),
-      stockBarLengthMm: Number(stockLength.value),
-      stockBarPieces: Number(stockPieces.value),
-      barDiameterMm: Number(barDiameter.value),
-      reinforcementClass: reinforcementClass.value,
-    })
-    $('#mast-geometry').textContent = `Ребро ${format(p.ribCutLengthMm, 1)} мм; высота модуля ${format(p.moduleHeightMm, 1)} мм; высота мачты ${format(p.moduleCount * p.moduleHeightMm / 1000, 2)} м. Растяжка будет привязана к ближайшему узлу с шагом ${format(p.moduleHeightMm / 1000, 3)} м.`
+    const preview = previewProjectGeometry(previewInput())
+    $('#mast-geometry').textContent = `Ребро ${format(preview.ribCutLengthMm, 1)} мм; высота модуля ${format(preview.moduleHeightMm, 1)} мм; высота мачты ${format(preview.mastHeightM, 2)} м. Растяжка будет привязана к ближайшему узлу с шагом ${format(preview.moduleHeightMm / 1000, 3)} м.`
   } catch (error) {
-    $('#mast-geometry').textContent = error.message
+    $('#mast-geometry').textContent = error instanceof Error ? error.message : String(error)
   }
 }
 
@@ -137,20 +142,20 @@ function rebuildTiers() {
 }
 
 function setExample() {
-  setValue(moduleCount, DEFAULT_PARAMETERS.moduleCount)
-  setValue(barDiameter, DEFAULT_PARAMETERS.barDiameterMm)
-  reinforcementClass.value = DEFAULT_PARAMETERS.reinforcementClass
-  setValue(stockLength, DEFAULT_PARAMETERS.stockBarLengthMm)
-  setValue(stockPieces, DEFAULT_PARAMETERS.stockBarPieces)
-  setValue(windPressure, DEFAULT_PARAMETERS.windPressurePa)
+  setValue(moduleCount, DEFAULT_PROJECT_FORM_VALUES.moduleCount)
+  setValue(barDiameter, DEFAULT_PROJECT_FORM_VALUES.barDiameterMm)
+  reinforcementClass.value = DEFAULT_PROJECT_FORM_VALUES.reinforcementClass
+  setValue(stockLength, DEFAULT_PROJECT_FORM_VALUES.stockBarLengthMm)
+  setValue(stockPieces, DEFAULT_PROJECT_FORM_VALUES.stockBarPieces)
+  setValue(windPressure, DEFAULT_PROJECT_FORM_VALUES.windPressurePa)
   setValue(windDirection, 0)
-  setValue(windStep, DEFAULT_PARAMETERS.windEnvelopeStepDeg)
+  setValue(windStep, DEFAULT_PROJECT_FORM_VALUES.windEnvelopeStepDeg)
   windEnvelope.checked = true
-  setValue(equipmentMass, DEFAULT_PARAMETERS.equipmentMassKg)
-  setValue(equipmentArea, DEFAULT_PARAMETERS.equipmentWindAreaM2)
-  setValue(iceThickness, DEFAULT_PARAMETERS.iceThicknessMm)
-  setValue(displacementLimit, DEFAULT_PARAMETERS.displacementLimitMm)
-  setValue(bucklingLimit, DEFAULT_PARAMETERS.minimumBucklingFactor)
+  setValue(equipmentMass, DEFAULT_PROJECT_FORM_VALUES.equipmentMassKg)
+  setValue(equipmentArea, DEFAULT_PROJECT_FORM_VALUES.equipmentWindAreaM2)
+  setValue(iceThickness, DEFAULT_PROJECT_FORM_VALUES.iceThicknessMm)
+  setValue(displacementLimit, DEFAULT_PROJECT_FORM_VALUES.displacementLimitMm)
+  setValue(bucklingLimit, DEFAULT_PROJECT_FORM_VALUES.minimumBucklingFactor)
   setValue(tierCount, 2)
   setValue(safetyFactor, 3)
   setValue(terminationEfficiency, 0.8)
@@ -169,8 +174,7 @@ function readNumber(element, label, minimum = null) {
 }
 
 function readParameters() {
-  return resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
+  return projectInputFromFlatValues({
     moduleCount: Math.floor(readNumber(moduleCount, 'Число модулей', 1)),
     stockBarLengthMm: readNumber(stockLength, 'Длина прутка', 1),
     stockBarPieces: Math.floor(readNumber(stockPieces, 'Число частей', 1)),
@@ -297,17 +301,17 @@ function calculate() {
   calculateButton.disabled = true
   calculateButton.textContent = 'Расчёт…'
   try {
-    const p = readParameters()
+    const projectInput = readParameters()
     const tiers = readTiers()
     const guyOptions = {
       safetyFactor: readNumber(safetyFactor, 'Коэффициент запаса', 1),
       terminationEfficiency: readNumber(terminationEfficiency, 'Эффективность заделки', 0.01),
     }
-    const bare = calculateMast(p)
-    const guyed = calculateGuyedProject(p, tiers, guyOptions)
+    const bare = calculateProject(projectInput)
+    const guyed = calculateGuyedProject(projectInput, tiers, guyOptions)
     renderResults(bare, guyed)
   } catch (error) {
-    errorBox.textContent = error.stack || error.message
+    errorBox.textContent = error instanceof Error ? (error.stack || error.message) : String(error)
     errorBox.hidden = false
   } finally {
     calculateButton.disabled = false

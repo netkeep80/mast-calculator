@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS, calculateMast } from '../packages/application/index.js'
+import { calculateMast } from '../packages/application/index.js'
 import {
   buildHorizontalBoomLoadCase,
   calculateCraneBoomCapacity,
 } from '../packages/engineering/index.js'
 import { calculateLateralCapacity } from '../packages/engineering/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 const approximately = (actual, expected, relative = 1e-9, absolute = 1e-8) => {
   const tolerance = Math.max(absolute, Math.abs(expected) * relative)
@@ -13,14 +14,13 @@ const approximately = (actual, expected, relative = 1e-9, absolute = 1e-8) => {
 }
 
 function mast(overrides = {}) {
-  return calculateMast({
-    ...DEFAULT_PARAMETERS,
+  return calculateMast(resolvedProject({
     moduleCount: 1,
     windEnvelopeEnabled: false,
     lateralCapacityStepDeg: 60,
     equipmentMassKg: 0,
     ...overrides,
-  })
+  }))
 }
 
 test('issue #36: горизонтальная стрела поворачивает собственный вес рёбер в поперечную нагрузку', () => {

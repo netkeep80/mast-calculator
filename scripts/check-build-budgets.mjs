@@ -56,7 +56,7 @@ const input = application.createProjectInput({
     windPresetId: 'custom',
     windPressurePa: 250,
     windEnvelopeEnabled: false,
-    lateralCapacityStepDeg: 90,
+    lateralCapacityStepDeg: 60,
   },
   criteria: { heightSearchMaxModules: 2 },
 })

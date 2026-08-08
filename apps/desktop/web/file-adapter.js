@@ -7,11 +7,10 @@ function tauriInvoke() {
 /** Desktop environment adapter. This file overlays apps/web/file-adapter.js in the desktop build tree. */
 export const fileAdapter = Object.freeze({
   environment: 'tauri',
-  async saveText({ suggestedName, content, mediaType = 'text/plain;charset=utf-8', extensions = [] }) {
+  async saveText({ suggestedName, content, extensions = [] }) {
     return tauriInvoke()('save_text_file', {
       suggestedName,
       content,
-      mediaType,
       extensions,
     })
   },

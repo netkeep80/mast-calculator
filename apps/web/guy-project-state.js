@@ -1,9 +1,6 @@
-let readCurrentGuys = () => null
-
-export function bindCurrentProjectGuysReader(reader) {
-  readCurrentGuys = typeof reader === 'function' ? reader : () => null
-}
+import './guy-result-panel.js'
+import { getGuyEditor } from './guy-editor.js'
 
 export function currentProjectGuys() {
-  return readCurrentGuys() ?? null
+  return getGuyEditor()?.read() ?? null
 }

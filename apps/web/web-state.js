@@ -37,15 +37,16 @@ export function createWebApplicationState() {
       return true
     },
 
-    completeJob(jobId, { result = null, optimization = null } = {}) {
+    completeJob(jobId, { projectInput, result = null, optimization = null } = {}) {
       const activeJob = snapshot.activeJob
       if (!activeJob || activeJob.jobId !== jobId) return false
+      const effectiveProjectInput = projectInput ?? activeJob.projectInput
       const moduleCount = result?.model?.moduleCount ?? 0
       const selectedModuleIndex = moduleCount > 0
         ? Math.min(snapshot.selectedModuleIndex, moduleCount - 1)
         : 0
       replace({
-        projectInput: activeJob.projectInput,
+        projectInput: effectiveProjectInput,
         result,
         optimization,
         selectedModuleIndex,

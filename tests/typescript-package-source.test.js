@@ -4,7 +4,8 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const testRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const root = path.basename(testRoot) === '.build' ? path.dirname(testRoot) : testRoot
 const packagesRoot = path.join(root, 'packages')
 
 function collectJavaScriptSources(directory) {

@@ -108,9 +108,11 @@ export function applyMemberChecksToAnalysis(
       ),
     }
   })
-  const criticalMember = memberResults.reduce((best, candidate) => (
-    candidate.utilization > best.utilization ? candidate : best
-  ), memberResults[0])
+  let criticalMember = memberResults[0]
+  for (let index = 1; index < memberResults.length; index += 1) {
+    const candidate = memberResults[index]!
+    if (!criticalMember || candidate.utilization > criticalMember.utilization) criticalMember = candidate
+  }
   return {
     ...analysis,
     memberResults,

@@ -139,3 +139,22 @@ test('application owns joint configuration options and physical preview', () => 
   assert.ok(preview.strength.minimumNutSectionRatio > 0)
   assert.equal(Object.isFrozen(preview), true)
 })
+
+test('manual joint preview exactly matches the geometry and preload used by canonical calculation', () => {
+  const manualInput = createProjectInput({
+    ...compactInput,
+    geometry: { ...compactInput.geometry, moduleCount: 2 },
+    connection: { ...compactInput.connection, configuratorMode: 'manual' },
+  })
+  const preview = previewJointConfiguration(manualInput)
+  const result = calculateProject(manualInput)
+
+  assert.equal(result.connections.configurator.mode, 'manual')
+  assert.deepEqual(preview.geometry, result.connections.configurator.geometry)
+  assert.equal(preview.strength.minimumNutSectionRatio, result.connections.nutSections.minimumRatio)
+  assert.equal(preview.strength.requiredNutSectionRatio, result.connections.nutSections.requiredRatio)
+  assert.equal(
+    preview.strength.maximumPreloadN,
+    result.connections.bolt.selected.governingCheck.preload.maximumPreloadN,
+  )
+})

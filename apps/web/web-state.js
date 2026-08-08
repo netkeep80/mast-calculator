@@ -3,7 +3,9 @@ const freeze = (value) => Object.freeze(value)
 function initialSnapshot() {
   return freeze({
     projectInput: null,
+    projectGuys: null,
     result: null,
+    guyResult: null,
     optimization: null,
     selectedModuleIndex: 0,
     activeJob: null,
@@ -24,9 +26,9 @@ export function createWebApplicationState() {
       return snapshot
     },
 
-    beginJob({ jobId, action, projectInput, startedAt }) {
+    beginJob({ jobId, action, projectInput, projectGuys = null, startedAt }) {
       return replace({
-        activeJob: freeze({ jobId, action, projectInput, startedAt }),
+        activeJob: freeze({ jobId, action, projectInput, projectGuys, startedAt }),
         progress: null,
       })
     },
@@ -37,17 +39,26 @@ export function createWebApplicationState() {
       return true
     },
 
-    completeJob(jobId, { projectInput, result = null, optimization = null } = {}) {
+    completeJob(jobId, {
+      projectInput,
+      projectGuys,
+      result = null,
+      guyResult = null,
+      optimization = null,
+    } = {}) {
       const activeJob = snapshot.activeJob
       if (!activeJob || activeJob.jobId !== jobId) return false
       const effectiveProjectInput = projectInput ?? activeJob.projectInput
+      const effectiveProjectGuys = projectGuys === undefined ? activeJob.projectGuys : projectGuys
       const moduleCount = result?.model?.moduleCount ?? 0
       const selectedModuleIndex = moduleCount > 0
         ? Math.min(snapshot.selectedModuleIndex, moduleCount - 1)
         : 0
       replace({
         projectInput: effectiveProjectInput,
+        projectGuys: effectiveProjectGuys ?? null,
         result,
+        guyResult,
         optimization,
         selectedModuleIndex,
         activeJob: null,

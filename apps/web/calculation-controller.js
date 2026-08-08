@@ -1,3 +1,4 @@
+import { currentProjectGuys } from './guy-project-state.js'
 import { publishCalculationResult } from './result-channel.js'
 
 export function createCalculationController({
@@ -32,8 +33,11 @@ export function createCalculationController({
     return true
   }
 
-  function start(action, projectInput, { projectGuys = null } = {}) {
+  function start(action, projectInput, options = {}) {
     if (state.snapshot.activeJob || activeWorker) cancel({ notify: false })
+    const projectGuys = Object.prototype.hasOwnProperty.call(options, 'projectGuys')
+      ? options.projectGuys
+      : currentProjectGuys()
 
     const jobId = ++nextJobId
     const worker = createWorker()

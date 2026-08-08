@@ -15,9 +15,9 @@ import {
   GUY_WIRE_CATALOG,
 } from '../../packages/domain/index.js'
 import {
-  DEFAULT_PROJECT_FORM_VALUES,
-  projectInputFromFlatValues,
-} from './project-form.js'
+  applyDefaultProjectInputToForm,
+  readProjectInputFromForm,
+} from './project-form-dom.js'
 
 const $ = (selector) => document.querySelector(selector)
 const moduleCount = $('#module-count')
@@ -43,6 +43,30 @@ const resetButton = $('#reset-guys')
 const errorBox = $('#error')
 const results = $('#results')
 
+const customWindPreset = { value: 'custom', labels: [] }
+const mastFieldMap = new Map([
+  ['moduleCount', moduleCount],
+  ['stockBarLengthMm', stockLength],
+  ['stockBarPieces', stockPieces],
+  ['barDiameterMm', barDiameter],
+  ['reinforcementClass', reinforcementClass],
+  ['windPresetId', customWindPreset],
+  ['windPressurePa', windPressure],
+  ['windDirectionDeg', windDirection],
+  ['windEnvelopeEnabled', windEnvelope],
+  ['windEnvelopeStepDeg', windStep],
+  ['equipmentMassKg', equipmentMass],
+  ['equipmentWindAreaM2', equipmentArea],
+  ['iceThicknessMm', iceThickness],
+  ['displacementLimitMm', displacementLimit],
+  ['minimumBucklingFactor', bucklingLimit],
+])
+const mastProjectForm = {
+  elements: {
+    namedItem: (name) => mastFieldMap.get(name) ?? null,
+  },
+}
+
 const format = (value, digits = 2) => Number.isFinite(Number(value))
   ? new Intl.NumberFormat('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)
   : '∞'
@@ -62,27 +86,18 @@ fillSelect(reinforcementClass, REINFORCEMENT_CLASS_IDS, (id) => getReinforcement
 fillSelect(stockLength, STOCK_BAR_LENGTHS_MM, (value) => `${value / 1000} м`)
 fillSelect(stockPieces, STOCK_BAR_DIVISIONS, String)
 
-function setValue(element, value) {
-  element.value = String(value)
-}
-
-function previewInput() {
-  return projectInputFromFlatValues({
-    moduleCount: Math.max(1, Math.floor(Number(moduleCount.value) || DEFAULT_PROJECT_FORM_VALUES.moduleCount)),
-    stockBarLengthMm: Number(stockLength.value) || DEFAULT_PROJECT_FORM_VALUES.stockBarLengthMm,
-    stockBarPieces: Number(stockPieces.value) || DEFAULT_PROJECT_FORM_VALUES.stockBarPieces,
-    barDiameterMm: Number(barDiameter.value) || DEFAULT_PROJECT_FORM_VALUES.barDiameterMm,
-    reinforcementClass: reinforcementClass.value || DEFAULT_PROJECT_FORM_VALUES.reinforcementClass,
-  })
+function currentProjectInput() {
+  customWindPreset.value = 'custom'
+  return readProjectInputFromForm(mastProjectForm)
 }
 
 function currentMastHeightM() {
-  return previewProjectGeometry(previewInput()).mastHeightM
+  return previewProjectGeometry(currentProjectInput()).mastHeightM
 }
 
 function updateGeometryHint() {
   try {
-    const preview = previewProjectGeometry(previewInput())
+    const preview = previewProjectGeometry(currentProjectInput())
     $('#mast-geometry').textContent = `Ребро ${format(preview.ribCutLengthMm, 1)} мм; высота модуля ${format(preview.moduleHeightMm, 1)} мм; высота мачты ${format(preview.mastHeightM, 2)} м. Растяжка будет привязана к ближайшему узлу с шагом ${format(preview.moduleHeightMm / 1000, 3)} м.`
   } catch (error) {
     $('#mast-geometry').textContent = error instanceof Error ? error.message : String(error)
@@ -141,21 +156,13 @@ function rebuildTiers() {
   tiersBox.replaceChildren(...Array.from({ length: count }, (_, index) => createTier(index, previous[index])))
 }
 
+function setValue(element, value) {
+  element.value = String(value)
+}
+
 function setExample() {
-  setValue(moduleCount, DEFAULT_PROJECT_FORM_VALUES.moduleCount)
-  setValue(barDiameter, DEFAULT_PROJECT_FORM_VALUES.barDiameterMm)
-  reinforcementClass.value = DEFAULT_PROJECT_FORM_VALUES.reinforcementClass
-  setValue(stockLength, DEFAULT_PROJECT_FORM_VALUES.stockBarLengthMm)
-  setValue(stockPieces, DEFAULT_PROJECT_FORM_VALUES.stockBarPieces)
-  setValue(windPressure, DEFAULT_PROJECT_FORM_VALUES.windPressurePa)
-  setValue(windDirection, 0)
-  setValue(windStep, DEFAULT_PROJECT_FORM_VALUES.windEnvelopeStepDeg)
-  windEnvelope.checked = true
-  setValue(equipmentMass, DEFAULT_PROJECT_FORM_VALUES.equipmentMassKg)
-  setValue(equipmentArea, DEFAULT_PROJECT_FORM_VALUES.equipmentWindAreaM2)
-  setValue(iceThickness, DEFAULT_PROJECT_FORM_VALUES.iceThicknessMm)
-  setValue(displacementLimit, DEFAULT_PROJECT_FORM_VALUES.displacementLimitMm)
-  setValue(bucklingLimit, DEFAULT_PROJECT_FORM_VALUES.minimumBucklingFactor)
+  applyDefaultProjectInputToForm(mastProjectForm)
+  customWindPreset.value = 'custom'
   setValue(tierCount, 2)
   setValue(safetyFactor, 3)
   setValue(terminationEfficiency, 0.8)
@@ -171,26 +178,6 @@ function readNumber(element, label, minimum = null) {
   if (!Number.isFinite(value)) throw new Error(`${label}: требуется число`)
   if (minimum != null && value < minimum) throw new Error(`${label}: значение должно быть не меньше ${minimum}`)
   return value
-}
-
-function readParameters() {
-  return projectInputFromFlatValues({
-    moduleCount: Math.floor(readNumber(moduleCount, 'Число модулей', 1)),
-    stockBarLengthMm: readNumber(stockLength, 'Длина прутка', 1),
-    stockBarPieces: Math.floor(readNumber(stockPieces, 'Число частей', 1)),
-    barDiameterMm: readNumber(barDiameter, 'Диаметр арматуры', 1),
-    reinforcementClass: reinforcementClass.value,
-    windPresetId: 'custom',
-    windPressurePa: readNumber(windPressure, 'Давление ветра', 0),
-    windDirectionDeg: readNumber(windDirection, 'Направление ветра'),
-    windEnvelopeEnabled: windEnvelope.checked,
-    windEnvelopeStepDeg: readNumber(windStep, 'Шаг огибающей', 1),
-    equipmentMassKg: readNumber(equipmentMass, 'Масса оборудования', 0),
-    equipmentWindAreaM2: readNumber(equipmentArea, 'Парусная площадь', 0),
-    iceThicknessMm: readNumber(iceThickness, 'Толщина льда', 0),
-    displacementLimitMm: readNumber(displacementLimit, 'Допустимый прогиб', 1),
-    minimumBucklingFactor: readNumber(bucklingLimit, 'Минимальный λ', 1),
-  })
 }
 
 function readTiers() {
@@ -301,7 +288,7 @@ function calculate() {
   calculateButton.disabled = true
   calculateButton.textContent = 'Расчёт…'
   try {
-    const projectInput = readParameters()
+    const projectInput = currentProjectInput()
     const tiers = readTiers()
     const guyOptions = {
       safetyFactor: readNumber(safetyFactor, 'Коэффициент запаса', 1),

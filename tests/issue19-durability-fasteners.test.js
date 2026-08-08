@@ -18,23 +18,18 @@ import {
 import { calculateMinimumWeldLength } from '../packages/engineering/index.js'
 import { calculateWeldServiceDegradation } from '../packages/domain/index.js'
 import { calculateEquivalentMemberWeldZoneStiffness } from '../packages/structural-analysis/index.js'
-import {
-  DEFAULT_PARAMETERS,
-  resolveCalculationParameters,
-} from '../packages/application/index.js'
 import { generateMastModel } from '../packages/structural-analysis/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
-const baseJointParameters = {
-  ...DEFAULT_PARAMETERS,
+const baseJointParameters = resolvedProject({
   barDiameterMm: 12,
   jointBoltShearPlanes: 1,
   connectionConditionFactor: 1,
-  jointBaseMetalTensileStrengthMPa: 490,
   jointNutSectionAreaRatio: 2,
   weldToRibAreaRatio: 2.5,
   jointNutFactor: 0.2,
   jointPreloadVariation: 0.25,
-}
+})
 
 const smallDemand = [{
   nodeId: 3,
@@ -166,16 +161,14 @@ test('issue #19: две околошовные зоны дают эквивал�
 })
 
 test('issue #19: возраст сварных зон реально уменьшает E, используемый frame/FEM, но сохраняет номинальный E отдельно', () => {
-  const freshParameters = resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
+  const freshParameters = resolvedProject({
     moduleCount: 1,
     weldServiceYears: 0,
     weldInitialStiffnessRetention: 1,
     weldAnnualStiffnessLossRate: 0,
     weldMinimumStiffnessRetention: 0.5,
   })
-  const agedParameters = resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
+  const agedParameters = resolvedProject({
     moduleCount: 1,
     weldServiceYears: 50,
     weldInitialStiffnessRetention: 0.97,

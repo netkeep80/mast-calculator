@@ -8,6 +8,15 @@ interface VerificationCheck {
   readonly id: string
   readonly level: number
   readonly status: VerificationStatus
+  readonly title?: string
+  readonly explanation?: string
+  readonly howToCheck?: string
+  readonly formula?: string
+  readonly actual?: number
+  readonly expected?: number
+  readonly tolerance?: number
+  readonly relativeError?: number
+  readonly evidence?: string
 }
 
 interface VerificationLevel {

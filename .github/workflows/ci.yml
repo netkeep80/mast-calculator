@@ -217,9 +217,8 @@ jobs:
           assert_contains /tmp/mast-calculator-index.html 'Справочники — проверить исходные значения расчёта' 'reference-data entry point is missing'
 
           curl --fail --silent http://127.0.0.1:4173/design.html >/tmp/mast-design.html
-          assert_contains /tmp/mast-design.html '<title>3D и конструкторская документация мачты</title>' 'design page title changed'
-          assert_contains /tmp/mast-design.html 'Модуль 3D и конструкторской документации' 'design workspace identity is missing'
-          assert_contains /tmp/mast-design.html 'Сохранить КД по ЕСКД' 'ESKD export control is missing'
+          assert_contains /tmp/mast-design.html 'http-equiv="refresh" content="0; url=./#reports"' 'legacy design URL no longer redirects to Reports'
+          assert_contains /tmp/mast-design.html 'href="./#reports"' 'legacy design page has no manual Reports fallback'
 
           for asset in \
             logo.jpg \
@@ -227,9 +226,11 @@ jobs:
             apps/web/calculation-worker.js \
             apps/web/viewer.js \
             apps/web/joint-viewer.js \
-            apps/web/design-app.js \
+            apps/web/result-tabs.js \
+            apps/web/result-tabs.css \
+            apps/web/reports-exports.js \
+            apps/web/reports-exports.css \
             apps/web/design-storage.js \
-            apps/web/design.css \
             packages/domain/index.js \
             packages/numerics/index.js \
             packages/structural-analysis/index.js \

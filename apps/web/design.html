@@ -3,81 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Подробная 3D-модель, OBJ и конструкторская документация рассчитанной модульной мачты">
-  <title>3D и конструкторская документация мачты</title>
-  <link rel="stylesheet" href="./design.css">
+  <meta http-equiv="refresh" content="0; url=./#reports">
+  <title>3D и КД — Калькулятор мачты</title>
 </head>
 <body>
-  <header class="design-header">
-    <img src="./logo.jpg" alt="Логотип калькулятора мачты" onerror="if(!this.dataset.fallback){this.dataset.fallback='1';this.src='../logo.jpg'}">
-    <div>
-      <p class="eyebrow">Модуль 3D и конструкторской документации</p>
-      <h1>Модель изделия и выпуск КД</h1>
-      <p>Здесь нет FEM-расчёта: модуль получает уже рассчитанную конструкцию, показывает её подробную геометрию и формирует производственные документы.</p>
-    </div>
-  </header>
-
-  <main class="design-layout">
-    <section class="panel source-panel">
-      <div>
-        <h2>Исходная конструкция</h2>
-        <p id="source-summary" class="source-summary">Загрузка последнего расчёта…</p>
-        <p id="source-error" class="error hidden"></p>
-      </div>
-      <div class="toolbar">
-        <a class="button" href="./">← К калькулятору</a>
-        <button id="open-package" type="button">Открыть пакет JSON</button>
-        <button id="export-package" type="button" disabled>Сохранить пакет JSON</button>
-        <button id="export-obj" type="button" disabled>Сохранить OBJ</button>
-        <button id="export-eskd" class="primary" type="button" disabled>Сохранить КД по ЕСКД</button>
-      </div>
-    </section>
-
-    <section id="empty-state" class="panel empty-state hidden">
-      <h2>Нет рассчитанной конструкции</h2>
-      <p>Вернитесь в калькулятор, выполните расчёт и нажмите «Открыть 3D и КД». Либо загрузите ранее сохранённый пакет JSON.</p>
-    </section>
-
-    <section id="workspace" class="viewer-grid hidden">
-      <article class="panel viewer-card">
-        <div class="viewer-head">
-          <div><p class="eyebrow">Общая модель</p><h2>Подробная 3D-модель мачты</h2></div>
-          <label>Выбранный модуль <select id="module-selector"></select></label>
-        </div>
-        <div class="canvas-wrap"><canvas id="mast-canvas" tabindex="0" aria-label="Подробная трехмерная модель мачты"></canvas></div>
-        <p class="viewer-help">Мышь: перетаскивание — вращение, колесо — масштаб, клик по ребру — выбор модуля, двойной клик — сброс вида. Это та же detailed mesh-модель, которую сериализует OBJ.</p>
-        <div class="design-stats">
-          <article><span>Модулей</span><strong id="stat-modules">—</strong></article>
-          <article><span>Рёбер</span><strong id="stat-members">—</strong></article>
-          <article><span>Высота</span><strong id="stat-height">—</strong></article>
-          <article><span>Масса сборки</span><strong id="stat-mass">—</strong></article>
-        </div>
-      </article>
-
-      <article class="panel viewer-card">
-        <div class="viewer-head"><div><p class="eyebrow">Деталь</p><h2>Межмодульный узел</h2></div></div>
-        <div class="canvas-wrap joint"><canvas id="joint-canvas" aria-label="Трёхмерная модель межмодульного соединения"></canvas></div>
-        <p id="joint-summary" class="viewer-help">Узел загружается…</p>
-      </article>
-    </section>
-
-    <section id="kd-section" class="panel kd-panel hidden">
-      <div class="kd-info">
-        <p class="eyebrow">Конструкторская документация</p>
-        <h2>Отдельный комплект КД</h2>
-        <p>КД больше не входит в расчётный проект. Она строится здесь из той же геометрии изделия, что показана в 3D и экспортируется в OBJ.</p>
-        <ul>
-          <li>Мачта модульная — сборочный чертёж и спецификация;</li>
-          <li>модуль — сборочный чертёж и спецификация;</li>
-          <li>межмодульный узел — сборочный чертёж;</li>
-          <li>ребро — чертёж детали.</li>
-        </ul>
-        <p>Виды мачты и модуля формируются ортогональной/изометрической проекцией общего polygon mesh, а не отдельным нарисованным вручную «эскизом». Обозначения, подписи, технологические допуски и нормоконтроль по-прежнему должен назначить реальный разработчик.</p>
-      </div>
-      <iframe id="kd-preview" class="kd-preview" title="Предпросмотр комплекта конструкторской документации"></iframe>
-    </section>
-  </main>
-
-  <script type="module" src="./design-app.js"></script>
+  <p>3D, OBJ и конструкторская документация теперь находятся в едином рабочем пространстве калькулятора: <a href="./#reports">открыть Reports &amp; Exports</a>.</p>
 </body>
 </html>

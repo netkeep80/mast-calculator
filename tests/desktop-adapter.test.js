@@ -24,7 +24,7 @@ function filesUnder(relativeRoot, predicate = () => true) {
 const browserFiles = read('apps/web/file-adapter.js')
 const projectPackageUi = read('apps/web/project-package-ui.js')
 const mainApp = read('apps/web/app.js')
-const designApp = read('apps/web/design-app.js')
+const reportsExports = read('apps/web/reports-exports.js')
 const desktopFiles = read('apps/desktop/web/file-adapter.js')
 const rustMain = read('apps/desktop/src-tauri/src/main.rs')
 const capability = JSON.parse(read('apps/desktop/src-tauri/capabilities/main.json'))
@@ -37,9 +37,9 @@ test('shared presentation delegates all user file I/O to one environment adapter
   assert.match(projectPackageUi, /fileAdapter\.saveText/)
   assert.match(projectPackageUi, /fileAdapter\.openText/)
   assert.match(mainApp, /fileAdapter\.saveText/)
-  assert.match(designApp, /fileAdapter\.saveText/)
-  assert.match(designApp, /fileAdapter\.openText/)
-  for (const presentation of [projectPackageUi, mainApp, designApp]) {
+  assert.match(reportsExports, /fileAdapter/)
+  assert.match(reportsExports, /\.saveText/)
+  for (const presentation of [projectPackageUi, mainApp, reportsExports]) {
     assert.doesNotMatch(presentation, /new Blob\(|createObjectURL|type = 'file'|\.download\s*=/)
   }
   assert.match(browserFiles, /environment:\s*'browser'/)

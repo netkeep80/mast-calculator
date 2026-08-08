@@ -18,10 +18,10 @@ env:
 
 jobs:
   quality:
-    name: Syntax, policy and maintainability
+    name: Syntax, types and maintainability
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     concurrency:
       group: check-${{ github.workflow }}-${{ github.ref }}-quality
       cancel-in-progress: true
@@ -42,7 +42,9 @@ jobs:
           node-version: '24.x'
       - name: Check JavaScript syntax
         run: npm run check
-      - name: Check file line limits
+      - name: Typecheck canonical TypeScript
+        run: npm run typecheck
+      - name: Enforce maintainability budgets
         run: node scripts/check-file-line-limits.mjs
 
   security:
@@ -63,112 +65,8 @@ jobs:
       - name: Run secretlint
         run: npx --yes -p secretlint -p @secretlint/secretlint-rule-preset-recommend secretlint --secretlintignore .gitignore "**/*"
 
-  triple-fem:
-    name: Triple FEM equivalence
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    concurrency:
-      group: check-${{ github.workflow }}-${{ github.ref }}-triple-fem
-      cancel-in-progress: true
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Simulate fresh merge with latest base
-        if: github.event_name == 'pull_request'
-        shell: bash
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: bash scripts/simulate-fresh-merge.sh
-      - name: Use Node.js 24
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24.x'
-      - name: Compare global, Schur and independent dense FEM
-        run: npm run test:triple
-
-  joint-configurator:
-    name: Joint configurator
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    concurrency:
-      group: check-${{ github.workflow }}-${{ github.ref }}-joint-configurator
-      cancel-in-progress: true
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Simulate fresh merge with latest base
-        if: github.event_name == 'pull_request'
-        shell: bash
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: bash scripts/simulate-fresh-merge.sh
-      - name: Use Node.js 24
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24.x'
-      - name: Check two-nut physical joint and automatic configuration
-        run: npm run test:joint
-
-  support-statics:
-    name: Support reaction statics
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    concurrency:
-      group: check-${{ github.workflow }}-${{ github.ref }}-support-statics
-      cancel-in-progress: true
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Simulate fresh merge with latest base
-        if: github.event_name == 'pull_request'
-        shell: bash
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: bash scripts/simulate-fresh-merge.sh
-      - name: Use Node.js 24
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24.x'
-      - name: Check analytical three-support reaction oracles
-        run: npm run test:statics
-
-  usage-ux:
-    name: Usage scenarios and reference catalogs
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    concurrency:
-      group: check-${{ github.workflow }}-${{ github.ref }}-usage-ux
-      cancel-in-progress: true
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Simulate fresh merge with latest base
-        if: github.event_name == 'pull_request'
-        shell: bash
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: bash scripts/simulate-fresh-merge.sh
-      - name: Use Node.js 24
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24.x'
-      - name: Check user scenarios, assembly mass and single-source catalogs
-        run: npm run test:ux
-
   regression:
-    name: Complete regression suite
+    name: Functional and numerical regression
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -190,8 +88,36 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24.x'
-      - name: Run complete test suite once
+      - name: Run complete functional test suite once
         run: npm test
+
+  performance:
+    name: Performance budgets
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: check-${{ github.workflow }}-${{ github.ref }}-performance
+      cancel-in-progress: true
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Simulate fresh merge with latest base
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/simulate-fresh-merge.sh
+      - name: Use Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+      - name: Run engineering performance guard
+        run: npm run test:performance
+      - name: Check Web and generated-artifact budgets
+        run: node scripts/check-build-budgets.mjs
 
   platform-equivalence:
     name: Canonical equivalence (${{ matrix.os }})
@@ -224,7 +150,7 @@ jobs:
         run: npm run test:platform
 
   static-site:
-    name: Static site smoke test
+    name: Web integration smoke
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 10

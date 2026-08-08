@@ -198,12 +198,18 @@ jobs:
           grep --quiet '<title>Калькулятор мачты</title>' /tmp/mast-calculator-index.html
           grep --quiet 'Проверить конкретную мачту' /tmp/mast-calculator-index.html
           grep --quiet 'Справочники — проверить исходные значения расчёта' /tmp/mast-calculator-index.html
+          curl --fail --silent http://127.0.0.1:4173/design.html >/tmp/mast-design.html
+          grep --quiet '<title>3D и конструкторская документация мачты</title>' /tmp/mast-design.html
+          grep --quiet 'Модуль 3D и конструкторской документации' /tmp/mast-design.html
+          grep --quiet 'Скачать КД по ЕСКД' /tmp/mast-design.html
           curl --fail --silent http://127.0.0.1:4173/logo.jpg >/dev/null
           curl --fail --silent http://127.0.0.1:4173/apps/web/app.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/apps/web/calculation-worker.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/apps/web/viewer.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/apps/web/joint-viewer.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/apps/web/design-app.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/apps/web/design-storage.js >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/apps/web/design.css >/dev/null
           curl --fail --silent http://127.0.0.1:4173/packages/domain/index.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/packages/numerics/index.js >/dev/null
           curl --fail --silent http://127.0.0.1:4173/packages/structural-analysis/index.js >/dev/null

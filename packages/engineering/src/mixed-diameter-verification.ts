@@ -64,13 +64,14 @@ function recalculatePassportStatus(passport: VerificationPassportLike): Verifica
   const notVerified = checks.filter((check) => check.status === PENDING).length
   const internalChecks = checks.filter((check) => check.level <= 4)
   const internalPassed = internalChecks.every((check) => check.status === PASS)
-  const levels = (passport.levels ?? []).map((level) => {
+  const levels: VerificationLevel[] = (passport.levels ?? []).map((level) => {
     const levelChecks = checks.filter((check) => check.level === level.number)
     const hasFail = levelChecks.some((check) => check.status === FAIL)
     const hasPending = levelChecks.some((check) => check.status === PENDING)
+    const status: VerificationStatus = hasFail ? FAIL : hasPending ? PENDING : PASS
     return {
       ...level,
-      status: hasFail ? FAIL : hasPending ? PENDING : PASS,
+      status,
       checkIds: levelChecks.map((check) => check.id),
     }
   })

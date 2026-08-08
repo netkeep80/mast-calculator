@@ -71,14 +71,7 @@ export function calculateGuyedProject(
 ) {
   try {
     const parameters = resolveValidatedProject(input)
-    return immutablePublicResult(calculateGuyedMast(
-      parameters as unknown as Record<string, unknown>,
-      tiers,
-      {
-        ...options,
-        resolvedProject: parameters,
-      },
-    ), options)
+    return immutablePublicResult(calculateGuyedMast(parameters, tiers, options), options)
   } catch (error) {
     throw toApplicationError(error)
   }

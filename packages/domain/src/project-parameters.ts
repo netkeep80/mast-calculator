@@ -1,3 +1,4 @@
+import type { ProjectInput, ResolvedProject } from './contracts.js'
 import {
   applyReinforcementClass,
   regularOctahedronHeightMm,
@@ -8,80 +9,6 @@ import { resolveWindParameters, windSpeedFromPressurePa } from './weather.js'
 export const DEFAULT_LATERAL_CAPACITY_STEP_DEG = 15
 
 type JsonRecord = Record<string, unknown>
-
-export interface ProjectGeometryInput {
-  moduleCount: number
-  stockBarLengthMm: number
-  stockBarPieces: number
-  barDiameterMm: number
-  moduleDiametersMm?: readonly number[]
-}
-
-export interface ProjectMaterialInput {
-  reinforcementClass: string
-  materialSafetyFactor: number
-}
-
-export interface ProjectEnvironmentInput {
-  deadLoadFactor: number
-  windLoadFactor: number
-  windPresetId: string
-  windPressurePa: number
-  dragCoefficient: number
-  windDirectionDeg: number
-  windEnvelopeEnabled: boolean
-  windEnvelopeStepDeg: number
-  lateralCapacityStepDeg: number
-  iceThicknessMm: number
-  iceDensityKgM3: number
-}
-
-export interface ProjectEquipmentInput {
-  massKg: number
-  windAreaM2: number
-  dragCoefficient: number
-  loadFactor: number
-}
-
-export interface ProjectConnectionInput {
-  configuratorMode: string
-  boltDiameterMm: number
-  boltClass: string
-  clearanceNutThreadMm: number
-  boltLengthMm: number
-  threadEngagementFactor: number
-  boltShearPlanes: number
-  conditionFactor: number
-  weldConsumableId: string
-  weldLegMm: number
-  weldSegmentsPerEnd: number
-  weldBetaF: number
-  weldBetaZ: number
-  tighteningTorqueNm?: number
-  nutFactor?: number
-  preloadVariation?: number
-  nutSectionAreaRatio?: number
-  weldToRibAreaRatio?: number
-  weldServiceYears?: number
-  weldInitialStiffnessRetention?: number
-  weldAnnualStiffnessLossRate?: number
-  weldMinimumStiffnessRetention?: number
-}
-
-export interface ProjectCriteriaInput {
-  displacementLimitMm: number
-  minimumBucklingFactor: number
-  heightSearchMaxModules: number
-}
-
-export interface ProjectInput {
-  geometry: ProjectGeometryInput
-  material: ProjectMaterialInput
-  environment: ProjectEnvironmentInput
-  equipment: ProjectEquipmentInput
-  connection: ProjectConnectionInput
-  criteria: ProjectCriteriaInput
-}
 
 const deepFreeze = <T>(value: T): T => {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
@@ -262,10 +189,7 @@ export function flattenProjectInput(projectInput: unknown): JsonRecord {
 const DEFAULT_FLAT_INPUT = flattenProjectInput(DEFAULT_PROJECT_INPUT)
 const DEFAULT_BASE_METAL_TENSILE_STRENGTH_MPA = 490
 
-/**
- * Internal resolved default used by low-level engineering tests during #61/#62.
- * It is not a user-input contract; public adapters must use DEFAULT_PROJECT_INPUT.
- */
+/** Internal resolved default for low-level engineering fixtures during #62. */
 export const DEFAULT_PARAMETERS = Object.freeze({
   ...DEFAULT_FLAT_INPUT,
   ribCutLengthMm: theoreticalCutLengthMm(DEFAULT_FLAT_INPUT.stockBarLengthMm, DEFAULT_FLAT_INPUT.stockBarPieces),
@@ -284,7 +208,7 @@ export const DEFAULT_PARAMETERS = Object.freeze({
   jointBaseMetalTensileStrengthMPa: DEFAULT_BASE_METAL_TENSILE_STRENGTH_MPA,
 })
 
-function resolveFlatCalculationParameters(parameters: JsonRecord = {}) {
+function resolveFlatCalculationParameters(parameters: JsonRecord = {}): ResolvedProject {
   const merged = { ...DEFAULT_FLAT_INPUT, ...parameters }
   const withMaterial = applyReinforcementClass(merged as JsonRecord & { reinforcementClass: string })
   const withWind = resolveWindParameters(withMaterial as JsonRecord & { windPresetId?: string; windPressurePa?: unknown })
@@ -305,18 +229,15 @@ function resolveFlatCalculationParameters(parameters: JsonRecord = {}) {
     jointBaseMetalTensileStrengthMPa: Number.isFinite(baseMetalStrength)
       ? baseMetalStrength
       : DEFAULT_BASE_METAL_TENSILE_STRENGTH_MPA,
-  }
+  } as unknown as ResolvedProject
 }
 
 /** Canonical public resolution path: ProjectInput -> ResolvedProject. */
-export function resolveProjectInput(projectInput: unknown) {
+export function resolveProjectInput(projectInput: ProjectInput): ResolvedProject {
   return resolveFlatCalculationParameters(flattenProjectInput(projectInput))
 }
 
-/**
- * Transitional low-level fixture resolver for existing focused tests/internal calls.
- * Public application use-cases must not call this with user input; #62 removes it.
- */
-export function resolveCalculationParameters(parameters: JsonRecord = {}) {
+/** Transitional low-level fixture resolver; removed when remaining flat consumers migrate in #62. */
+export function resolveCalculationParameters(parameters: JsonRecord = {}): ResolvedProject {
   return resolveFlatCalculationParameters(parameters)
 }

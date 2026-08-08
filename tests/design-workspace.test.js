@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
-import { DEFAULT_PARAMETERS } from '../packages/application/index.js'
 import { calculateCompleteMastWithConfiguredJoint } from '../packages/application/index.js'
 import {
   buildDesignPackage,
@@ -17,15 +16,15 @@ import {
 } from '../apps/web/design-storage.js'
 import { buildDetailedMastModel } from '../packages/design/index.js'
 import { createMastObj } from '../packages/design/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 function calculation() {
-  return calculateCompleteMastWithConfiguredJoint({
-    ...DEFAULT_PARAMETERS,
+  return calculateCompleteMastWithConfiguredJoint(resolvedProject({
     moduleCount: 3,
     heightSearchMaxModules: 4,
     windEnvelopeEnabled: false,
     lateralCapacityStepDeg: 60,
-  })
+  }))
 }
 
 function memoryStorage() {

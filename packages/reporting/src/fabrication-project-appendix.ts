@@ -92,7 +92,12 @@ function craneBoomAppendix(result: ReportingCalculationResult): string {
 }
 
 export function createFabricationAndReferenceAppendix(result: ReportingCalculationResult): string {
-  const mass = result.assemblyMass ?? calculateAssemblyMass(result)
+  let mass = result.assemblyMass
+  if (!mass) {
+    const connections = result.connections
+    if (!connections) throw new Error('Для расчёта массы физической сборки отсутствуют соединения')
+    mass = calculateAssemblyMass({ ...result, connections })
+  }
   const data = buildReferenceData()
   return `
 <section class="page-break">

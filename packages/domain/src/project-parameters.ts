@@ -172,7 +172,7 @@ export function assertProjectInput(value: unknown): ProjectInput {
     const group = value[groupName]
     if (!isPlainObject(group)) throw new Error(`Отсутствует группа ProjectInput.${groupName}`)
     const allowed = PROJECT_INPUT_GROUPS[groupName]
-    const unknownFields = Object.keys(group).filter((key) => !(key in allowedFields))
+    const unknownFields = Object.keys(group).filter((key) => !(key in allowed))
     if (unknownFields.length > 0) {
       throw new Error(`Неизвестные поля ProjectInput.${groupName}: ${unknownFields.join(', ')}`)
     }

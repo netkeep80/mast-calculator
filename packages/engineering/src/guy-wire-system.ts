@@ -103,6 +103,7 @@ export const DEFAULT_GUY_ANALYSIS_OPTIONS: Readonly<GuyAnalysisOptions> = Object
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
 const globalDof = (nodeId: number, axis: number): number => nodeId * DOF_PER_NODE + axis
+const toVector3 = (value: readonly number[]): Vector3 => [value[0] ?? 0, value[1] ?? 0, value[2] ?? 0]
 const matrixVector3 = (matrix: Matrix3, vector: readonly number[]): Vector3 => [
   matrix[0][0] * (vector[0] ?? 0) + matrix[0][1] * (vector[1] ?? 0) + matrix[0][2] * (vector[2] ?? 0),
   matrix[1][0] * (vector[0] ?? 0) + matrix[1][1] * (vector[1] ?? 0) + matrix[1][2] * (vector[2] ?? 0),
@@ -278,7 +279,8 @@ function zeroMatrix3(): Matrix3 {
 }
 
 function cableState(cable: GuyCable, displacement: readonly number[] = [0, 0, 0]) {
-  const deformedAttachment = add3(cable.attachmentPosition, displacement)
+  const displacement3 = toVector3(displacement)
+  const deformedAttachment = add3(cable.attachmentPosition, displacement3)
   const toAnchor = sub3(cable.anchorPosition, deformedAttachment)
   const currentLengthM = norm3(toAnchor)
   const directionToAnchor = unit3(toAnchor)
@@ -300,7 +302,7 @@ function cableState(cable: GuyCable, displacement: readonly number[] = [0, 0, 0]
   const forceOnMastN: Vector3 = active ? scale3(directionToAnchor, tensionN) : [0, 0, 0]
   return {
     cableId: cable.id,
-    displacement: [...displacement] as Vector3,
+    displacement: displacement3,
     deformedAttachment,
     currentLengthM,
     extensionM,
@@ -396,7 +398,7 @@ function buildNewtonLoadCase(
 function maxDisplacementChange(left: readonly (readonly number[])[], right: readonly (readonly number[])[]): number {
   let maximum = 0
   for (let nodeId = 0; nodeId < left.length; nodeId += 1) {
-    maximum = Math.max(maximum, norm3(sub3(left[nodeId]!, right[nodeId]!)))
+    maximum = Math.max(maximum, norm3(sub3(toVector3(left[nodeId]!), toVector3(right[nodeId]!))))
   }
   return maximum
 }
@@ -483,7 +485,7 @@ export function solveGuyedLoadCase(
   let states = cableSystem.cables.map((cable) => cableState(cable))
   let analysis: CheckedAnalysis | null = null
   let solverLoadCase: GuySolverLoadCase | null = null
-  let system: FrameSystem = baseSystem
+  let system: ReturnType<typeof compileWithCableTangents> | FrameSystem = baseSystem
   let converged = false
   let displacementChangeM = Number.POSITIVE_INFINITY
   let relativeTensionChange = Number.POSITIVE_INFINITY
@@ -494,7 +496,7 @@ export function solveGuyedLoadCase(
     states = cableSystem.cables.map((cable) => cableState(cable, trialDisplacements[cable.attachmentNodeId]!))
     system = compileWithCableTangents(baseSystem, cableSystem, states)
     solverLoadCase = buildNewtonLoadCase(baseLoadCase, cableSystem, states)
-    analysis = analyzeCheckedFrame(model, solverLoadCase, caseParameters, system)
+    analysis = analyzeCheckedFrame(model, solverLoadCase, caseParameters, system as FrameSystem)
     const nextDisplacements = analysis.displacements.map((value) => [...value] as Vector3)
     const nextStates = cableSystem.cables.map((cable) => cableState(cable, nextDisplacements[cable.attachmentNodeId]!))
     displacementChangeM = maxDisplacementChange(trialDisplacements, nextDisplacements)
@@ -521,7 +523,7 @@ export function solveGuyedLoadCase(
   }
 
   states = cableSystem.cables.map((cable) => cableState(cable, trialDisplacements[cable.attachmentNodeId]!))
-  correctFreeNodeResiduals(analysis, system, cableSystem, states)
+  correctFreeNodeResiduals(analysis, system as FrameSystem, cableSystem, states)
   const cables = enrichCableResults(cableSystem, states)
   const maximumCableUtilization = cables.length === 0 ? 0 : Math.max(...cables.map((cable) => cable.utilization))
   return {
@@ -557,20 +559,20 @@ function caseScore(loadCase: GuyedLoadCase, parameters: ResolvedProject): number
   )
 }
 
-function maximumCase<T>(cases: readonly T[], selector: (value: T) => number): T {
+function maximumCase<T extends object>(cases: readonly T[], selector: (value: T) => number): T {
   const first = cases[0]
   if (!first) throw new Error('Не сформирован ни один расчётный случай растяжек')
-  let best = first
+  let best: T = first
   for (const candidate of cases.slice(1)) {
     if (selector(candidate) > selector(best)) best = candidate
   }
   return best
 }
 
-function minimumCase<T>(cases: readonly T[], selector: (value: T) => number): T {
+function minimumCase<T extends object>(cases: readonly T[], selector: (value: T) => number): T {
   const first = cases[0]
   if (!first) throw new Error('Не сформирован ни один расчётный случай растяжек')
-  let best = first
+  let best: T = first
   for (const candidate of cases.slice(1)) {
     if (selector(candidate) < selector(best)) best = candidate
   }

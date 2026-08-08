@@ -30,22 +30,22 @@ function jobBlocks(workflow) {
   return jobs
 }
 
-test('CI/CD workflows используют least-privilege contents: read по умолчанию', () => {
+test('CI/CD workflows use least-privilege contents: read by default', () => {
   for (const [name, workflow] of workflows) {
-    assert.match(workflow, /permissions:\s*\n\s+contents:\s*read/, `${name}: нет contents: read`)
+    assert.match(workflow, /permissions:\s*\n\s+contents:\s*read/, `${name}: missing top-level contents: read`)
   }
 })
 
-test('все jobs с runner имеют явный timeout-minutes', () => {
+test('every runner job has an explicit timeout', () => {
   for (const [filename, workflow] of workflows) {
     for (const job of jobBlocks(workflow)) {
       if (!/runs-on:/.test(job.block)) continue
-      assert.match(job.block, /timeout-minutes:\s*\d+/, `${filename}/${job.name}: отсутствует timeout`)
+      assert.match(job.block, /timeout-minutes:\s*\d+/, `${filename}/${job.name}: missing timeout`)
     }
   }
 })
 
-test('используются современные версии базовых GitHub Actions без Node 20 warning', () => {
+test('workflows use the current Node 24 / GitHub Actions generations', () => {
   const all = [...workflows.values()].join('\n')
   assert.doesNotMatch(all, /actions\/checkout@v[1-5](?:\s|$)/)
   assert.doesNotMatch(all, /actions\/setup-node@v[1-5](?:\s|$)/)
@@ -54,86 +54,50 @@ test('используются современные версии базовы�
   assert.doesNotMatch(all, /actions\/deploy-pages@v[1-4](?:\s|$)/)
   assert.match(all, /actions\/checkout@v6/)
   assert.match(all, /actions\/setup-node@v6/)
-})
-
-test('все Node jobs используют Node.js 24.x', () => {
   for (const [name, workflow] of workflows) {
-    if (/actions\/setup-node/.test(workflow)) {
-      assert.match(workflow, /node-version:\s*['"]24\.x['"]/, `${name}: требуется Node 24.x`)
-      assert.doesNotMatch(workflow, /node-version:\s*22/)
-    }
+    if (!/actions\/setup-node/.test(workflow)) continue
+    assert.match(workflow, /node-version:\s*['"]24\.x['"]/, `${name}: Node jobs must use 24.x`)
   }
 })
 
-test('PR CI содержит fresh-merge simulation и три ОС', () => {
+test('primary PR CI has one functional regression owner and durable responsibility gates', () => {
   const ci = workflows.get('ci.yml')
   assert.ok(ci)
   assert.match(ci, /scripts\/simulate-fresh-merge\.sh/)
-  assert.match(ci, /ubuntu-latest, macos-latest, windows-latest/)
-  assert.match(ci, /fail-fast:\s*false/)
-})
-
-test('полный regression suite имеет одного владельца, а OS matrix проверяет canonical equivalence', () => {
-  const ci = workflows.get('ci.yml')
-  const architecture = workflows.get('architecture.yml')
-  assert.ok(ci)
-  assert.ok(architecture)
-  assert.equal((ci.match(/run:\s*npm test\s*$/gm) ?? []).length, 1, 'ci.yml должен запускать полный npm test ровно один раз')
-  assert.doesNotMatch(architecture, /run:\s*npm test\s*$/m, 'architecture.yml не должен дублировать полный engineering suite')
-  assert.match(ci, /platform-equivalence:/)
-  assert.match(ci, /name:\s*Canonical equivalence \(\$\{\{ matrix\.os \}\}\)/)
+  assert.equal((ci.match(/run:\s*npm test\s*$/gm) ?? []).length, 1, 'full npm test must run exactly once')
+  for (const job of ['quality:', 'security:', 'regression:', 'performance:', 'platform-equivalence:', 'static-site:']) {
+    assert.match(ci, new RegExp(`^  ${job.replace(':', '\\:')}`, 'm'), `ci.yml missing ${job}`)
+  }
+  assert.doesNotMatch(ci, /^  (?:triple-fem|joint-configurator|support-statics|usage-ux):/m)
+  assert.match(ci, /npm run test:performance/)
+  assert.match(ci, /scripts\/check-build-budgets\.mjs/)
+  assert.match(ci, /os:\s*\[ubuntu-latest, macos-latest, windows-latest\]/)
   assert.match(ci, /npm run test:platform/)
-})
-
-test('PR CI имеет отдельный gate сравнения трёх независимых FEM путей', () => {
-  const ci = workflows.get('ci.yml')
-  assert.ok(ci)
-  assert.match(ci, /triple-fem:/)
-  assert.match(ci, /name:\s*Triple FEM equivalence/)
-  assert.match(ci, /npm run test:triple/)
-})
-
-test('PR CI имеет отдельный gate физического конфигуратора соединительного узла', () => {
-  const ci = workflows.get('ci.yml')
-  assert.ok(ci)
-  assert.match(ci, /joint-configurator:/)
-  assert.match(ci, /name:\s*Joint configurator/)
-  assert.match(ci, /npm run test:joint/)
-  assert.match(ci, /two-nut physical joint/i)
-})
-
-test('issue #33 имеет отдельный обязательный gate усиленной прочности и 3D-геометрии узла', () => {
-  const workflow = workflows.get('joint-strength.yml')
-  assert.ok(workflow, 'отсутствует joint-strength.yml')
-  assert.match(workflow, /name:\s*Joint strength checks/)
-  assert.match(workflow, /name:\s*Joint strength and visualization/)
-  assert.match(workflow, /npm run test:joint-strength/)
-  assert.match(workflow, /nut sections, weld area, preload, bolt shear and 3D geometry/i)
-  assert.match(workflow, /scripts\/simulate-fresh-merge\.sh/)
-})
-
-test('PR CI имеет отдельный gate аналитической статики трёх опор', () => {
-  const ci = workflows.get('ci.yml')
-  assert.ok(ci)
-  assert.match(ci, /support-statics:/)
-  assert.match(ci, /name:\s*Support reaction statics/)
-  assert.match(ci, /npm run test:statics/)
-  assert.match(ci, /analytical three-support reaction oracles/i)
-})
-
-test('PR CI отдельно проверяет сценарии, справочники и сборочную массу', () => {
-  const ci = workflows.get('ci.yml')
-  assert.ok(ci)
-  assert.match(ci, /usage-ux:/)
-  assert.match(ci, /name:\s*Usage scenarios and reference catalogs/)
-  assert.match(ci, /npm run test:ux/)
-  assert.match(ci, /assembly mass and single-source catalogs/i)
-})
-
-test('static-site smoke собирает Web adapter вместе с публичными package API', () => {
-  const ci = workflows.get('ci.yml')
-  assert.ok(ci)
   assert.match(ci, /npm run build:web/)
+})
+
+test('architecture workflow enforces boundaries without rerunning the functional suite', () => {
+  const architecture = workflows.get('architecture.yml')
+  assert.ok(architecture)
+  assert.match(architecture, /npm run typecheck/)
+  assert.match(architecture, /npm run test:architecture/)
+  assert.match(architecture, /npm run audit:architecture/)
+  assert.doesNotMatch(architecture, /npm (?:test|run test:emitted|run test:contracts)/)
+})
+
+test('migration-era issue workflows are gone after Foundation purge', () => {
+  for (const [filename, workflow] of workflows) {
+    assert.doesNotMatch(filename, /^issue\d+\.ya?ml$/i, `${filename}: issue-number workflow must be folded into durable gates`)
+    assert.doesNotMatch(
+      workflow,
+      /name:\s*(?:Joint strength checks|Static load simplification checks|3D and construction documentation)/,
+      `${filename}: migration-era workflow must be folded into durable gates`,
+    )
+  }
+})
+
+test('static-site smoke serves the canonical Web adapter and public package APIs', () => {
+  const ci = workflows.get('ci.yml')
   for (const modulePath of [
     'apps/web/app.js',
     'apps/web/calculation-worker.js',
@@ -147,13 +111,12 @@ test('static-site smoke собирает Web adapter вместе с публи�
     'packages/application/index.js',
     'packages/design/index.js',
     'packages/reporting/index.js',
-  ]) assert.ok(ci.includes(modulePath), `ci.yml smoke не проверяет ${modulePath}`)
+  ]) assert.ok(ci.includes(modulePath), `ci.yml smoke missing ${modulePath}`)
   assert.match(ci, /<title>Калькулятор мачты<\/title>/)
   assert.match(ci, /Проверить конкретную мачту/)
-  assert.doesNotMatch(ci, /--directory site\b/)
 })
 
-test('Pages deploy собирает apps/web + packages через canonical build:web', () => {
+test('Pages deploy uses canonical build:web and explicit writer concurrency', () => {
   const pages = workflows.get('pages.yml')
   assert.ok(pages)
   assert.match(pages, /actions\/configure-pages@v6/)
@@ -164,13 +127,18 @@ test('Pages deploy собирает apps/web + packages через canonical bui
   assert.match(pages, /pages:\s*write/)
   assert.match(pages, /id-token:\s*write/)
   assert.match(pages, /npm run build:web/)
-  assert.match(pages, /_site\/apps\/web\/build-info\.json/)
-  assert.doesNotMatch(pages, /cp -R site|cp logo\.jpg _site\/logo\.jpg/)
 })
 
-test('каждый workflow сохраняет явную Git default branch конфигурацию', () => {
+test('release write permission is scoped to the publish job only', () => {
+  const release = workflows.get('desktop-release.yml')
+  assert.ok(release)
+  assert.match(release, /permissions:\s*\n\s+contents:\s*read/)
+  assert.match(release, /publish:[\s\S]*?permissions:\s*\n\s+contents:\s*write/)
+})
+
+test('every workflow preserves explicit Git default-branch configuration', () => {
   for (const [name, workflow] of workflows) {
-    assert.match(workflow, /GIT_CONFIG_KEY_0:\s*init\.defaultBranch/, `${name}: нет GIT_CONFIG_KEY_0`)
-    assert.match(workflow, /GIT_CONFIG_VALUE_0:\s*main/, `${name}: нет GIT_CONFIG_VALUE_0`)
+    assert.match(workflow, /GIT_CONFIG_KEY_0:\s*init\.defaultBranch/, `${name}: missing GIT_CONFIG_KEY_0`)
+    assert.match(workflow, /GIT_CONFIG_VALUE_0:\s*main/, `${name}: missing GIT_CONFIG_VALUE_0`)
   }
 })

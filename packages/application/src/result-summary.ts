@@ -25,6 +25,7 @@ export interface ResultSummaryOptions {
 
 type BareResult = ReturnType<typeof calculateProject>
 type GuyedResult = ReturnType<typeof calculateGuyedProject>
+type OptimizationJob = ReturnType<typeof optimizeAndCalculateProject>
 
 function sourceSummary(projectPackage: ProjectPackageV1, provenance: ResultSummaryProvenance) {
   return {
@@ -85,6 +86,35 @@ function commonGeometry(parameters: BareResult['parameters'] | GuyedResult['para
   }
 }
 
+function bareResultPayload(result: BareResult) {
+  return {
+    passes: result.envelope.maxUtilization <= 1
+      && result.envelope.maxTopDisplacementM * 1000 <= result.parameters.displacementLimitMm
+      && result.envelope.minimumBucklingFactor >= result.parameters.minimumBucklingFactor
+      && result.connections?.passes !== false,
+    geometry: commonGeometry(result.parameters),
+    response: {
+      maxUtilization: result.envelope.maxUtilization,
+      topDisplacementMm: result.envelope.maxTopDisplacementM * 1000,
+      minimumBucklingFactor: result.envelope.minimumBucklingFactor,
+      governingWindDirectionDeg: result.envelope.governing.windDirectionDeg,
+    },
+    connection: connectionSummary(result),
+    capacities: {
+      lateralCriticalForceKgf: result.lateralCapacity?.criticalForceKgf ?? null,
+      staticMaximumTopMassKg: result.staticPayloadCapacity?.maximumTopEquipmentMassKg ?? null,
+      heightDesignMaximumM: result.heightCapacity?.design?.maximumHeightM ?? null,
+      heightDesignMaximumModules: result.heightCapacity?.design?.maximumModules ?? null,
+      craneMaximumEndPayloadMassKg: result.craneBoomCapacity?.maximumEndPayloadMassKg ?? null,
+    },
+    verification: result.verification ? {
+      status: result.verification.status,
+      counts: { ...result.verification.counts },
+    } : null,
+    warnings: [...result.warnings],
+  }
+}
+
 /** Stable machine-readable summary for a normal application calculation. */
 export function createBareResultSummary(
   projectPackage: ProjectPackageV1,
@@ -95,32 +125,7 @@ export function createBareResultSummary(
     schema: RESULT_SUMMARY_SCHEMA,
     mode: 'bare' as const,
     ...sourceSummary(projectPackage, options.provenance),
-    result: {
-      passes: result.envelope.maxUtilization <= 1
-        && result.envelope.maxTopDisplacementM * 1000 <= result.parameters.displacementLimitMm
-        && result.envelope.minimumBucklingFactor >= result.parameters.minimumBucklingFactor
-        && result.connections?.passes !== false,
-      geometry: commonGeometry(result.parameters),
-      response: {
-        maxUtilization: result.envelope.maxUtilization,
-        topDisplacementMm: result.envelope.maxTopDisplacementM * 1000,
-        minimumBucklingFactor: result.envelope.minimumBucklingFactor,
-        governingWindDirectionDeg: result.envelope.governing.windDirectionDeg,
-      },
-      connection: connectionSummary(result),
-      capacities: {
-        lateralCriticalForceKgf: result.lateralCapacity?.criticalForceKgf ?? null,
-        staticMaximumTopMassKg: result.staticPayloadCapacity?.maximumTopEquipmentMassKg ?? null,
-        heightDesignMaximumM: result.heightCapacity?.design?.maximumHeightM ?? null,
-        heightDesignMaximumModules: result.heightCapacity?.design?.maximumModules ?? null,
-        craneMaximumEndPayloadMassKg: result.craneBoomCapacity?.maximumEndPayloadMassKg ?? null,
-      },
-      verification: result.verification ? {
-        status: result.verification.status,
-        counts: { ...result.verification.counts },
-      } : null,
-      warnings: [...result.warnings],
-    },
+    result: bareResultPayload(result),
     optimization: optimizationSummary(options.optimization),
   })
 }
@@ -155,5 +160,21 @@ export function createGuyedResultSummary(
       warnings: [...result.warnings],
     },
     optimization: optimizationSummary(options.optimization),
+  })
+}
+
+/** Stable machine-readable summary for optimize, including the no-recommendation case. */
+export function createOptimizationResultSummary(
+  projectPackage: ProjectPackageV1,
+  output: OptimizationJob,
+  options: Omit<ResultSummaryOptions, 'optimization'>,
+) {
+  return immutablePublicResult({
+    schema: RESULT_SUMMARY_SCHEMA,
+    mode: 'optimization' as const,
+    ...sourceSummary(projectPackage, options.provenance),
+    effectiveProject: output.projectInput,
+    result: output.result ? bareResultPayload(output.result) : null,
+    optimization: optimizationSummary(output.optimization),
   })
 }

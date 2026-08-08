@@ -1,5 +1,6 @@
 import type { ProjectGuysInput, ProjectInput } from '../../domain/contracts.js'
 import type { ApplicationAbortSignal } from './contracts.js'
+import { attachGuyedConnectionEnvelope } from './guyed-connection-envelope.js'
 import { immutablePublicResult, type ImmutableResultOptions } from './immutability.js'
 import {
   calculateGuyedProject,
@@ -17,9 +18,10 @@ const clamp01 = (value: number): number => Math.min(1, Math.max(0, Number(value)
 
 /**
  * Canonical application orchestration for a project that may contain guy wires.
- * The normal complete CalculationResult remains authoritative for the bare-frame
- * reports/limits; guyedResult is an additional nonlinear cable envelope and is
- * deliberately not coerced into the incompatible CalculationResult contract.
+ * The normal complete CalculationResult remains authoritative for bare-frame
+ * reports/limits. For guyed projects the nonlinear cable/frame envelope is
+ * additionally rechecked against the exact physical intermodule joint selected
+ * by that complete result.
  */
 export function calculateProjectWithGuys(
   input: ProjectInput,
@@ -54,15 +56,16 @@ export function calculateProjectWithGuys(
     label: 'Нелинейный расчёт tension-only растяжек',
     fraction: bareShare,
   })
-  const guyedResult = calculateGuyedProject(input, guys.tiers, {
+  const rawGuyedResult = calculateGuyedProject(input, guys.tiers, {
     ...immutableOptions,
     ...cancellationOptions,
     ...(guys.safetyFactor === undefined ? {} : { safetyFactor: guys.safetyFactor }),
     ...(guys.terminationEfficiency === undefined ? {} : { terminationEfficiency: guys.terminationEfficiency }),
   })
+  const guyedResult = attachGuyedConnectionEnvelope(rawGuyedResult, result.parameters)
   options.onProgress?.({
     phase: 'guys',
-    label: 'Расчёт растяжек завершён',
+    label: 'Расчёт растяжек и соединений завершён',
     fraction: 1,
   })
   return immutablePublicResult({ result, guyedResult }, options)

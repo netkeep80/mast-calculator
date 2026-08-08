@@ -5,6 +5,10 @@ import { createWebApplicationState } from '../apps/web/web-state.js'
 
 const input = createProjectInput({ geometry: { moduleCount: 2 } })
 const nextInput = createProjectInput({ geometry: { moduleCount: 3 } })
+const optimizedInput = createProjectInput({
+  geometry: { moduleCount: 3, barDiameterMm: 16 },
+  connection: { configuratorMode: 'auto' },
+})
 
 const result = (moduleCount) => ({ model: { moduleCount } })
 
@@ -16,6 +20,16 @@ test('Web state binds a completed result to the ProjectInput of the matching job
   assert.equal(state.snapshot.projectInput, input)
   assert.equal(state.snapshot.result.model.moduleCount, 2)
   assert.equal(state.snapshot.activeJob, null)
+})
+
+test('effective ProjectInput returned by optimization replaces the request input', () => {
+  const state = createWebApplicationState()
+  state.beginJob({ jobId: 1, action: 'optimize', projectInput: nextInput, startedAt: 10 })
+
+  assert.equal(state.completeJob(1, { projectInput: optimizedInput, result: result(3) }), true)
+  assert.equal(state.snapshot.projectInput, optimizedInput)
+  assert.equal(state.snapshot.projectInput.geometry.barDiameterMm, 16)
+  assert.equal(state.snapshot.projectInput.connection.configuratorMode, 'auto')
 })
 
 test('stale Worker completion cannot replace the current project/result pair', () => {

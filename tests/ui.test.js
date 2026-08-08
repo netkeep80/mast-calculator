@@ -172,7 +172,8 @@ test('многоуровневый паспорт верификации ост�
 test('тяжёлый расчёт остаётся в модульном Web Worker и проходит через application API', () => {
   assert.match(app, /new Worker\('\.\/calculation-worker\.js', \{ type: 'module' \}\)/)
   assert.match(worker, /calculateProject/)
-  assert.match(worker, /optimizeProject/)
+  assert.match(worker, /optimizeAndCalculateProject/)
+  assert.doesNotMatch(worker, /\boptimizeProject\b/)
   assert.doesNotMatch(worker, /augmentVerificationWithModuleChecks/)
   assert.doesNotMatch(worker, /calculateCompleteMastWithConfiguredJoint/)
   assert.doesNotMatch(worker, /selectUniformDiameter/)

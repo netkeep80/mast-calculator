@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Mast Calculator",
+  "version": "1.5.0",
+  "identifier": "com.netkeep80.mastcalculator",
+  "build": {
+    "frontendDist": "../../../_desktop"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Калькулятор мачты",
+        "url": "index.html",
+        "width": 1440,
+        "height": 950,
+        "minWidth": 900,
+        "minHeight": 650,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "connect-src": "'self' ipc: http://ipc.localhost",
+        "img-src": "'self' asset: http://asset.localhost blob: data:",
+        "style-src": "'self' 'unsafe-inline'",
+        "script-src": "'self'",
+        "worker-src": "'self' blob:",
+        "frame-src": "'self'",
+        "object-src": "'none'"
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "generated-icons/32x32.png",
+      "generated-icons/128x128.png",
+      "generated-icons/128x128@2x.png",
+      "generated-icons/icon.icns",
+      "generated-icons/icon.ico"
+    ]
+  }
+}

@@ -6,6 +6,7 @@ import {
   createCalculationProjectHtml,
 } from '../../packages/reporting/index.js'
 import { createCalculationController } from './calculation-controller.js'
+import { fileAdapter } from './file-adapter.js'
 import { createMainProjectFormController } from './main-project-form.js'
 import { ModuleViewer } from './module-viewer.js'
 import { MastViewer } from './viewer.js'
@@ -83,15 +84,16 @@ function formatDuration(milliseconds) {
 }
 
 function downloadText(filename, content, type) {
-  const blob = new Blob([content], { type })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.append(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
+  const extension = filename.includes('.') ? filename.slice(filename.lastIndexOf('.') + 1) : ''
+  void fileAdapter.saveText({
+    suggestedName: filename,
+    content,
+    mediaType: type,
+    extensions: extension ? [extension] : [],
+  }).catch((error) => {
+    errorBox.textContent = error instanceof Error ? error.message : String(error)
+    errorBox.hidden = false
+  })
 }
 
 function exportFilename(extension) {

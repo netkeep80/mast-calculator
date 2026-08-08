@@ -1,0 +1,98 @@
+name: Desktop bundles
+
+on:
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'scripts/build-desktop-web.mjs'
+      - 'package.json'
+      - '.github/workflows/desktop-bundle.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/desktop/**'
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'scripts/build-desktop-web.mjs'
+      - 'package.json'
+      - '.github/workflows/desktop-bundle.yml'
+  workflow_dispatch:
+
+env:
+  GIT_CONFIG_KEY_0: init.defaultBranch
+  GIT_CONFIG_VALUE_0: main
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: Desktop bundle (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-appimage
+            os: ubuntu-22.04
+            bundle: appimage
+            artifact_name: mast-calculator-linux-appimage
+            artifact_path: apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+          - label: windows-nsis
+            os: windows-latest
+            bundle: nsis
+            artifact_name: mast-calculator-windows-nsis
+            artifact_path: apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+          - label: macos-app
+            os: macos-latest
+            bundle: app
+            artifact_name: mast-calculator-macos-app
+            artifact_path: apps/desktop/src-tauri/target/release/bundle/macos/*.app
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Simulate fresh merge with latest base
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/simulate-fresh-merge.sh
+      - name: Use Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+      - name: Generate cross-platform desktop icons
+        run: npm run prepare:desktop:icons
+      - name: Install Linux Tauri prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+      - name: Build canonical Desktop WebView assets
+        run: npm run build:desktop:web
+      - name: Build Tauri bundle
+        working-directory: apps/desktop
+        run: npx --yes @tauri-apps/cli@2.11.4 build --bundles ${{ matrix.bundle }}
+      - name: Upload unsigned Desktop bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
+          if-no-files-found: error
+          retention-days: 7

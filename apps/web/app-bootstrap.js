@@ -8,6 +8,7 @@ import {
   applyProjectInputToForm,
   readProjectInputFromForm,
 } from './project-form-dom.js'
+import { initializeProcurementExport } from './procurement-export.js'
 import { initializeProjectPackageUi } from './project-package-ui.js'
 import { subscribeCalculationResult } from './result-channel.js'
 import {
@@ -277,6 +278,7 @@ optimizeButton.addEventListener('click', () => {
 
 await import('./app.js')
 initializeProjectPackageUi(form)
+initializeProcurementExport()
 rebuildClearanceNutOptions(30)
 syncMode()
 initializeUsageExperience()

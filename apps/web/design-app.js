@@ -1,16 +1,20 @@
 import {
+  createMastObj,
   designResultFromPackage,
   parseDesignPackage,
   serializeDesignPackage,
 } from '../../packages/design/index.js'
+import { createEskdConstructionDocumentationHtml } from '../../packages/reporting/index.js'
 import {
   loadDesignPackage,
   saveDesignPackage,
 } from './design-storage.js'
-import { createEskdConstructionDocumentationHtml } from '../../packages/reporting/index.js'
-import { createMastObj } from '../../packages/design/index.js'
+import { fileAdapter } from './file-adapter.js'
 import { JointViewer } from './joint-viewer.js'
+import { initializeRuntimeInfo } from './runtime-info.js'
 import { MastViewer } from './viewer.js'
+
+void initializeRuntimeInfo()
 
 const $ = (selector) => document.querySelector(selector)
 const sourceSummary = $('#source-summary')
@@ -19,7 +23,7 @@ const emptyState = $('#empty-state')
 const workspace = $('#workspace')
 const kdSection = $('#kd-section')
 const moduleSelector = $('#module-selector')
-const packageFile = $('#package-file')
+const openPackageButton = $('#open-package')
 const exportPackageButton = $('#export-package')
 const exportObjButton = $('#export-obj')
 const exportEskdButton = $('#export-eskd')
@@ -37,25 +41,17 @@ const mastViewer = new MastViewer($('#mast-canvas'), {
 const jointViewer = new JointViewer($('#joint-canvas'))
 
 const format = (value, digits = 2) => Number.isFinite(Number(value))
-  ? new Intl.NumberFormat('ru-RU', { maximumFractionDigits: digits }).format(Number(value))
+  ? new Intl.NumberFormat('ru-RU', { maximumFractionDigits: digits }).format(value)
   : '—'
-
-function downloadText(filename, text, type) {
-  const blob = new Blob([text], { type })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.append(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
-}
 
 function filenameBase(result) {
   const modules = Number(result?.model?.moduleCount ?? result?.parameters?.moduleCount ?? 0) || 'mast'
   const rib = Number(result?.parameters?.ribCutLengthMm)
   return `mast-${modules}x${Number.isFinite(rib) ? `-${Math.round(rib)}mm` : ''}`
+}
+
+async function saveText(suggestedName, content, mediaType, extensions) {
+  return fileAdapter.saveText({ suggestedName, content, mediaType, extensions })
 }
 
 function jointConfiguration(result) {
@@ -148,36 +144,56 @@ moduleSelector.addEventListener('change', () => {
   mastViewer.setSelectedModule(Number(moduleSelector.value))
 })
 
-packageFile.addEventListener('change', async () => {
-  const file = packageFile.files?.[0]
-  if (!file) return
+openPackageButton.addEventListener('click', async () => {
   try {
-    const designPackage = parseDesignPackage(await file.text())
-    applyPackage(designPackage, { persist: true })
+    const opened = await fileAdapter.openText({ accept: 'application/json,.json', extensions: ['json'] })
+    if (!opened) return
+    applyPackage(parseDesignPackage(opened.text), { persist: true })
   } catch (error) {
     showError(error instanceof Error ? error.message : String(error))
-  } finally {
-    packageFile.value = ''
   }
 })
 
-exportPackageButton.addEventListener('click', () => {
+exportPackageButton.addEventListener('click', async () => {
   if (!currentPackage || !currentResult) return
-  downloadText(`${filenameBase(currentResult)}-design.json`, serializeDesignPackage(currentPackage), 'application/json;charset=utf-8')
+  try {
+    await saveText(
+      `${filenameBase(currentResult)}-design.json`,
+      serializeDesignPackage(currentPackage),
+      'application/json;charset=utf-8',
+      ['json'],
+    )
+  } catch (error) {
+    showError(`Не удалось сохранить design package: ${error instanceof Error ? error.message : String(error)}`)
+  }
 })
 
-exportObjButton.addEventListener('click', () => {
+exportObjButton.addEventListener('click', async () => {
   if (!currentResult) return
   try {
-    downloadText(`${filenameBase(currentResult)}.obj`, createMastObj(currentResult), 'text/plain;charset=utf-8')
+    await saveText(
+      `${filenameBase(currentResult)}.obj`,
+      createMastObj(currentResult),
+      'text/plain;charset=utf-8',
+      ['obj'],
+    )
   } catch (error) {
     showError(`Не удалось сформировать OBJ: ${error instanceof Error ? error.message : String(error)}`)
   }
 })
 
-exportEskdButton.addEventListener('click', () => {
+exportEskdButton.addEventListener('click', async () => {
   if (!currentResult || !currentEskdHtml) return
-  downloadText(`${filenameBase(currentResult)}-eskd.html`, currentEskdHtml, 'text/html;charset=utf-8')
+  try {
+    await saveText(
+      `${filenameBase(currentResult)}-eskd.html`,
+      currentEskdHtml,
+      'text/html;charset=utf-8',
+      ['html'],
+    )
+  } catch (error) {
+    showError(`Не удалось сохранить КД: ${error instanceof Error ? error.message : String(error)}`)
+  }
 })
 
 try {

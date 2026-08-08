@@ -76,7 +76,7 @@ function finalTestCategory(testItem) {
   const name = testItem.path.toLowerCase()
   if (/(package-entrypoints|typescript-package-source|web-application-boundary|web-boundaries)/.test(name)) return 'architecture'
   if (/(application-cancellation|contracts\.test|headless-api)/.test(name)) return 'public API/contract'
-  if (/(project-form-dom|web-state)/.test(name)) return 'UI contract'
+  if (/(project-form-dom|web-state|web-ui-2-shell)/.test(name)) return 'UI contract'
   if (/(calculation-controller|cli-artifacts|cli-oracle|desktop-adapter|desktop-packaging|project-package-web)/.test(name)) return 'adapter contract'
   return 'unclassified'
 }

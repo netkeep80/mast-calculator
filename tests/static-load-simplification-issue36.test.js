@@ -1,20 +1,25 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import path from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import {
   STOCK_BAR_DIVISIONS,
   theoreticalCutLengthMm,
 } from '../packages/domain/index.js'
-import { DEFAULT_PARAMETERS, calculateMast, resolveCalculationParameters } from '../packages/application/index.js'
+import { calculateMast } from '../packages/application/index.js'
 import { generateMastModel } from '../packages/structural-analysis/index.js'
 import { calculateLateralCapacity } from '../packages/engineering/index.js'
 import { buildLoadCase } from '../packages/structural-analysis/index.js'
 import { calculateStaticPayloadCapacity } from '../packages/engineering/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
-const usageSource = fs.readFileSync(new URL('../apps/web/usage-scenarios.js', import.meta.url), 'utf8')
-const loadsSource = fs.readFileSync(new URL('../packages/structural-analysis/src/loads.js', import.meta.url), 'utf8')
-const completeSource = fs.readFileSync(new URL('../packages/application/src/complete-calculation.js', import.meta.url), 'utf8')
-const htmlSource = fs.readFileSync(new URL('../apps/web/index.html', import.meta.url), 'utf8')
+const runtimeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const sourceRoot = path.basename(runtimeRoot) === '.build' ? path.dirname(runtimeRoot) : runtimeRoot
+const usageSource = fs.readFileSync(path.join(sourceRoot, 'apps/web/usage-scenarios.js'), 'utf8')
+const loadsSource = fs.readFileSync(path.join(sourceRoot, 'packages/structural-analysis/src/loads.ts'), 'utf8')
+const completeSource = fs.readFileSync(path.join(sourceRoot, 'packages/application/src/complete-calculation.ts'), 'utf8')
+const htmlSource = fs.readFileSync(path.join(sourceRoot, 'apps/web/index.html'), 'utf8')
 
 test('issue #36: раскрой содержит каждый целый вариант 1…48', () => {
   assert.deepEqual(STOCK_BAR_DIVISIONS, Array.from({ length: 48 }, (_, index) => index + 1))
@@ -23,9 +28,8 @@ test('issue #36: раскрой содержит каждый целый вар�
   assert.throws(() => theoreticalCutLengthMm(12000, 49), /от 1 до 48/)
 })
 
-test('issue #36: legacy дополнительные силы не влияют на обычный пользовательский load case', () => {
-  const parameters = resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
+test('issue #36: legacy дополнительные силы запрещены до structural load case', () => {
+  const parameters = resolvedProject({
     moduleCount: 1,
     windPressurePa: 0,
     equipmentMassKg: 0,
@@ -33,13 +37,16 @@ test('issue #36: legacy дополнительные силы не влияют 
   })
   const model = generateMastModel(parameters)
   const clean = buildLoadCase(model, parameters)
-  const legacy = buildLoadCase(model, {
-    ...parameters,
-    extraHorizontalLoadN: 25000,
-    extraVerticalLoadN: 50000,
-  })
 
-  assert.deepEqual(legacy.totalAppliedLoad, clean.totalAppliedLoad)
+  assert.ok(clean.totalAppliedLoad.every(Number.isFinite))
+  assert.throws(
+    () => resolvedProject({ extraHorizontalLoadN: 25000 }),
+    /derived\/internal ResolvedProject field: extraHorizontalLoadN/,
+  )
+  assert.throws(
+    () => resolvedProject({ extraVerticalLoadN: 50000 }),
+    /derived\/internal ResolvedProject field: extraVerticalLoadN/,
+  )
   assert.doesNotMatch(loadsSource, /parameters\.extraHorizontalLoadN/)
   assert.doesNotMatch(loadsSource, /parameters\.extraVerticalLoadN/)
 })
@@ -54,24 +61,22 @@ test('issue #36: внутренний unit-load имеет отдельный AP
     members: [],
     topNodeIds: [0, 1, 2],
   }
-  const loads = buildLoadCase(model, {
-    ...DEFAULT_PARAMETERS,
+  const loads = buildLoadCase(model, resolvedProject({
     windPressurePa: 0,
     equipmentMassKg: 0,
     equipmentWindAreaM2: 0,
-  }, { topPointLoadN: [9, 6, -3] })
+  }), { topPointLoadN: [9, 6, -3] })
 
   assert.deepEqual(loads.nodalLoads, [[3, 2, -1], [3, 2, -1], [3, 2, -1]])
   assert.deepEqual(loads.topPointLoadN, [9, 6, -3])
 })
 
 test('issue #36: статический предел возвращает массу и остаток без отдельного эквивалента воды', () => {
-  const result = calculateMast({
-    ...DEFAULT_PARAMETERS,
+  const result = calculateMast(resolvedProject({
     moduleCount: 1,
     equipmentMassKg: 20,
     windEnvelopeEnabled: false,
-  })
+  }))
   const capacity = calculateStaticPayloadCapacity(result.model, result.parameters)
 
   assert.ok(capacity.maximumTopEquipmentMassKg > 20)
@@ -84,8 +89,7 @@ test('issue #36: статический предел возвращает мас
 })
 
 test('issue #36: чистый боковой предел остаётся независимым reference upper bound', () => {
-  const parameters = resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
+  const parameters = resolvedProject({
     moduleCount: 1,
     windEnvelopeEnabled: false,
     lateralCapacityStepDeg: 60,

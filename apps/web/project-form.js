@@ -58,7 +58,7 @@ const GROUP_FIELDS = Object.freeze({
     weldToRibAreaRatio: 'weldToRibAreaRatio',
     weldServiceYears: 'weldServiceYears',
     weldInitialStiffnessRetention: 'weldInitialStiffnessRetention',
-    annualStiffnessLossRate: 'weldAnnualStiffnessLossRate',
+    weldAnnualStiffnessLossRate: 'weldAnnualStiffnessLossRate',
     weldMinimumStiffnessRetention: 'weldMinimumStiffnessRetention',
   }),
   criteria: Object.freeze({

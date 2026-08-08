@@ -38,7 +38,6 @@ export interface SelectUniformDiameterOptions {
   stopAtFirstPassing?: boolean
   onProgress?: (event: OptimizationProgress) => void
   onVariant?: (event: VariantSummary) => void
-  resolvedProject?: ResolvedProject
 }
 
 function variantPasses(variant: OptimizationVariant): boolean {
@@ -64,20 +63,16 @@ export function selectUniformDiameter(
   for (let index = 0; index < orderedDiameters.length; index += 1) {
     const diameter = orderedDiameters[index]!
     const variantParameters: ResolvedProject = { ...uniformParameters, barDiameterMm: diameter }
-    const result = calculateMast(
-      variantParameters as unknown as Record<string, unknown>,
-      {
-        resolvedProject: variantParameters,
-        onProgress: (event) => options.onProgress?.({
-          phase: 'variant',
-          diameter,
-          variantIndex: index,
-          variantCount: orderedDiameters.length,
-          inner: event,
-          fraction: (index + event.completed / Math.max(1, event.total)) / orderedDiameters.length,
-        }),
-      },
-    )
+    const result = calculateMast(variantParameters, {
+      onProgress: (event) => options.onProgress?.({
+        phase: 'variant',
+        diameter,
+        variantIndex: index,
+        variantCount: orderedDiameters.length,
+        inner: event,
+        fraction: (index + event.completed / Math.max(1, event.total)) / orderedDiameters.length,
+      }),
+    })
     const passesStrength = result.envelope.maxUtilization <= 1
     const passesDisplacement = result.envelope.maxTopDisplacementM * 1000 <= parameters.displacementLimitMm
     const passesBuckling = result.envelope.minimumBucklingFactor >= parameters.minimumBucklingFactor

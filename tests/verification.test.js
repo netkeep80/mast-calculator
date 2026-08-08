@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calculateCompleteMast, DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { calculateCompleteMast } from '../packages/application/index.js'
 import { buildVerificationPassport } from '../packages/engineering/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
-const result = calculateCompleteMast({
-  ...DEFAULT_PARAMETERS,
+const result = calculateCompleteMast(resolvedProject({
   moduleCount: 1,
   windEnvelopeEnabled: false,
   lateralCapacityStepDeg: 60,
-})
+}))
 
 const checkById = (passport, id) => passport.checks.find((check) => check.id === id)
 

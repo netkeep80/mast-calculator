@@ -3,11 +3,11 @@ import test from 'node:test'
 import { performance } from 'node:perf_hooks'
 import {
   calculateCompleteMast,
-  DEFAULT_PARAMETERS,
   HEIGHT_SEARCH_PROGRESS_STEPS,
   windDirections,
 } from '../packages/application/index.js'
 import { STATIC_PAYLOAD_PROGRESS_STEPS } from '../packages/engineering/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 let benchmark40Cache = null
 
@@ -15,10 +15,7 @@ function benchmark40Modules() {
   if (benchmark40Cache) return benchmark40Cache
   const events = []
   const started = performance.now()
-  const result = calculateCompleteMast({
-    ...DEFAULT_PARAMETERS,
-    moduleCount: 40,
-  }, {
+  const result = calculateCompleteMast(resolvedProject({ moduleCount: 40 }), {
     onProgress: (event) => events.push({ ...event }),
   })
   benchmark40Cache = {
@@ -30,18 +27,16 @@ function benchmark40Modules() {
 }
 
 test('120° симметрия удаляет только эквивалентные направления полной ветровой сетки', () => {
-  const directions30 = windDirections({
-    ...DEFAULT_PARAMETERS,
+  const directions30 = windDirections(resolvedProject({
     windEnvelopeEnabled: true,
     windEnvelopeStepDeg: 30,
-  })
+  }))
   assert.deepEqual(directions30, [0, 30, 60, 90])
 
-  const directions45 = windDirections({
-    ...DEFAULT_PARAMETERS,
+  const directions45 = windDirections(resolvedProject({
     windEnvelopeEnabled: true,
     windEnvelopeStepDeg: 45,
-  })
+  }))
   assert.deepEqual(directions45, [0, 15, 30, 45, 60, 75, 90, 105])
 })
 

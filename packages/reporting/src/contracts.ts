@@ -8,8 +8,7 @@ import type {
   calculateStaticPayloadCapacity,
 } from '../../engineering/index.js'
 import type { CheckedFrameAnalysis } from '../../engineering/contracts.js'
-import type { GeneratedMastModel } from '../../structural-analysis/index.js'
-import type { LoadCase } from '../../structural-analysis/contracts.js'
+import type { BuiltLoadCase, GeneratedMastModel } from '../../structural-analysis/index.js'
 
 export interface ReportingModuleAction {
   readonly nodeId: number
@@ -54,7 +53,7 @@ export type ReportingAnalysis = Omit<CheckedFrameAnalysis, 'modular' | 'moduleRe
 
 export interface ReportingLoadCase {
   readonly windDirectionDeg: number
-  readonly loads: LoadCase
+  readonly loads: BuiltLoadCase
   readonly analysis: ReportingAnalysis
 }
 
@@ -107,7 +106,7 @@ export interface ReportingCalculationResult {
   readonly method?: CalculationMethodInfo
   readonly model: GeneratedMastModel
   readonly cases: readonly ReportingLoadCase[]
-  readonly loads: LoadCase
+  readonly loads: BuiltLoadCase
   readonly analysis: ReportingAnalysis
   readonly envelope: ReportingEnvelope
   readonly warnings: readonly string[]

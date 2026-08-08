@@ -1,297 +1,168 @@
 # Калькулятор мачты
 
-Статическое браузерное приложение для расчёта модульной мачты из сварных арматурных октаэдров. Backend не требуется: тяжёлые вычисления выполняются в Web Worker, публикация — через GitHub Pages.
+Инженерное приложение для расчёта, проверки, подбора и подготовки проектных артефактов модульной мачты из сварных арматурных октаэдров.
 
-Опубликованная версия: **https://netkeep80.github.io/mast-calculator/**
+Один и тот же типизированный расчётный core используется тремя адаптерами:
 
-## Прототип 1.5 — расчёты отдельно, 3D и КД отдельно
+- **Web** — статическое offline-friendly приложение, публикуемое через GitHub Pages;
+- **CLI** — headless расчёт, валидация и экспорт из `project-package/v1`;
+- **Desktop** — Windows/Linux/macOS приложение на Tauri с native Open/Save dialogs.
 
-Issue #47 разделяет два разных жизненных цикла проекта.
+Опубликованная Web-версия: **https://netkeep80.github.io/mast-calculator/**
 
-**Калькулятор** отвечает за исходные данные, FEM, нагрузки, соединения, пределы, подбор, верификацию и бумажный **расчётный проект**.
+## Архитектурная модель
 
-**Модуль 3D и конструкторской документации** (`design.html`) получает уже рассчитанную конструкцию и отвечает за:
+Канонический pipeline:
 
-- подробный интерактивный просмотр всей мачты;
-- просмотр межмодульного узла;
-- экспорт Wavefront OBJ;
-- переносимый JSON package принятой конструкции;
-- отдельный комплект КД по ЕСКД.
+```text
+ProjectInput
+    ↓ validate + resolve once
+ResolvedProject
+    ↓ structural / engineering orchestration
+CalculationResult
+    ↓ pure projections
+result-summary/v1 / design-package/v1 / reports / OBJ / procurement
+```
 
-После расчёта в основном интерфейсе появляется кнопка **«Открыть 3D и КД»**. Старый прямой OBJ-экспорт из расчётного экрана убран из фокуса. Бумажный расчётный проект больше не содержит листов ЕСКД.
+Расчётная логика не находится в `apps/*`. Она разделена по направлению зависимостей:
 
-Между подсистемами используется компактная схема:
+```text
+packages/domain
+packages/numerics
+packages/structural-analysis
+packages/engineering
+packages/design
+packages/reporting
+packages/application
+        ↑
+apps/web   apps/cli   apps/desktop
+```
+
+`apps/*` отвечают только за transport/environment/UI concerns. Web Worker, CLI и Tauri не содержат второй FEM, второй optimizer или альтернативную интерпретацию проекта.
+
+Подробная текущая карта: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+## Переносимые контракты
+
+### Проект
+
+```text
+mast-calculator/project/v1
+```
+
+Содержит пользовательский `ProjectInput`, metadata и при необходимости параметры растяжек. Derived geometry, solver state и рассчитанные значения в проект не записываются.
+
+### Результат расчёта
+
+`CalculationResult` — полный immutable результат application layer. Для сравнения adapters и machine-readable output используется versioned canonical result summary.
+
+### Принятая конструкция
 
 ```text
 mast-calculator/design-package/v1
 ```
 
-Она переносит геометрию FEM-модели, фактические диаметры рёбер, выбранный физический соединительный узел и производственную массу, но не копирует тяжёлые эксплуатационные load cases и не запускает второй FEM.
+Содержит достаточную геометрию/узел/массу для 3D, КД и exports без повторного FEM.
 
-КД обновлена до:
+Контракты и правила изменения схем: [`docs/architecture/CONTRACTS.md`](docs/architecture/CONTRACTS.md).
 
-```text
-mast-calculator/eskd-construction-documentation/v2
-mast-calculator/technical-projection/v1
-```
+## Что рассчитывается
 
-Виды мачты и модуля теперь автоматически строятся из той же `detailed-mast-model`, что используется интерактивным 3D viewer и OBJ. Старая ручная SVG-схема больше не является источником чертежной геометрии.
+Текущий core включает:
 
-Подробнее:
+- spatial Euler–Bernoulli frame FEM с 6 DOF на узел;
+- global symmetric-band solver;
+- exact module Schur condensation;
+- независимый dense reference FEM для cross-check;
+- собственный вес, ветер, лёд и оборудование на вершине;
+- member strength, global/local buckling и displacement limits;
+- физический межмодульный узел: болт, гайки, preload, net section и сварка;
+- static payload capacity, lateral capacity и horizontal-boom estimate;
+- растяжки;
+- подбор стандартного диаметра;
+- производственную массу и procurement estimate;
+- подробную 3D-модель, OBJ, расчётный HTML и КД по ЕСКД.
 
-- [`docs/DESIGN_WORKSPACE.md`](docs/DESIGN_WORKSPACE.md)
-- [`docs/ESKD_CONSTRUCTION_DOCUMENTATION.md`](docs/ESKD_CONSTRUCTION_DOCUMENTATION.md)
-- [`docs/INTEGRATED_3D_VIEWER.md`](docs/INTEGRATED_3D_VIEWER.md)
-- [`docs/3D_MODEL_EXPORT.md`](docs/3D_MODEL_EXPORT.md)
+Справочники, формы, отчёты и exports используют те же canonical catalogs и calculation results; дублирующие копии нормативных constants не поддерживаются.
 
-## Практические сценарии расчёта
+## Быстрый запуск
 
-Пользователь начинает с одного из четырёх вопросов:
+Требуется Node.js 24.
 
-1. **Проверить конкретную мачту** — выдержит ли конструкция заданную погоду и установленное оборудование;
-2. **Подобрать конструкцию** — минимальный проходящий диаметр арматуры и согласованный физический узел;
-3. **Узнать пределы** — максимальная высота, максимальная масса на вершине, сколько ещё килограммов можно добавить и какой концевой груз выдержит та же конструкция как горизонтальная стрела;
-4. **Проверить расчёт** — алгоритм, residuals, global/Schur/dense cross-check, паспорт верификации и справочники.
-
-Главное правило issue #36: одна физическая нагрузка не должна задаваться двумя способами. Из пользовательской модели удалены произвольные `extraHorizontalLoadN` и `extraVerticalLoadN`. Вертикальная нагрузка вершины задаётся одной понятной величиной — **массой оборудования/груза в килограммах**.
-
-Внутренние известные силы для analytical tests и normalized capacity cases передаются через `topPointLoadN` и не являются пользовательскими параметрами.
-
-Подробнее: [`docs/ISSUE_36_STATIC_LOAD_SIMPLIFICATION.md`](docs/ISSUE_36_STATIC_LOAD_SIMPLIFICATION.md).
-
-## Раскрой арматуры
-
-Закупочный пруток можно делить на любое целое число одинаковых частей:
-
-```text
-1, 2, 3, …, 48
-```
-
-До учёта ширины реза и технологических припусков:
-
-```text
-a = Lstock / nparts
-```
-
-## Физический модуль
-
-Правильный октаэдр установлен ножками вниз:
-
-```text
-3 ребра верхнего треугольника
-6 диагональных ножек
------------------------------
-9 рёбер на модуль
-```
-
-```text
-a = Lstock / nparts
-R = a/sqrt(3)
-h = a*sqrt(2/3)
-H = N*h
-```
-
-Три нижних production nodes пока имеют идеальную жёсткую заделку по шести DOF. Отдельные аналитические tests с шарнирными точечными опорами являются verification fixtures.
-
-## Эксплуатационные нагрузки
-
-Production load layer использует:
-
-- собственный вес арматурных рёбер;
-- ветер;
-- лёд;
-- массу оборудования/груза на вершине;
-- парусную площадь оборудования.
-
-Legacy `extraHorizontalLoadN` и `extraVerticalLoadN`, даже если встретятся в старом объекте параметров, больше не изменяют production load case.
-
-## Максимальная масса на вершине вертикальной мачты
-
-Gravity-only задача возвращает:
-
-```text
-maximumTopEquipmentMassKg
-additionalTopEquipmentMassKg
-```
-
-Проверяются:
-
-```text
-Umember <= 1
-Ubolt <= 1
-lambda_cr >= 1
-```
-
-Собственный вес мачты сохраняется; ветер и лёд выключены. Подробнее: [`docs/STATIC_PAYLOAD_CAPACITY.md`](docs/STATIC_PAYLOAD_CAPACITY.md).
-
-## Чистый поперечный unit-load
-
-Reference calculation:
-
-```text
-F0 = 1 Н поперёк вершины
-self weight = 0
-wind = 0
-ice = 0
-equipment = 0
-```
-
-Он даёт отдельный чистый upper/reference bound и не подменяет расчёт горизонтальной стрелы. При преднатянутом болте масштабируется только внешняя нагрузка; постоянный `F0,max` от затяжки не умножается вместе с unit-load.
-
-Подробнее: [`docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md`](docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md).
-
-## Горизонтальная стрела
-
-`craneBoomCapacity` поворачивает ту же frame-модель горизонтально. Собственный вес рёбер становится распределённой поперечной нагрузкой, а на конец прикладывается пробный груз:
-
-```text
-qg = rho*A*g*gamma_g
-Pend = m*g*gamma_payload
-```
-
-Для каждого направления проверяются:
-
-```text
-Umember <= 1
-Ubolt <= 1
-lambda_cr >= 1
-```
-
-Основной результат:
-
-```text
-craneBoomCapacity.maximumEndPayloadMassKg
-```
-
-Пока не включена отдельная fabrication mass гаек/болтов/сварки и не моделируются динамика подъёма, трос, блоки, лебёдка, поворотный узел и специальные crane-code factors. Подробнее: [`docs/CRANE_BOOM_CAPACITY.md`](docs/CRANE_BOOM_CAPACITY.md).
-
-## Расчётное ядро
-
-Каждый узел имеет 6 DOF:
-
-```text
-ux, uy, uz, rx, ry, rz
-```
-
-Каждое ребро — spatial Euler–Bernoulli frame element. После решения восстанавливаются:
-
-```text
-N, Vy, Vz, T, My, Mz
-```
-
-Одна и та же статическая задача проверяется тремя путями:
-
-1. global symmetric-band FEM;
-2. exact module Schur condensation;
-3. independent dense reference FEM + Gaussian elimination.
-
-CI сравнивает DOF, reactions и local end forces.
-
-## Соединительный узел
-
-Физический стык:
-
-```text
-2 ребра ножки -> проходная гайка My
-                    |
-                    | болт Mx проходит свободно
-                    v
-4 ребра узла  -> длинная соединительная гайка Mx
-                    ^
-                    | болт Mx ввинчивается сюда
-```
-
-Auto-конфигуратор выбирает и фиксирует физический комплект. Усиленные проверки включают:
-
-```text
-Anut,net/Arib >= 2
-F0,nom = T/(K*d)
-F0,max = (1+Gamma)*F0,nom
-Nt,strength = F0,max + Nt,external
-Ns,direct = |Fperp|
-Aeff,weld >= kweld*Arib
-```
-
-Тот же узел используется в operational cases, lateral/static limits, horizontal boom, height search, detailed 3D и КД.
-
-Подробнее:
-
-- [`docs/JOINT_CONFIGURATOR.md`](docs/JOINT_CONFIGURATOR.md)
-- [`docs/CONNECTIONS.md`](docs/CONNECTIONS.md)
-- [`docs/JOINT_STRENGTH_AND_VISUALIZATION.md`](docs/JOINT_STRENGTH_AND_VISUALIZATION.md)
-
-## Подробная 3D-модель
-
-Общий источник geometry:
-
-```text
-mast-calculator/detailed-mast-model/v1
-```
-
-Он строит polygon mesh:
-
-- каждого арматурного ребра с фактическим диаметром member;
-- длинных и проходных гаек;
-- болтов и головок;
-- ownership по физическим модулям.
-
-Эта модель используется основным `MastViewer`, отдельным design workspace и OBJ exporter. Design workspace не создаёт вторую геометрическую модель мачты.
-
-## Масса физической сборки
-
-Отдельно показываются:
-
-- масса одного ребра;
-- масса полного межмодульного узла;
-- масса сваренного и закреплённого модуля;
-- оценка массы всей изготовленной мачты.
-
-Fabrication mass пока не возвращается автоматически в FEM self-weight: требуемая длина сварки становится известна после FEM и создаёт feedback `усилия -> шов -> масса -> усилия`.
-
-## Справочники и верификация
-
-Reference tables строятся из тех же JavaScript-каталогов, которые использует расчёт. Паспорт верификации включает geometry/mass checks, global equilibrium, `K*u-F`, аналитические frame задачи, global↔Schur, independent dense FEM, support statics и eigen residual.
-
-Внешний FEM, инженерная рецензия и натурные испытания остаются **НЕ ПРОВЕРЕНО**, пока реально не выполнены.
-
-## CI/CD
-
-Основные обязательные checks:
-
-```text
-Syntax, policy and maintainability
-Secrets scan
-Triple FEM equivalence
-Joint configurator
-Joint strength and visualization
-Support reaction statics
-Usage scenarios and reference catalogs
-Static loads, crane boom and cut range
-Design workspace / ESKD / OBJ regression
-Tests Ubuntu/macOS/Windows
-Static site smoke test
-```
-
-Focused suite нового архитектурного слоя:
+Полный functional regression:
 
 ```bash
-npm run test:design
+npm test
 ```
 
-## Основная документация
+Критические physics/numerical regressions:
 
-- [`docs/DESIGN_WORKSPACE.md`](docs/DESIGN_WORKSPACE.md)
-- [`docs/ESKD_CONSTRUCTION_DOCUMENTATION.md`](docs/ESKD_CONSTRUCTION_DOCUMENTATION.md)
-- [`docs/USAGE_SCENARIOS.md`](docs/USAGE_SCENARIOS.md)
-- [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)
-- [`docs/CALCULATION_ARCHITECTURE.md`](docs/CALCULATION_ARCHITECTURE.md)
-- [`docs/STATIC_PAYLOAD_CAPACITY.md`](docs/STATIC_PAYLOAD_CAPACITY.md)
-- [`docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md`](docs/LATERAL_CAPACITY_WEATHER_VALIDATION.md)
-- [`docs/CRANE_BOOM_CAPACITY.md`](docs/CRANE_BOOM_CAPACITY.md)
-- [`docs/MODULAR_ANALYSIS_AND_HEIGHT.md`](docs/MODULAR_ANALYSIS_AND_HEIGHT.md)
-- [`docs/TRIPLE_SOLVER_VERIFICATION.md`](docs/TRIPLE_SOLVER_VERIFICATION.md)
-- [`docs/VERIFICATION_FOR_NON_SPECIALISTS.md`](docs/VERIFICATION_FOR_NON_SPECIALISTS.md)
+```bash
+npm run test:physics
+```
 
-## Ограничения
+Strict TypeScript и architecture policy:
 
-Прототип не является нормативным сертификатом. Остаются, в частности, P-Delta/geometric nonlinearity, initial imperfections/plasticity, finite joint/foundation stiffness, thread stripping/bearing/prying/slip, fatigue, exact weld geometry, согласованное включение fabrication mass в self-weight, полный набор нормативных сочетаний и независимая внешняя FEM/натурная проверка.
+```bash
+npm run typecheck
+npm run test:architecture
+npm run audit:architecture
+```
+
+Web build:
+
+```bash
+npm run build:web
+python3 -m http.server 4173 --directory _site
+```
+
+CLI:
+
+```bash
+npm run cli -- validate project.json
+npm run cli -- calculate project.json --json
+npm run cli -- optimize project.json --json
+```
+
+CLI contract и команды: [`docs/CLI.md`](docs/CLI.md).
+
+Desktop build/run/release: [`docs/DESKTOP.md`](docs/DESKTOP.md) и [`docs/BUILD_AND_RELEASE.md`](docs/BUILD_AND_RELEASE.md).
+
+## Верификация
+
+Численная эквивалентность является veto-gate.
+
+CI сохраняет независимо проверяемые уровни:
+
+- canonical regression fixtures;
+- physics/property invariants;
+- global ↔ Schur ↔ independent dense FEM cross-check;
+- historical bug regressions для поддерживаемой физики;
+- immutable/versioned contract tests;
+- direct ↔ CLI ↔ Web ↔ Desktop result equivalence;
+- Linux/macOS/Windows platform checks;
+- Web/Desktop packaging;
+- performance budgets;
+- architecture/security policy.
+
+При архитектурном рефакторинге canonical numerical baselines не обновляются ради прохождения CI.
+
+## Документация
+
+Начинать отсюда:
+
+1. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — слои, ownership и dependency direction;
+2. [`docs/architecture/CONTRACTS.md`](docs/architecture/CONTRACTS.md) — versioned contracts;
+3. [`docs/CALCULATION_ARCHITECTURE.md`](docs/CALCULATION_ARCHITECTURE.md) — FEM и расчётная схема;
+4. [`docs/TRIPLE_SOLVER_VERIFICATION.md`](docs/TRIPLE_SOLVER_VERIFICATION.md) — независимая численная проверка;
+5. [`docs/DESIGN_WORKSPACE.md`](docs/DESIGN_WORKSPACE.md) — 3D/КД/design package;
+6. [`docs/DESKTOP.md`](docs/DESKTOP.md) — Desktop adapter;
+7. [`CONTRIBUTING.md`](CONTRIBUTING.md) — правила изменений для людей и AI-generated PR.
+
+Специализированные документы описывают конкретные текущие расчётные функции; история миграций и старые архитектурные состояния остаются в Git history, а не в рабочем дереве.
+
+## Границы применимости
+
+Проект не является нормативным сертификатом конструкции. До отдельной реализации и верификации остаются, в частности, geometric nonlinearity/P-Delta, initial imperfections/plasticity, конечная жёсткость фундамента и части соединений, fatigue, полный нормативный набор сочетаний и независимая внешняя FEM/натурная проверка.
+
+При добавлении новой физики сначала расширяются contracts/invariants/regressions, затем implementation; после миграции старый путь удаляется в том же PR.

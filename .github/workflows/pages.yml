@@ -34,7 +34,7 @@ jobs:
         run: npm run check
 
       - name: Check portable canonical calculation
-        run: npm run test:canonical
+        run: npm run test:platform
 
       - name: Check file line limits
         run: node scripts/check-file-line-limits.mjs

@@ -38,23 +38,21 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24.x'
-      - name: Check JavaScript syntax
-        run: npm run check
-      - name: Typecheck canonical contracts
+      - name: Typecheck canonical contracts and packages
         run: npm run typecheck
       - name: Build TypeScript runtime core
         run: npm run build:core
       - name: Import emitted application API
         run: node --input-type=module -e "await import('./.build/packages/application/index.js')"
-      - name: Run complete regression against emitted runtime
-        run: npm run test:emitted
-      - name: Test runtime contract validation
-        run: npm run test:contracts
-      - name: Test architecture audit tooling
+      - name: Test architecture and CI policy tooling
         run: npm run test:architecture
       - name: Enforce current architecture baseline
         run: npm run audit:architecture
-      - name: Publish human-readable snapshot to job summary
+      - name: Publish architecture snapshot to job summary
         if: always()
         shell: bash
         run: npm run audit:architecture:report >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish Foundation metrics and API surface
+        if: always()
+        shell: bash
+        run: node scripts/foundation-metrics.mjs | tee -a "$GITHUB_STEP_SUMMARY"

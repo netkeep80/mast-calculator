@@ -1,8 +1,15 @@
-import type { ProjectInput, ProjectPackageV1 } from './contracts.js'
+import type {
+  GuyTierInput,
+  ProjectGuysInput,
+  ProjectInput,
+  ProjectPackageMetadata,
+  ProjectPackageV1,
+} from './contracts.js'
 import { PROJECT_PACKAGE_SCHEMA } from './contracts.js'
 import { assertProjectInput } from './project-parameters.js'
 
 export { PROJECT_PACKAGE_SCHEMA }
+export const SUPPORTED_PROJECT_PACKAGE_SCHEMAS = Object.freeze([PROJECT_PACKAGE_SCHEMA] as const)
 
 export class ProjectSchemaError extends Error {
   readonly code: string
@@ -20,8 +27,25 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
   value !== null && typeof value === 'object' && !Array.isArray(value)
 )
 
+function assertKnownFields(value: Record<string, unknown>, allowed: readonly string[], path: string): void {
+  const unknown = Object.keys(value).filter((key) => !allowed.includes(key))
+  if (unknown.length > 0) {
+    throw new ProjectSchemaError(
+      'unknown-package-field',
+      `Неизвестные поля ${path}: ${unknown.join(', ')}`,
+      { path, fields: unknown },
+    )
+  }
+}
+
 function assertFiniteNumber(value: unknown, path: string): asserts value is number {
   if (!Number.isFinite(value)) throw new ProjectSchemaError('invalid-number', `${path} должен быть конечным числом`, { path })
+}
+
+function optionalString(value: unknown, path: string): string | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string') throw new ProjectSchemaError('invalid-string', `${path} должен быть строкой`, { path })
+  return value
 }
 
 function assertProjectValueTypes(project: ProjectInput): ProjectInput {
@@ -119,24 +143,143 @@ export function validateProjectInput(value: unknown): ProjectInput {
   }
 }
 
-export function assertProjectPackage(value: unknown): ProjectPackageV1 {
-  if (!isRecord(value)) throw new ProjectSchemaError('invalid-package', 'Пакет проекта должен быть объектом')
+function validateMetadata(value: unknown): ProjectPackageMetadata | undefined {
+  if (value === undefined) return undefined
+  if (!isRecord(value)) throw new ProjectSchemaError('invalid-package-metadata', 'metadata пакета проекта должен быть объектом')
+  assertKnownFields(value, ['name', 'description', 'createdAt', 'modifiedAt'], 'ProjectPackage.metadata')
+  const metadata: {
+    name?: string
+    description?: string
+    createdAt?: string
+    modifiedAt?: string
+  } = {}
+  const name = optionalString(value.name, 'ProjectPackage.metadata.name')
+  const description = optionalString(value.description, 'ProjectPackage.metadata.description')
+  const createdAt = optionalString(value.createdAt, 'ProjectPackage.metadata.createdAt')
+  const modifiedAt = optionalString(value.modifiedAt, 'ProjectPackage.metadata.modifiedAt')
+  if (name !== undefined) metadata.name = name
+  if (description !== undefined) metadata.description = description
+  if (createdAt !== undefined) metadata.createdAt = createdAt
+  if (modifiedAt !== undefined) metadata.modifiedAt = modifiedAt
+  return Object.freeze(metadata)
+}
+
+function validateGuyTier(value: unknown, index: number): GuyTierInput {
+  if (!isRecord(value)) throw new ProjectSchemaError('invalid-guy-tier', `ProjectPackage.guys.tiers[${index}] должен быть объектом`)
+  const allowed = [
+    'id', 'heightM', 'anchorRadiusM', 'anchorDistanceM', 'guyCount', 'azimuthOffsetDeg',
+    'pretensionN', 'wireId', 'safetyFactor', 'terminationEfficiency',
+  ]
+  assertKnownFields(value, allowed, `ProjectPackage.guys.tiers[${index}]`)
+  const tier: {
+    id?: string
+    heightM?: number
+    anchorRadiusM?: number
+    anchorDistanceM?: number
+    guyCount?: number
+    azimuthOffsetDeg?: number
+    pretensionN?: number
+    wireId?: string
+    safetyFactor?: number
+    terminationEfficiency?: number
+  } = {}
+  const id = optionalString(value.id, `ProjectPackage.guys.tiers[${index}].id`)
+  const wireId = optionalString(value.wireId, `ProjectPackage.guys.tiers[${index}].wireId`)
+  if (id !== undefined) tier.id = id
+  if (wireId !== undefined) tier.wireId = wireId
+  for (const field of ['heightM', 'anchorRadiusM', 'anchorDistanceM', 'guyCount', 'azimuthOffsetDeg', 'pretensionN', 'safetyFactor', 'terminationEfficiency'] as const) {
+    const item = value[field]
+    if (item === undefined) continue
+    assertFiniteNumber(item, `ProjectPackage.guys.tiers[${index}].${field}`)
+    tier[field] = item
+  }
+  if (tier.heightM !== undefined && !(tier.heightM > 0)) throw new ProjectSchemaError('invalid-guy-tier', `Ярус ${index + 1}: heightM должен быть > 0`)
+  if (tier.anchorRadiusM !== undefined && !(tier.anchorRadiusM > 0)) throw new ProjectSchemaError('invalid-guy-tier', `Ярус ${index + 1}: anchorRadiusM должен быть > 0`)
+  if (tier.anchorDistanceM !== undefined && !(tier.anchorDistanceM > 0)) throw new ProjectSchemaError('invalid-guy-tier', `Ярус ${index + 1}: anchorDistanceM должен быть > 0`)
+  if (tier.guyCount !== undefined && (!Number.isInteger(tier.guyCount) || tier.guyCount < 3 || tier.guyCount > 6)) {
+    throw new ProjectSchemaError('invalid-guy-tier', `Ярус ${index + 1}: guyCount должен быть целым 3…6`)
+  }
+  if (tier.pretensionN !== undefined && tier.pretensionN < 0) throw new ProjectSchemaError('invalid-guy-tier', `Ярус ${index + 1}: pretensionN не может быть отрицательным`)
+  if (tier.safetyFactor !== undefined && !(tier.safetyFactor > 0)) throw new ProjectSchemaError('invalid-guy-tier', `Ярус ${index + 1}: safetyFactor должен быть > 0`)
+  if (tier.terminationEfficiency !== undefined && !(tier.terminationEfficiency > 0 && tier.terminationEfficiency <= 1)) {
+    throw new ProjectSchemaError('invalid-guy-tier', `Ярус ${index + 1}: terminationEfficiency должен быть в диапазоне (0, 1]`)
+  }
+  return Object.freeze(tier)
+}
+
+function validateGuys(value: unknown): ProjectGuysInput | undefined {
+  if (value === undefined) return undefined
+  if (!isRecord(value)) throw new ProjectSchemaError('invalid-guys', 'ProjectPackage.guys должен быть объектом')
+  assertKnownFields(value, ['tiers', 'safetyFactor', 'terminationEfficiency'], 'ProjectPackage.guys')
+  if (!Array.isArray(value.tiers)) throw new ProjectSchemaError('invalid-guys', 'ProjectPackage.guys.tiers должен быть массивом')
+  const tiers = Object.freeze(value.tiers.map(validateGuyTier))
+  const guys: { tiers: readonly GuyTierInput[]; safetyFactor?: number; terminationEfficiency?: number } = { tiers }
+  if (value.safetyFactor !== undefined) {
+    assertFiniteNumber(value.safetyFactor, 'ProjectPackage.guys.safetyFactor')
+    if (!(value.safetyFactor > 0)) throw new ProjectSchemaError('invalid-guys', 'ProjectPackage.guys.safetyFactor должен быть > 0')
+    guys.safetyFactor = value.safetyFactor
+  }
+  if (value.terminationEfficiency !== undefined) {
+    assertFiniteNumber(value.terminationEfficiency, 'ProjectPackage.guys.terminationEfficiency')
+    if (!(value.terminationEfficiency > 0 && value.terminationEfficiency <= 1)) {
+      throw new ProjectSchemaError('invalid-guys', 'ProjectPackage.guys.terminationEfficiency должен быть в диапазоне (0, 1]')
+    }
+    guys.terminationEfficiency = value.terminationEfficiency
+  }
+  return Object.freeze(guys)
+}
+
+function assertProjectPackageV1(value: Record<string, unknown>): ProjectPackageV1 {
   if (value.schema !== PROJECT_PACKAGE_SCHEMA) {
     throw new ProjectSchemaError(
       'unsupported-schema',
-      `Неподдерживаемая схема проекта: ожидается ${PROJECT_PACKAGE_SCHEMA}`,
-      { expected: PROJECT_PACKAGE_SCHEMA, actual: value.schema ?? null },
+      `Неподдерживаемая схема проекта: ${String(value.schema ?? 'не указана')}`,
+      { supported: SUPPORTED_PROJECT_PACKAGE_SCHEMAS, actual: value.schema ?? null },
     )
   }
+  assertKnownFields(value, ['schema', 'metadata', 'project', 'guys'], 'ProjectPackage')
   if (!('project' in value)) throw new ProjectSchemaError('missing-project', 'Пакет проекта не содержит поле project')
   const project = validateProjectInput(value.project)
-  const unknown = Object.keys(value).filter((key) => !['schema', 'project'].includes(key))
-  if (unknown.length > 0) throw new ProjectSchemaError('unknown-package-field', `Неизвестные поля пакета проекта: ${unknown.join(', ')}`)
-  return { schema: PROJECT_PACKAGE_SCHEMA, project }
+  const metadata = validateMetadata(value.metadata)
+  const guys = validateGuys(value.guys)
+  return Object.freeze({
+    schema: PROJECT_PACKAGE_SCHEMA,
+    ...(metadata === undefined ? {} : { metadata }),
+    project,
+    ...(guys === undefined ? {} : { guys }),
+  })
 }
 
-export function createProjectPackage(project: unknown): ProjectPackageV1 {
-  return { schema: PROJECT_PACKAGE_SCHEMA, project: validateProjectInput(project) }
+/**
+ * Version migration dispatch. v1 is the only current schema; future migrations are added here
+ * and must return the canonical current ProjectPackageV1. No synthetic legacy wrapper is kept.
+ */
+export function migrateProjectPackage(value: unknown): ProjectPackageV1 {
+  if (!isRecord(value)) throw new ProjectSchemaError('invalid-package', 'Пакет проекта должен быть объектом')
+  if (value.schema === PROJECT_PACKAGE_SCHEMA) return assertProjectPackageV1(value)
+  throw new ProjectSchemaError(
+    'unsupported-schema',
+    `Неподдерживаемая схема проекта: ${String(value.schema ?? 'не указана')}`,
+    { supported: SUPPORTED_PROJECT_PACKAGE_SCHEMAS, actual: value.schema ?? null },
+  )
+}
+
+export function assertProjectPackage(value: unknown): ProjectPackageV1 {
+  return migrateProjectPackage(value)
+}
+
+export interface CreateProjectPackageOptions {
+  readonly metadata?: ProjectPackageMetadata
+  readonly guys?: ProjectGuysInput
+}
+
+export function createProjectPackage(project: unknown, options: CreateProjectPackageOptions = {}): ProjectPackageV1 {
+  return assertProjectPackage({
+    schema: PROJECT_PACKAGE_SCHEMA,
+    project,
+    ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
+    ...(options.guys === undefined ? {} : { guys: options.guys }),
+  })
 }
 
 export function serializeProjectPackage(value: unknown): string {
@@ -153,5 +296,5 @@ export function parseProjectPackage(text: unknown): ProjectPackageV1 {
       `Не удалось прочитать JSON-пакет проекта: ${error instanceof Error ? error.message : String(error)}`,
     )
   }
-  return assertProjectPackage(value)
+  return migrateProjectPackage(value)
 }

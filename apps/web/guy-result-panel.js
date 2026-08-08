@@ -5,6 +5,7 @@ const format = (value, digits = 2) => Number.isFinite(Number(value))
   : '—'
 
 function ensureStyles() {
+  if (typeof document === 'undefined') return
   if (document.querySelector('link[data-guy-result-styles]')) return
   const stylesheet = document.createElement('link')
   stylesheet.rel = 'stylesheet'
@@ -20,6 +21,7 @@ function cell(value) {
 }
 
 function ensurePanel() {
+  if (typeof document === 'undefined') return null
   let panel = document.querySelector('#guy-result-panel')
   if (panel) return panel
   const summaryPane = document.querySelector('.workspace-summary-pane')
@@ -94,7 +96,7 @@ function renderGuyResult(guyResult, bareResult) {
 }
 
 function renderCombinedPrimaryStatus(snapshot) {
-  if (!snapshot.guyResult) return
+  if (typeof document === 'undefined' || !snapshot.guyResult) return
   const answer = document.querySelector('#scenario-answer')
   if (!answer || answer.hidden) return
   const title = answer.querySelector('#scenario-answer-title')
@@ -109,6 +111,7 @@ function renderCombinedPrimaryStatus(snapshot) {
 }
 
 subscribeCalculationResult((snapshot) => {
+  if (typeof document === 'undefined') return
   renderGuyResult(snapshot.guyResult, snapshot.result)
   queueMicrotask(() => renderCombinedPrimaryStatus(snapshot))
 })

@@ -5,7 +5,6 @@ export * from './src/use-cases.js'
 export * from './src/errors.js'
 export {
   DEFAULT_LATERAL_CAPACITY_STEP_DEG,
-  DEFAULT_PARAMETERS,
   DEFAULT_PROJECT_INPUT,
   PROJECT_PACKAGE_SCHEMA,
   ProjectSchemaError,
@@ -14,7 +13,6 @@ export {
   createProjectInput,
   createProjectPackage,
   parseProjectPackage,
-  resolveCalculationParameters,
   resolveProjectInput,
   serializeProjectPackage,
   validateProjectInput,

@@ -1,4 +1,8 @@
 import type { ResolvedProject } from '../../domain/contracts.js'
+import {
+  WIND_ACTION_MODE_MANUAL,
+  createWindActionProvenance,
+} from '../../domain/index.js'
 import { selectedBoltUtilizationForAnalysis } from './connection-check.js'
 import { STANDARD_GRAVITY_M_S2 } from './lateral-capacity.js'
 import {
@@ -72,6 +76,13 @@ function memberLengthM(model: GeneratedMastModel, member: MastMember): number {
   return Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2])
 }
 
+function memberReferenceHeightM(model: GeneratedMastModel, member: MastMember): number {
+  const a = model.nodes[member.nodeA]?.position
+  const b = model.nodes[member.nodeB]?.position
+  if (!a || !b) throw new Error(`Не найдены узлы ребра ${member.id} для расчёта стрелы`)
+  return Math.max(0, (a[2] + b[2]) / 2)
+}
+
 export function buildHorizontalBoomLoadCase(
   model: GeneratedMastModel,
   parameters: ResolvedProject,
@@ -84,16 +95,29 @@ export function buildHorizontalBoomLoadCase(
     * STANDARD_GRAVITY_M_S2
     * Math.max(0, Number(parameters.equipmentLoadFactor ?? 1))
 
-  const baseParameters: ResolvedProject = {
+  // This special capacity case deliberately excludes wind. Merely setting
+  // windPressurePa=0 is no longer sufficient once an SP20 mode can derive
+  // pressure from region/terrain; force the explicit manual zero-wind model.
+  const zeroWindParameters = {
     ...parameters,
     deadLoadFactor: 0,
+    windActionMode: WIND_ACTION_MODE_MANUAL,
+    windRegion: null,
+    windTerrainType: null,
     windPressurePa: 0,
     windPresetId: 'custom',
+    windPresetLabel: 'Специальный расчёт стрелы: ветер исключён',
+    beaufortForce: null,
+    windSpeedMs: 0,
     windEnvelopeEnabled: false,
     equipmentMassKg: 0,
     equipmentWindAreaM2: 0,
     iceThicknessMm: 0,
     windDirectionDeg: directionDeg,
+  } satisfies Omit<ResolvedProject, 'windActionProvenance'> & { windActionProvenance?: ResolvedProject['windActionProvenance'] }
+  const baseParameters: ResolvedProject = {
+    ...zeroWindParameters,
+    windActionProvenance: createWindActionProvenance(zeroWindParameters),
   }
   const loadCase = buildLoadCase(model, baseParameters, {
     topPointLoadN: scale3(direction, payloadForceN),
@@ -119,6 +143,9 @@ export function buildHorizontalBoomLoadCase(
       lengthM,
       steelWeightPerLengthN: weightPerLengthN,
       iceWeightPerLengthN: 0,
+      windReferenceHeightM: memberReferenceHeightM(model, member),
+      characteristicMeanWindPressurePa: 0,
+      designMeanWindPressurePa: 0,
       windForcePerLengthN: [0, 0, 0] as Vector3,
       resultantForcePerLengthN: [...distributed] as Vector3,
       horizontalBoomGravity: true,
@@ -134,6 +161,8 @@ export function buildHorizontalBoomLoadCase(
   loadCase.iceWeightN = 0
   loadCase.equipmentWeightN = 0
   loadCase.equipmentWindN = 0
+  loadCase.equipmentCharacteristicMeanWindPressurePa = 0
+  loadCase.equipmentDesignMeanWindPressurePa = 0
   return Object.assign(loadCase, {
     horizontalBoom: true as const,
     horizontalBoomPayloadMassKg: payloadKg,

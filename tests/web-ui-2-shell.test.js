@@ -10,6 +10,10 @@ const styles = fs.readFileSync(path.join(root, 'apps', 'web', 'workspace.css'), 
 const index = fs.readFileSync(path.join(root, 'apps', 'web', 'index.html'), 'utf8')
 const projectPackageUi = fs.readFileSync(path.join(root, 'apps', 'web', 'project-package-ui.js'), 'utf8')
 const runtimeInfo = fs.readFileSync(path.join(root, 'apps', 'web', 'runtime-info.js'), 'utf8')
+const resultTabs = fs.readFileSync(path.join(root, 'apps', 'web', 'result-tabs.js'), 'utf8')
+const resultTabStyles = fs.readFileSync(path.join(root, 'apps', 'web', 'result-tabs.css'), 'utf8')
+const resultChannel = fs.readFileSync(path.join(root, 'apps', 'web', 'result-channel.js'), 'utf8')
+const guyResultPanel = fs.readFileSync(path.join(root, 'apps', 'web', 'guy-result-panel.js'), 'utf8')
 
 function requires(text, pattern, message) {
   assert.match(text, pattern, message)
@@ -54,7 +58,7 @@ test('workspace shell is presentation-only and cannot acquire engineering owners
 
 test('workspace CSS is loaded before DOM migration instead of racing shell layout', () => {
   requires(index, /<link rel="stylesheet" href="\.\/workspace\.css">/, 'workspace.css не загружается в head до bootstrap')
-  assert.doesNotMatch(shell, /createElement\(['"]link['"]\)|data\.webUiStyles/, 'shell не должен динамически подключать layout CSS')
+  assert.doesNotMatch(shell, /data\.webUiStyles/, 'shell не должен динамически подключать основной layout CSS')
 })
 
 test('desktop workspace cannot be widened by legacy min-content controls', () => {
@@ -80,4 +84,56 @@ test('sticky panes follow the real wrapped app-bar height', () => {
 test('desktop-first layout exposes all three primary panes at 1366-class width', () => {
   requires(styles, /grid-template-areas:\s*\n\s*'project view summary'/, 'primary panes не находятся в одной строке desktop workspace')
   requires(styles, /#mast-canvas[\s\S]*height:\s*calc\(100vh - var\(--app-bar-height\) - 118px\)/, '3D viewport не привязан к фактической высоте toolbar')
+})
+
+test('durable result workspace has accessible presentation-only tabs', () => {
+  for (const id of ['summary', 'limits', 'connections', 'guys', 'verification', 'reports']) {
+    assert.ok(resultTabs.includes(`id: '${id}'`), `нет result tab ${id}`)
+  }
+  requires(resultTabs, /setAttribute\('role', 'tablist'\)/, 'нет ARIA tablist')
+  requires(resultTabs, /setAttribute\('role', 'tab'\)/, 'нет ARIA tab semantics')
+  requires(resultTabs, /setAttribute\('role', 'tabpanel'\)/, 'нет ARIA tabpanel semantics')
+  for (const key of ['ArrowRight', 'ArrowLeft', 'Home', 'End']) {
+    assert.ok(resultTabs.includes(`event.key === '${key}'`), `нет keyboard navigation ${key}`)
+  }
+  requires(resultTabStyles, /\.result-tabpanel\[hidden\][\s\S]*display:\s*none/, 'скрытая вкладка не исключается из layout')
+})
+
+test('tab switching cannot create a second FEM or engineering path', () => {
+  assert.doesNotMatch(resultTabs, /packages\/(domain|numerics|structural-analysis|engineering|application|design|reporting)/)
+  assert.doesNotMatch(resultTabs, /calculateProject|analyzeFrame|solveModuleStack|Worker\s*\(|postMessage\s*\(/)
+  assert.doesNotMatch(resultTabs, /createWebApplicationState|selectedModuleIndex\s*=/)
+  requires(resultTabs, /#module-selector/, 'linked rows do not route selection through the existing module selector/state path')
+  requires(resultTabs, /dispatchEvent\(new Event\('change'/, 'row selection bypasses the canonical selectModule path')
+})
+
+test('result tabs reuse one selected physical module for member, connection and guy projections', () => {
+  requires(resultTabs, /member\.moduleNumber|moduleNumber = Number/, 'member rows are not linked to physical modules')
+  requires(resultTabs, /governingDemand\?\.level/, 'connection rows are not linked to their governing interface level')
+  requires(resultTabs, /model\?\.members\?\.\[memberId\]\?\.moduleIndex/, 'weld rows are not linked through the canonical model member index')
+  requires(resultTabs, /cables\[index\]\?\.attachmentLevel/, 'guy rows are not linked to their physical attachment level')
+  requires(resultTabs, /module-selected-row/, 'selected module is not projected back into result rows')
+})
+
+test('Guys tab is conditional and scenario presets only change result focus', () => {
+  requires(resultTabs, /conditional:\s*true/, 'Guys tab is not conditional')
+  requires(resultTabs, /button\.hidden = !enabled/, 'Guys tab remains visible for bare projects')
+  requires(resultTabs, /check:\s*'summary'/, 'check scenario does not focus Summary')
+  requires(resultTabs, /design:\s*'connections'/, 'design scenario does not focus Connections')
+  requires(resultTabs, /limits:\s*'limits'/, 'limits scenario does not focus Limits')
+  requires(resultTabs, /verify:\s*'verification'/, 'verify scenario does not focus Verification')
+})
+
+test('late result presenters replay the current snapshot without changing existing subscribers', () => {
+  requires(resultChannel, /let latestSnapshot = null/, 'result channel does not retain the latest presentation snapshot')
+  requires(resultChannel, /\{ replay = false \} = \{\}/, 'replay is not opt-in/backward compatible')
+  requires(resultChannel, /if \(replay && latestSnapshot !== null\) listener\(latestSnapshot\)/, 'late subscriber cannot replay current snapshot')
+  requires(guyResultPanel, /\{ replay: true \}/, 'guy result presenter can miss a fast calculation')
+  requires(resultTabs, /subscribeCalculationResult\([\s\S]*\{ replay: true \}\)/, 'result tabs can miss a fast calculation')
+})
+
+test('tab styles are loaded before result DOM migration', () => {
+  requires(shell, /loadPresentationStylesheet\('\.\/result-tabs\.css', 'data-result-tabs-styles'\)/, 'result tab CSS is not preloaded')
+  requires(shell, /loadPresentationStylesheet\('\.\/guy-result-panel\.css', 'data-guy-result-styles'\)/, 'guy result CSS is not preloaded')
+  requires(shell, /Promise\.all\([\s\S]*\.then\(\(\) => import\('\.\/result-tabs\.js'\)\)/, 'tab DOM migration can race its styles')
 })

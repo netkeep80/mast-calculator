@@ -176,14 +176,21 @@ export async function executeCliRequest(request) {
 
   if (command === 'optimize') {
     const output = application.optimizeAndCalculateProject(projectPackage.project)
-    const summary = application.createOptimizationResultSummary(projectPackage, output, { provenance: source })
+    let summary = application.createOptimizationResultSummary(projectPackage, output, { provenance: source })
     if (projectPackage.guys && output.result) {
-      const guyed = application.calculateGuyedProject(output.projectInput, projectPackage.guys.tiers, guyOptions(projectPackage))
-      summary.guyed = application.createGuyedResultSummary(
-        application.createProjectPackage(output.projectInput, { metadata: projectPackage.metadata, guys: projectPackage.guys }),
-        guyed,
-        { provenance: source, optimization: output.optimization },
-      ).result
+      const effectivePackage = application.createProjectPackage(output.projectInput, {
+        metadata: projectPackage.metadata,
+        guys: projectPackage.guys,
+      })
+      const guyed = application.calculateGuyedProject(
+        output.projectInput,
+        projectPackage.guys.tiers,
+        guyOptions(projectPackage),
+      )
+      summary = application.createGuyedResultSummary(effectivePackage, guyed, {
+        provenance: source,
+        optimization: output.optimization,
+      })
     }
     const human = output.optimization.recommendedDiameter == null
       ? `Подбор завершён: проходящий стандартный диаметр не найден после ${output.optimization.evaluatedCount} вариантов`

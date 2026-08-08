@@ -45,10 +45,13 @@ function resolveValidatedProject(input: ProjectInput): ResolvedProject {
 export function calculateProject(input: ProjectInput, options: CalculateOptions = {}) {
   try {
     const parameters = resolveValidatedProject(input)
-    const calculated = calculateCompleteMastWithConfiguredJoint(parameters, {
-      ...options,
-      resolvedProject: parameters,
-    })
+    const calculated = calculateCompleteMastWithConfiguredJoint(
+      parameters as unknown as Record<string, unknown>,
+      {
+        ...options,
+        resolvedProject: parameters,
+      },
+    )
     return immutablePublicResult(finalizedVerification(calculated), options)
   } catch (error) {
     throw toApplicationError(error)
@@ -74,10 +77,14 @@ export function calculateGuyedProject(
 ) {
   try {
     const parameters = resolveValidatedProject(input)
-    return immutablePublicResult(calculateGuyedMast(parameters, tiers, {
-      ...options,
-      resolvedProject: parameters,
-    }), options)
+    return immutablePublicResult(calculateGuyedMast(
+      parameters as unknown as Record<string, unknown>,
+      tiers,
+      {
+        ...options,
+        resolvedProject: parameters,
+      },
+    ), options)
   } catch (error) {
     throw toApplicationError(error)
   }

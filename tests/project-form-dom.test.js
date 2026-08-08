@@ -5,10 +5,8 @@ import {
   applyProjectInputToForm,
   readProjectInputFromForm,
 } from '../apps/web/project-form-dom.js'
-import {
-  WIND_ACTION_MODE_SP20_MEAN_V1,
-  createProjectInput,
-} from '../packages/application/index.js'
+import { createProjectInput } from '../packages/application/index.js'
+import { WIND_ACTION_MODE_SP20_MEAN_V1 } from '../packages/domain/index.js'
 
 function fakeForm(fieldNames) {
   const fields = new Map(fieldNames.map((name) => [name, {

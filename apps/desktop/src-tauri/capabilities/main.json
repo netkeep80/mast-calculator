@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "Main local Mast Calculator WebView. Only the two native file-dialog commands are exposed.",
+  "windows": ["main"],
+  "permissions": ["allow-project-files"]
+}

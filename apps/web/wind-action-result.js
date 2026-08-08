@@ -57,10 +57,15 @@ export function renderWindActionProvenance(snapshot) {
       ? `Модель ${provenance.model}; район ${provenance.windRegion}; тип местности ${provenance.terrainType}; w₀=${format(provenance.basicWindPressurePa, 1)} Па; опорная высота ${format(provenance.referenceHeightM, 3)} м; k=${format(provenance.referenceHeightCoefficient, 5)}; среднее характеристическое давление ${format(provenance.referenceCharacteristicMeanPressurePa, 2)} Па; γf=${format(provenance.loadReliabilityFactor, 3)}.`
       : `Модель ${provenance.model}; заданное характеристическое давление ${format(provenance.referenceCharacteristicMeanPressurePa, 2)} Па; γf=${format(provenance.loadReliabilityFactor, 3)}.`,
   )
+  const aerodynamic = make(
+    'p',
+    '',
+    `Аэродинамика: Cx рёбер=${format(provenance.memberAerodynamicCoefficient, 3)}, Cx оборудования=${format(provenance.equipmentAerodynamicCoefficient, 3)}; источник=${provenance.aerodynamicCoefficientSource ?? '—'}. Эти коэффициенты не заявляются как автоматически выбранные по приложению СП 20.`,
+  )
   const scope = make(
     'p',
     '',
     `Средняя составляющая: ${booleanStatus(provenance.meanComponentIncluded)}. Пульсационная составляющая: ${booleanStatus(provenance.pulsationComponentIncluded)}. Динамический/модальный отклик: ${booleanStatus(provenance.dynamicResponseIncluded)}. γf — коэффициент надёжности по нагрузке, не коэффициент динамичности.`,
   )
-  body.replaceChildren(headline, source, scope)
+  body.replaceChildren(headline, source, aerodynamic, scope)
 }

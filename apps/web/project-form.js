@@ -18,6 +18,9 @@ const GROUP_FIELDS = Object.freeze({
   environment: Object.freeze({
     deadLoadFactor: 'deadLoadFactor',
     windLoadFactor: 'windLoadFactor',
+    windActionMode: 'windActionMode',
+    windRegion: 'windRegion',
+    windTerrainType: 'windTerrainType',
     windPresetId: 'windPresetId',
     windPressurePa: 'windPressurePa',
     dragCoefficient: 'dragCoefficient',
@@ -55,7 +58,7 @@ const GROUP_FIELDS = Object.freeze({
     weldToRibAreaRatio: 'weldToRibAreaRatio',
     weldServiceYears: 'weldServiceYears',
     weldInitialStiffnessRetention: 'weldInitialStiffnessRetention',
-    weldAnnualStiffnessLossRate: 'weldAnnualStiffnessLossRate',
+    annualStiffnessLossRate: 'weldAnnualStiffnessLossRate',
     weldMinimumStiffnessRetention: 'weldMinimumStiffnessRetention',
   }),
   criteria: Object.freeze({
@@ -64,6 +67,12 @@ const GROUP_FIELDS = Object.freeze({
     heightSearchMaxModules: 'heightSearchMaxModules',
   }),
 })
+
+export const OPTIONAL_PROJECT_FORM_FIELDS = Object.freeze([
+  'windActionMode',
+  'windRegion',
+  'windTerrainType',
+])
 
 export const DEFAULT_PROJECT_FORM_VALUES = Object.freeze(projectInputToFlatValues(DEFAULT_PROJECT_INPUT))
 

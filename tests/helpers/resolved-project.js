@@ -15,6 +15,9 @@ const FLAT_PROJECT_FIELDS = Object.freeze({
 
   deadLoadFactor: ['environment', 'deadLoadFactor'],
   windLoadFactor: ['environment', 'windLoadFactor'],
+  windActionMode: ['environment', 'windActionMode'],
+  windRegion: ['environment', 'windRegion'],
+  windTerrainType: ['environment', 'windTerrainType'],
   windPresetId: ['environment', 'windPresetId'],
   windPressurePa: ['environment', 'windPressurePa'],
   dragCoefficient: ['environment', 'dragCoefficient'],

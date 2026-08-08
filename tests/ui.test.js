@@ -83,10 +83,11 @@ test('issue #33 добавляет параметры момента затяж�
   assert.match(bootstrap, /эффективная площадь шва/i)
 })
 
-test('логотип из корня репозитория подключён в шапке приложения', () => {
-  assert.match(html, /class="brand-logo"/)
+test('логотип подключён непосредственно в статической app bar', () => {
+  assert.match(html, /class="app-logo"/)
   assert.match(html, /src="\.\/logo\.jpg"/)
   assert.match(html, /alt="Логотип калькулятора мачты"/)
+  assert.doesNotMatch(html, /class="brand-logo"/)
 })
 
 test('главная схема позволяет выбрать физический модуль кликом или select', () => {
@@ -219,8 +220,10 @@ test('результирующие таблицы показывают N, V, M �
   assert.match(html, /<th>σэкв, МПа<\/th>/)
 })
 
-test('пользовательский прототип обновлён до 1.3 и название страницы русское', () => {
-  assert.match(html, /прототип 1\.3/)
+test('канонический Web shell является Web UI 2.0 без hardcoded prototype version', () => {
+  assert.match(html, /<body data-web-ui="2\.0">/)
   assert.match(html, /<title>Калькулятор мачты<\/title>/)
-  assert.doesNotMatch(html, /Mast Calculator/)
+  assert.match(html, /class="app-bar"/)
+  assert.match(html, /id="runtime-info-slot"/)
+  assert.doesNotMatch(html, /Что вы хотите узнать о мачте\?|прототип\s+1\.|Mast Calculator/i)
 })

@@ -76,7 +76,7 @@ test('all presentation styles are linked before module bootstrap', () => {
 })
 
 test('desktop workspace cannot be widened by legacy min-content controls', () => {
-  requires(styles, /grid-template-columns:\s*minmax\(280px, 330px\)\s+minmax\(560px, 1fr\)\s+minmax\(280px, 330px\)/, 'no shrink-safe three-column desktop workspace')
+  requires(styles, /grid-template-columns:\s*minmax\(280px, 320px\)\s+minmax\(560px, 1fr\)\s+minmax\(280px, 320px\)/, 'no shrink-safe three-column desktop workspace')
   requires(styles, /\.workspace-layout > \*[\s\S]*min-width:\s*0/, 'primary panes lack min-width:0')
   requires(styles, /\.workspace-project-card \.form-grid\s*\{[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/, 'project form keeps min-content overflow')
   requires(styles, /\.workspace-project-card select[\s\S]*max-width:\s*100%/, 'long selects are not constrained')

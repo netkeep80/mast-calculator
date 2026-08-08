@@ -188,6 +188,7 @@ export interface VerificationPassport {
     readonly globalMomentResidual: number
     readonly bucklingResidual: number
   }
+  readonly windActionProvenance: ResolvedProject['windActionProvenance']
 }
 
 export interface GuyWireDefinition {

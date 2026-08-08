@@ -8,6 +8,9 @@ import {
   applyProjectInputToForm,
   readProjectInputFromForm,
 } from './project-form-dom.js'
+import { initializeRuntimeInfo } from './runtime-info.js'
+
+void initializeRuntimeInfo()
 
 function safeFilename(value) {
   const normalized = String(value ?? 'mast-project')
@@ -68,6 +71,7 @@ export function initializeProjectPackageUi(form, fileAdapter = defaultFileAdapte
         suggestedName: filename,
         content: serializeProjectPackage(packageValue),
         mediaType: 'application/json;charset=utf-8',
+        extensions: ['json'],
       })
       if (!saved) return
       status.textContent = `Сохранён ${packageValue.schema}${saved.path ? `: ${saved.path}` : ''}${packageValue.guys ? '; вместе с конфигурацией растяжек' : ''}.`

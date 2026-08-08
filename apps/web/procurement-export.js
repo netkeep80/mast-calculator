@@ -1,49 +1,9 @@
-import { createProcurementEstimateFromCalculation } from '../../packages/application/index.js'
-import { createProcurementEstimateHtml } from '../../packages/design/index.js'
-import { fileAdapter } from './file-adapter.js'
-import { subscribeCalculationResult } from './result-channel.js'
+import { initializeReportsExports } from './reports-exports.js'
 
+/**
+ * Transitional bootstrap name retained only until the Web UI 2.0 purge rewires app-bootstrap.
+ * Procurement no longer owns a separate export button or result subscription.
+ */
 export function initializeProcurementExport() {
-  const exportRow = document.querySelector('.export-row')
-  if (!exportRow || document.querySelector('#export-procurement-button')) return null
-
-  let currentResult = null
-  let currentGuyResult = null
-  const button = document.createElement('button')
-  button.id = 'export-procurement-button'
-  button.type = 'button'
-  button.className = 'secondary'
-  button.disabled = true
-  button.textContent = 'Сохранить закупочную смету'
-
-  const unsubscribe = subscribeCalculationResult(({ result, guyResult }) => {
-    currentResult = result ?? null
-    currentGuyResult = guyResult ?? null
-    button.disabled = currentResult == null
-  })
-
-  button.addEventListener('click', async () => {
-    if (!currentResult) return
-    try {
-      const estimate = createProcurementEstimateFromCalculation(currentResult, {
-        guyedResult: currentGuyResult,
-      })
-      const html = createProcurementEstimateHtml(estimate, new Date().toISOString())
-      await fileAdapter.saveText({
-        suggestedName: `mast-${currentResult.parameters.moduleCount}-procurement.html`,
-        content: html,
-        mediaType: 'text/html;charset=utf-8',
-        extensions: ['html'],
-      })
-    } catch (error) {
-      const errorBox = document.querySelector('#error')
-      if (errorBox) {
-        errorBox.textContent = error instanceof Error ? error.message : String(error)
-        errorBox.hidden = false
-      }
-    }
-  })
-
-  exportRow.append(button)
-  return Object.freeze({ button, unsubscribe })
+  return initializeReportsExports()
 }

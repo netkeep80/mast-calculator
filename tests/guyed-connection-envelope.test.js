@@ -55,7 +55,7 @@ function highPretensionGuys(project) {
       guyCount: 3,
       azimuthOffsetDeg: 0,
       wireId: DEFAULT_GUY_WIRE_ID,
-      pretensionN: 10000,
+      pretensionN: 13000,
     }],
   }
 }

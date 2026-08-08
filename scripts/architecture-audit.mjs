@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import fs from 'node:fs'
 import path from 'node:path'
-import { analyzeRepository, evaluatePolicy, reportToMarkdown } from './architecture-audit-lib.mjs'
+import { analyzeRepository, evaluatePolicy } from './architecture-audit-lib.mjs'
+import { reportToMarkdown } from './architecture-report.mjs'
 
 const root = process.cwd()
 const args = new Set(process.argv.slice(2))

@@ -11,14 +11,13 @@ function moduleUrl(packageName) {
 
 async function loadCore() {
   try {
-    const [application, design, reporting, domain] = await Promise.all([
+    const [application, design, reporting] = await Promise.all([
       import(moduleUrl('application')),
       import(moduleUrl('design')),
       import(moduleUrl('reporting')),
-      import(moduleUrl('domain')),
     ])
     const packageJson = JSON.parse(await fs.readFile(path.join(repoRoot, 'package.json'), 'utf8'))
-    return { application, design, reporting, domain, version: String(packageJson.version ?? 'unknown') }
+    return { application, design, reporting, version: String(packageJson.version ?? 'unknown') }
   } catch (error) {
     const wrapped = new Error(`Не удалось загрузить compiler-emitted core из .build/packages: ${error instanceof Error ? error.message : String(error)}`)
     wrapped.code = 'core-not-built'
@@ -100,51 +99,6 @@ function humanCalculation(summary) {
   return `OK bare: ${geometry.moduleCount} мод.; H=${geometry.mastHeightM.toFixed(3)} м; U=${response.maxUtilization.toFixed(6)}; прогиб=${response.topDisplacementMm.toFixed(3)} мм; λcr=${response.minimumBucklingFactor.toFixed(6)}`
 }
 
-function procurementGuyGroups(guyedResult) {
-  if (!guyedResult) return []
-  const groups = new Map()
-  for (const cable of guyedResult.cableSystem.cables) {
-    const wire = cable.wire
-    const key = wire.id
-    const current = groups.get(key) ?? {
-      id: key,
-      wireId: key,
-      label: wire.label,
-      diameterMm: wire.diameterMm,
-      designLengthM: 0,
-      massKgM: wire.massKgM,
-      source: 'guy-calculator',
-    }
-    current.designLengthM += cable.initialLengthM
-    groups.set(key, current)
-  }
-  return [...groups.values()]
-}
-
-function procurementInput(result, domain, guyedResult = null) {
-  const geometry = result.connections?.configurator?.geometry
-  const criticalWeld = result.connections?.weld?.critical?.check
-  const weldConsumable = domain.WELD_CONSUMABLES.find((item) => item.id === result.parameters.weldConsumableId)
-  return {
-    moduleCount: result.parameters.moduleCount,
-    stockBarLengthMm: result.parameters.stockBarLengthMm,
-    stockBarPieces: result.parameters.stockBarPieces,
-    ribCutLengthMm: result.parameters.ribCutLengthMm,
-    barDiameterMm: result.parameters.barDiameterMm,
-    moduleDiametersMm: result.parameters.moduleDiametersMm,
-    moduleHeightMm: result.parameters.moduleHeightMm,
-    densityKgM3: result.parameters.densityKgM3,
-    reservePercent: 0,
-    geometry,
-    weldConsumable,
-    weldLegMm: result.parameters.weldLegMm,
-    weldPhysicalLengthPerEndMm: criticalWeld?.requiredPhysicalLengthMm ?? 0,
-    boltClass: result.parameters.jointBoltClass,
-    reinforcementLabel: result.parameters.reinforcementClass,
-    guyCableGroups: procurementGuyGroups(guyedResult),
-  }
-}
-
 function jsonText(value) {
   return `${JSON.stringify(value, null, 2)}\n`
 }
@@ -156,7 +110,7 @@ function artifactResult(content, mediaType, suggestedExtension, human) {
 export async function executeCliRequest(request, hooks = {}) {
   const { command, projectFile, json = false } = request
   const onProgress = progressReporter(hooks)
-  const { application, design, reporting, domain, version } = await loadCore()
+  const { application, design, reporting, version } = await loadCore()
   const projectPackage = await readProjectPackage(projectFile, application)
   const source = provenance(command, version)
 
@@ -265,7 +219,7 @@ export async function executeCliRequest(request, hooks = {}) {
       guyed = application.calculateGuyedProject(projectPackage.project, projectPackage.guys.tiers, guyOptions(projectPackage))
       onProgress({ phase: 'guyed', label: 'Расчёт растяжек для закупочной сметы завершён', fraction: 1 })
     }
-    const estimate = design.buildProcurementEstimate(procurementInput(bareResult, domain, guyed))
+    const estimate = application.createProcurementEstimateFromCalculation(bareResult, guyed)
     return artifactResult(
       design.createProcurementEstimateHtml(estimate, generatedAt),
       'text/html;charset=utf-8',

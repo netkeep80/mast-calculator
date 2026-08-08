@@ -1,5 +1,6 @@
 import {
   createDesignPackage,
+  createEngineeringSummary,
   previewRibFabrication,
 } from '../../packages/application/index.js'
 import { saveDesignPackage } from './design-storage.js'
@@ -24,7 +25,7 @@ const referenceDetails = $('#reference-details')
 const jointInputDetails = $('#joint-input-details')
 let designWorkspaceButton = null
 let designWorkspaceNote = null
-let lastUsageResult = null
+let lastUsageSnapshot = null
 
 const SCENARIOS = Object.freeze({
   check: {
@@ -43,6 +44,20 @@ const SCENARIOS = Object.freeze({
     label: 'Рассчитать и проверить',
     description: 'В фокусе цепочка алгоритма, внутренние cross-checks и возможность ручной перепроверки.',
   },
+})
+
+const CRITERION_LABELS = Object.freeze({
+  'bare-member-utilization': 'ребро голой мачты',
+  'bare-global-buckling': 'общая устойчивость голой мачты',
+  'bare-top-displacement': 'прогиб голой мачты',
+  'bare-connection': 'физический межмодульный узел',
+  'internal-verification': 'внутренняя верификация',
+  'guyed-member-utilization': 'ребро с растяжками',
+  'guyed-global-buckling': 'общая устойчивость с растяжками',
+  'guyed-top-displacement': 'прогиб с растяжками',
+  'guy-cable-utilization': 'рабочая нагрузка троса',
+  'guy-nonlinear-convergence': 'сходимость нелинейного расчёта растяжек',
+  'guyed-connection-envelope': 'болты и сварка по усилиям мачты с растяжками',
 })
 
 const format = (value, digits = 2) => Number.isFinite(Number(value))
@@ -137,56 +152,109 @@ function metricCard(label, value, note = '') {
   return card
 }
 
-function currentCriteria(result) {
-  const parameters = result.parameters
-  const utilization = result.envelope.maxUtilization
-  const buckling = result.envelope.minimumBucklingFactor
-  const displacementMm = result.envelope.maxTopDisplacementM * 1000
-  const connectionPasses = result.connections?.passes !== false
-  const criteria = [
-    { id: 'member', passes: utilization <= 1, ratio: utilization, label: `ребро U=${format(utilization, 3)}` },
-    { id: 'buckling', passes: buckling >= parameters.minimumBucklingFactor, ratio: parameters.minimumBucklingFactor / Math.max(buckling, Number.EPSILON), label: `λcr=${format(buckling, 3)}` },
-    { id: 'displacement', passes: displacementMm <= parameters.displacementLimitMm, ratio: displacementMm / Math.max(parameters.displacementLimitMm, Number.EPSILON), label: `прогиб ${format(displacementMm, 1)} мм` },
-    { id: 'connection', passes: connectionPasses, ratio: result.connections?.bolt?.selected?.utilization ?? 0, label: connectionPasses ? 'узел проходит' : 'узел не проходит' },
-  ]
-  return { criteria, passes: criteria.every((item) => item.passes) }
+function criterionById(summary, id) {
+  return summary.criteria.find((item) => item.id === id) ?? null
 }
 
-function governingCriterion(result) {
-  const { criteria } = currentCriteria(result)
-  return [...criteria].sort((left, right) => right.ratio - left.ratio)[0]
+function criterionLabel(id) {
+  return CRITERION_LABELS[id] ?? id
 }
 
-function renderCheckScenario(result) {
-  const check = currentCriteria(result)
-  const governing = governingCriterion(result)
-  scenarioTitle.textContent = check.passes ? 'Выбранная мачта проходит текущие проверки' : 'Выбранная мачта не проходит текущие проверки'
-  scenarioStatus.textContent = check.passes ? 'ПРОХОДИТ' : 'НЕ ПРОХОДИТ'
-  scenarioStatus.className = `answer-status ${check.passes ? 'answer-pass' : 'answer-fail'}`
-  scenarioText.textContent = check.passes
-    ? `Все четыре главных критерия проходят. Ближе всего к пределу: ${governing.label}. Подробности и ограничения модели можно раскрыть ниже.`
-    : `Есть хотя бы один непройденный критерий. Определяющий сейчас: ${governing.label}. Раскройте «Почему получился именно такой предел?» для численной причины.`
-  scenarioMetrics.replaceChildren(
-    metricCard('Ребро', `U = ${format(result.envelope.maxUtilization, 3)}`, '≤ 1'),
-    metricCard('Общая устойчивость', `λcr = ${format(result.envelope.minimumBucklingFactor, 3)}`, `требуется ≥ ${format(result.parameters.minimumBucklingFactor, 2)}`),
-    metricCard('Прогиб вершины', `${format(result.envelope.maxTopDisplacementM * 1000, 1)} мм`, `лимит ${format(result.parameters.displacementLimitMm, 0)} мм`),
-    metricCard('Соединение', result.connections?.passes === false ? 'НЕ ПРОХОДИТ' : 'проходит', `Uболта ${format(result.connections?.bolt?.selected?.utilization ?? 0, 3)}`),
-  )
+function statusPresentation(summary) {
+  if (summary.overallStatus === 'fail') {
+    return {
+      label: 'НЕ ПРОХОДИТ',
+      className: 'answer-fail',
+      title: 'Выбранный проект не проходит текущие проверки',
+    }
+  }
+  if (summary.overallStatus === 'incomplete') {
+    return {
+      label: 'НЕПОЛНАЯ ПРОВЕРКА',
+      className: 'answer-warn',
+      title: 'Для выбранного проекта ещё не закрыты все обязательные проверки',
+    }
+  }
+  return {
+    label: 'ПРОХОДИТ',
+    className: 'answer-pass',
+    title: 'Выбранный проект проходит текущие проверки',
+  }
 }
 
-function renderDesignScenario(result) {
+function criterionMetric(summary, id, label) {
+  const criterion = criterionById(summary, id)
+  if (!criterion) return metricCard(label, '—', 'критерий отсутствует')
+  if (criterion.status === 'not-verified') return metricCard(label, 'НЕ ПРОВЕРЕНО', 'обязательная проверка ещё не реализована')
+  if (id.includes('displacement')) {
+    return metricCard(label, `${format(criterion.value, 1)} мм`, `лимит ${format(criterion.limit, 0)} мм`)
+  }
+  if (id.includes('buckling')) {
+    return metricCard(label, `λcr = ${format(criterion.value, 3)}`, `требуется ≥ ${format(criterion.limit, 2)}`)
+  }
+  if (id === 'bare-connection') {
+    return metricCard(label, criterion.status === 'pass' ? 'проходит' : 'НЕ ПРОХОДИТ', criterion.value == null ? '' : `Uболта ${format(criterion.value, 3)}`)
+  }
+  if (id === 'guy-nonlinear-convergence') {
+    return metricCard(label, criterion.status === 'pass' ? 'сошлось' : 'НЕ СОШЛОСЬ', criterion.value ? `${criterion.value} несошедшихся случаев` : '')
+  }
+  return metricCard(label, `U = ${format(criterion.value, 3)}`, `лимит ${format(criterion.limit, 2)}`)
+}
+
+function renderCheckScenario(result, guyResult) {
+  const summary = createEngineeringSummary(result, guyResult)
+  const status = statusPresentation(summary)
+  const governing = summary.governingCriterionId ? criterionById(summary, summary.governingCriterionId) : null
+  const pendingText = summary.pendingCriterionIds.map(criterionLabel).join(', ')
+
+  scenarioTitle.textContent = status.title
+  scenarioStatus.textContent = status.label
+  scenarioStatus.className = `answer-status ${status.className}`
+
+  if (summary.overallStatus === 'incomplete') {
+    scenarioText.textContent = `Реализованные критерии не дали полного запрета, но общий PASS выдавать нельзя. Не закрыто: ${pendingText}. Для мачты с растяжками существующий PASS обычного узла не доказывает болты/сварку по нелинейным guyed усилиям.`
+  } else if (summary.overallStatus === 'fail') {
+    scenarioText.textContent = `Есть непройденный обязательный критерий. Определяющий сейчас: ${criterionLabel(summary.governingCriterionId)}. Подробности и численные причины можно раскрыть ниже.`
+  } else {
+    scenarioText.textContent = `Все обязательные текущие критерии проходят. Ближе всего к пределу: ${criterionLabel(governing?.id)}. Подробности и ограничения модели можно раскрыть ниже.`
+  }
+
+  if (guyResult) {
+    scenarioMetrics.replaceChildren(
+      criterionMetric(summary, 'guyed-member-utilization', 'Ребро с растяжками'),
+      criterionMetric(summary, 'guy-cable-utilization', 'Трос'),
+      criterionMetric(summary, 'guyed-global-buckling', 'Устойчивость'),
+      criterionMetric(summary, 'guyed-connection-envelope', 'Соединение guyed'),
+    )
+  } else {
+    scenarioMetrics.replaceChildren(
+      criterionMetric(summary, 'bare-member-utilization', 'Ребро'),
+      criterionMetric(summary, 'bare-global-buckling', 'Общая устойчивость'),
+      criterionMetric(summary, 'bare-top-displacement', 'Прогиб вершины'),
+      criterionMetric(summary, 'bare-connection', 'Соединение'),
+    )
+  }
+}
+
+function renderDesignScenario(result, guyResult) {
+  const summary = createEngineeringSummary(result, guyResult)
+  const status = statusPresentation(summary)
   const geometry = result.connections?.configurator?.geometry
   const bolt = geometry?.bolt
   const bottom = geometry?.bottomClearanceNut
-  scenarioTitle.textContent = 'Текущий подобранный комплект конструкции'
-  scenarioStatus.textContent = currentCriteria(result).passes ? 'КОМПЛЕКТ ПРОХОДИТ' : 'НУЖЕН ПОДБОР'
-  scenarioStatus.className = `answer-status ${currentCriteria(result).passes ? 'answer-pass' : 'answer-warn'}`
-  scenarioText.textContent = 'Для автоматического поиска минимального проходящего варианта используйте кнопку «Подобрать конструкцию». После подбора здесь показывается уже фактически рассчитанный комплект, а не исходные значения формы.'
+  scenarioTitle.textContent = 'Текущий рассчитанный комплект конструкции'
+  scenarioStatus.textContent = summary.overallStatus === 'pass'
+    ? 'КОМПЛЕКТ ПРОХОДИТ'
+    : summary.overallStatus === 'fail' ? 'НЕ ПРОХОДИТ' : 'ТРЕБУЕТ ДОП. ПРОВЕРКИ'
+  scenarioStatus.className = `answer-status ${status.className}`
+  scenarioText.textContent = guyResult
+    ? 'Текущий комплект рассчитан вместе с растяжками. Подбор единого диаметра при включённых растяжках намеренно заблокирован; кроме того, пока не реализована отдельная проверка болтов/сварки по guyed усилиям.'
+    : 'Для автоматического поиска минимального проходящего варианта используйте кнопку «Подобрать конструкцию». После подбора здесь показывается уже фактически рассчитанный комплект, а не исходные значения формы.'
   scenarioMetrics.replaceChildren(
     metricCard('Арматура', `Ø${format(result.parameters.barDiameterMm, 0)} ${result.parameters.reinforcementClass}`, `ребро ${format(result.parameters.ribCutLengthMm, 1)} мм`),
     metricCard('Болт', bolt ? `M${bolt.diameterMm}×${format(bolt.lengthMm, 0)} ${result.parameters.jointBoltClass}` : '—', bottom ? `проходная гайка M${bottom.threadDiameterMm}` : ''),
     metricCard('Высота текущей мачты', `${format(result.parameters.moduleCount * result.parameters.moduleHeightMm / 1000, 2)} м`, `${result.parameters.moduleCount} модулей`),
-    metricCard('Запас текущего ребра', `${format(1 / Math.max(result.envelope.maxUtilization, Number.EPSILON), 2)}×`, `U=${format(result.envelope.maxUtilization, 3)}`),
+    metricCard('Общий статус', status.label, summary.governingCriterionId ? `определяет: ${criterionLabel(summary.governingCriterionId)}` : ''),
   )
 }
 
@@ -204,48 +272,54 @@ function boomMetric(boom) {
   }
 }
 
-function renderLimitsScenario(result) {
+function renderLimitsScenario(result, guyResult) {
+  const summary = createEngineeringSummary(result, guyResult)
+  const status = statusPresentation(summary)
   const lateral = result.lateralCapacity
   const boom = result.craneBoomCapacity
   const payload = result.staticPayloadCapacity
   const height = result.heightCapacity
   const boomAnswer = boomMetric(boom)
   scenarioTitle.textContent = 'Пределы выбранного типа мачты'
-  scenarioStatus.textContent = 'ПРЕДЕЛЫ РАССЧИТАНЫ'
-  scenarioStatus.className = 'answer-status answer-info'
-  scenarioText.textContent = 'Для вертикальной мачты показывается максимальная масса на вершине. Для горизонтальной стрелы выполняется отдельный расчёт: собственный вес арматурных рёбер действует поперёк стрелы и вместе с концевым грузом расходует её несущую способность. Чистый unit-load предел остаётся отдельной верификационной величиной.'
+  scenarioStatus.textContent = status.label
+  scenarioStatus.className = `answer-status ${status.className}`
+  scenarioText.textContent = guyResult
+    ? 'Показанные ниже height/lateral/static/boom limits принадлежат обычному bare-frame CalculationResult и не являются пределами мачты с растяжками. Для guyed проекта пока доступны эксплуатационная nonlinear envelope и отдельный статус её критериев.'
+    : 'Для вертикальной мачты показывается максимальная масса на вершине. Для горизонтальной стрелы выполняется отдельный расчёт: собственный вес арматурных рёбер действует поперёк стрелы и вместе с концевым грузом расходует её несущую способность. Чистый unit-load предел остаётся отдельной верификационной величиной.'
   scenarioMetrics.replaceChildren(
-    metricCard('Проектная высота', `${height.design.bounded ? '' : '≥ '}${format(height.design.maximumHeightM, 2)} м`, `${height.design.maximumModules} модулей`),
-    metricCard('Горизонтальная стрела', boomAnswer.value, boomAnswer.note),
-    metricCard('Максимум на вершине', `${format(payload.maximumTopEquipmentMassKg ?? payload.maximumTotalTopMassKg, 1)} кг`, 'суммарная масса оборудования/груза'),
-    metricCard('Можно добавить', `${format(payload.additionalTopEquipmentMassKg ?? payload.remainingAdditionalMassKg, 1)} кг`, `уже задано ${format(payload.configuredTopEquipmentMassKg ?? result.parameters.equipmentMassKg, 1)} кг; чистый lateral upper bound ${format(lateral.criticalForceKgf, 1)} кгс`),
+    metricCard('Проектная высота', `${height.design.bounded ? '' : '≥ '}${format(height.design.maximumHeightM, 2)} м`, `${height.design.maximumModules} модулей${guyResult ? '; bare-frame' : ''}`),
+    metricCard('Горизонтальная стрела', boomAnswer.value, `${boomAnswer.note}${guyResult ? '; bare-frame' : ''}`),
+    metricCard('Максимум на вершине', `${format(payload.maximumTopEquipmentMassKg ?? payload.maximumTotalTopMassKg, 1)} кг`, `суммарная масса оборудования/груза${guyResult ? '; bare-frame' : ''}`),
+    metricCard('Можно добавить', `${format(payload.additionalTopEquipmentMassKg ?? payload.remainingAdditionalMassKg, 1)} кг`, `уже задано ${format(payload.configuredTopEquipmentMassKg ?? result.parameters.equipmentMassKg, 1)} кг; pure lateral ${format(lateral.criticalForceKgf, 1)} кгс`),
   )
 }
 
-function renderVerifyScenario(result) {
+function renderVerifyScenario(result, guyResult) {
+  const summary = createEngineeringSummary(result, guyResult)
+  const status = statusPresentation(summary)
   const verification = result.verification
   const modular = result.analysis.modular
-  scenarioTitle.textContent = verification?.counts?.failed > 0
-    ? 'Внутренняя проверка обнаружила ошибку'
-    : 'Внутренняя проверка расчёта пройдена'
-  scenarioStatus.textContent = verification?.counts?.failed > 0 ? 'ЕСТЬ ОШИБКИ' : 'ВНУТРЕННЕ ПРОВЕРЕНО'
-  scenarioStatus.className = `answer-status ${verification?.counts?.failed > 0 ? 'answer-fail' : 'answer-pass'}`
-  scenarioText.textContent = 'Зелёная внутренняя проверка означает согласованность принятой математической модели, но не внешнюю сертификацию реальной мачты. Независимый сторонний FEM, инженерная рецензия и натурные испытания остаются отдельными уровнями.'
+  scenarioTitle.textContent = 'Верификация и полнота текущей проверки'
+  scenarioStatus.textContent = status.label
+  scenarioStatus.className = `answer-status ${status.className}`
+  scenarioText.textContent = summary.overallStatus === 'incomplete'
+    ? `Внутренние cross-checks расчёта могут быть зелёными, но проект ещё нельзя объявить полностью проверенным: ${summary.pendingCriterionIds.map(criterionLabel).join(', ')}. Внешний FEM, инженерная рецензия и натурные испытания также остаются отдельными уровнями validation.`
+    : 'Зелёная внутренняя проверка означает согласованность принятой математической модели, но не внешнюю сертификацию реальной мачты. Независимый сторонний FEM, инженерная рецензия и натурные испытания остаются отдельными уровнями.'
   scenarioMetrics.replaceChildren(
     metricCard('Паспорт', `${verification?.counts?.passed ?? 0} пройдено`, `${verification?.counts?.notVerified ?? 0} внешних/ручных пунктов ожидают подтверждения`),
     metricCard('Global ↔ Schur', modular?.relativeDisplacementDifference?.toExponential(2) ?? '—', 'relative DOF difference'),
     metricCard('Interface residual', modular?.interfaceEquilibriumResidual?.toExponential(2) ?? '—', 'силы и моменты между модулями'),
-    metricCard('Global residual', result.analysis.diagnostics.relativeResidual.toExponential(2), 'K·u − F'),
+    metricCard('Общий статус', status.label, summary.pendingCriterionIds.length ? `не закрыто: ${summary.pendingCriterionIds.map(criterionLabel).join(', ')}` : 'обязательные текущие критерии закрыты'),
   )
 }
 
-function renderScenarioResult(result) {
+function renderScenarioResult(result, guyResult = null) {
   scenarioAnswer.hidden = false
   const scenario = selectedScenario()
-  if (scenario === 'design') renderDesignScenario(result)
-  else if (scenario === 'limits') renderLimitsScenario(result)
-  else if (scenario === 'verify') renderVerifyScenario(result)
-  else renderCheckScenario(result)
+  if (scenario === 'design') renderDesignScenario(result, guyResult)
+  else if (scenario === 'limits') renderLimitsScenario(result, guyResult)
+  else if (scenario === 'verify') renderVerifyScenario(result, guyResult)
+  else renderCheckScenario(result, guyResult)
 
   algorithmDetails.open = scenario === 'verify'
   verificationDetails.open = scenario === 'verify'
@@ -314,8 +388,8 @@ function syncScenarioControls() {
   optimizeButton.textContent = design ? 'Подобрать конструкцию' : 'Подобрать арматуру и узел'
   if (scenario === 'verify') referenceDetails.open = true
   if (scenario === 'design') jointInputDetails.open = false
-  if (scenarioAnswer.hidden === false && lastUsageResult) {
-    renderScenarioResult(lastUsageResult)
+  if (scenarioAnswer.hidden === false && lastUsageSnapshot) {
+    renderScenarioResult(lastUsageSnapshot.result, lastUsageSnapshot.guyResult)
   }
 }
 
@@ -347,12 +421,12 @@ export function initializeUsageExperience() {
   syncRibMassPreview()
 }
 
-export function enrichAndRenderUsageResult(result) {
+export function enrichAndRenderUsageResult(result, guyResult = null) {
   if (!result) return result
   renderAssemblyMass(result)
   publishDesignWorkspace(result)
-  lastUsageResult = result
-  renderScenarioResult(result)
+  lastUsageSnapshot = { result, guyResult }
+  renderScenarioResult(result, guyResult)
   queueMicrotask(() => renderIssue36DetailedResult(result))
   return result
 }

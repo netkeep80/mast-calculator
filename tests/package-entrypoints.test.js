@@ -11,7 +11,7 @@ import * as structural from '../packages/structural-analysis/index.js'
 import * as structuralTesting from '../packages/structural-analysis/testing.js'
 
 const packageContracts = [
-  ['domain', domain, ['DEFAULT_PARAMETERS', 'resolveCalculationParameters', 'getReinforcementClass']],
+  ['domain', domain, ['DEFAULT_PROJECT_INPUT', 'resolveProjectInput', 'getReinforcementClass']],
   ['numerics', numerics, ['solveDenseSystem', 'norm3']],
   ['structural-analysis', structural, ['generateMastModel', 'analyzeFrame', 'compileFrameSystem']],
   ['engineering', engineering, ['analyzeCheckedFrame', 'calculateConnectionChecks', 'calculateGuyedMast', 'calculateLateralCapacity', 'buildVerificationPassport']],

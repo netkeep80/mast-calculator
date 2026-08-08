@@ -6,7 +6,7 @@ import {
   dimensionVerticalSvg,
   projectMeshToSvg,
   TECHNICAL_PROJECTION_SCHEMA,
-  type DetailedMeshObject,
+  type TechnicalMeshObject,
 } from '../../design/index.js'
 import { getReinforcementClass, WELD_CONSUMABLES } from '../../domain/index.js'
 import type { ReportingCalculationResult } from './contracts.js'
@@ -37,9 +37,7 @@ const number = (value: unknown, digits = 2): string => {
 }
 
 function resolvedJointGeometry(result: ReportingCalculationResult) {
-  return result.connections?.configurator?.geometry
-    ?? result.connections?.geometry
-    ?? null
+  return result.connections?.configurator?.geometry ?? null
 }
 
 function memberDiameters(result: ReportingCalculationResult): number[] {
@@ -129,7 +127,7 @@ function drawingSvg(content: string, label: string): string {
 
 function mastDrawing(model: EskdModel): string {
   const scene = model.detailedModel
-  const structural = (object: DetailedMeshObject): boolean => object.kind === 'member'
+  const structural = (object: TechnicalMeshObject): boolean => object.kind === 'member'
   const front = projectMeshToSvg(scene, { view: 'front', x: 12, y: 8, width: 98, height: 160, padding: 4, objectFilter: structural, label: 'Вид спереди' })
   const iso = projectMeshToSvg(scene, { view: 'iso', x: 116, y: 10, width: 55, height: 92, padding: 3, objectFilter: structural, label: 'Изометрия' })
   const dimensions = [
@@ -154,7 +152,7 @@ function mastSpecification(model: EskdModel): string {
 }
 
 function moduleDrawing(model: EskdModel): string {
-  const moduleFilter = (object: DetailedMeshObject): boolean => {
+  const moduleFilter = (object: TechnicalMeshObject): boolean => {
     const indices = object.moduleIndices
     return Array.isArray(indices) && indices.includes(0)
   }

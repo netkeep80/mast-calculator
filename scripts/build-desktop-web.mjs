@@ -60,12 +60,17 @@ if (!/environment:\s*'tauri'/.test(desktopAdapter)) throw new Error('Desktop ove
 if (desktopAdapter.includes('new Blob(')) throw new Error('Desktop file adapter must not use browser download hacks')
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
-fs.writeFileSync(path.join(desktopBuild, 'desktop-build-info.json'), `${JSON.stringify({
+const desktopBuildInfo = {
   adapter: 'tauri',
   appVersion: String(packageJson.version ?? 'unknown'),
   coreVersion: String(packageJson.version ?? 'unknown'),
-  gitSha: process.env.GITHUB_SHA ?? 'local',
-  gitRef: process.env.GITHUB_REF ?? 'local',
-}, null, 2)}\n`)
+  repository: 'netkeep80/mast-calculator',
+  ref: process.env.GITHUB_REF ?? 'local',
+  sha: process.env.GITHUB_SHA ?? 'development',
+  runId: process.env.GITHUB_RUN_ID ?? 'local',
+}
+const desktopBuildInfoJson = `${JSON.stringify(desktopBuildInfo, null, 2)}\n`
+fs.writeFileSync(path.join(desktopBuild, 'desktop-build-info.json'), desktopBuildInfoJson)
+fs.writeFileSync(path.join(desktopBuild, 'apps', 'web', 'build-info.json'), desktopBuildInfoJson)
 
 console.log(`Desktop WebView build ready: ${path.relative(root, desktopBuild)} (canonical Web + emitted packages + environment overlay)`)

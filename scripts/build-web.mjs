@@ -37,4 +37,19 @@ for (const entry of fs.readdirSync(webSource, { withFileTypes: true })) {
   fs.writeFileSync(path.join(output, entry.name), rootHtml(source))
 }
 
+const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
+const buildInfo = {
+  adapter: 'web',
+  appVersion: String(packageJson.version ?? 'unknown'),
+  coreVersion: String(packageJson.version ?? 'unknown'),
+  repository: 'netkeep80/mast-calculator',
+  ref: process.env.GITHUB_REF ?? 'local',
+  sha: process.env.GITHUB_SHA ?? 'development',
+  runId: process.env.GITHUB_RUN_ID ?? 'local',
+}
+fs.writeFileSync(
+  path.join(output, 'apps', 'web', 'build-info.json'),
+  `${JSON.stringify(buildInfo, null, 2)}\n`,
+)
+
 console.log(`Web build ready: ${path.relative(root, output)} (apps/web + TypeScript-emitted packages)`)

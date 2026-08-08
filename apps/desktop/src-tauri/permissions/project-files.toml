@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-project-files"
+description = "Allow only Mast Calculator text-file open/save commands backed by explicit native dialogs."
+commands.allow = ["open_text_file", "save_text_file"]

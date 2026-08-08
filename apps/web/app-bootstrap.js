@@ -4,7 +4,10 @@ import {
   previewJointConfiguration,
 } from '../../packages/application/index.js'
 import { JointViewer } from './joint-viewer.js'
-import { readProjectInputFromForm } from './project-form-dom.js'
+import {
+  applyProjectInputToForm,
+  readProjectInputFromForm,
+} from './project-form-dom.js'
 import { subscribeCalculationResult } from './result-channel.js'
 import {
   enrichAndRenderUsageResult,
@@ -248,7 +251,8 @@ function synchronizeFromResult(result) {
   syncMode()
 }
 
-subscribeCalculationResult(({ result }) => {
+subscribeCalculationResult(({ projectInput, result }) => {
+  if (projectInput) applyProjectInputToForm(form, projectInput)
   if (!result) return
   synchronizeFromResult(result)
   enrichAndRenderUsageResult(result)

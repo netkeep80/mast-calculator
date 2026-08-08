@@ -30,6 +30,7 @@
     "typecheck": "npx --yes --package typescript@7.0.2 tsc -p tsconfig.json --noEmit",
     "build:core": "node scripts/build-core.mjs",
     "build:test-runtime": "node scripts/build-test-runtime.mjs",
+    "cli": "npm run build:core && node apps/cli/mast-calc.mjs",
     "audit:architecture": "node scripts/architecture-audit.mjs --check",
     "audit:architecture:report": "node scripts/architecture-audit.mjs",
     "audit:architecture:json": "node scripts/architecture-audit.mjs --json",

@@ -98,4 +98,4 @@ function renderGuyResult(guyResult, bareResult) {
 subscribeCalculationResult((snapshot) => {
   if (typeof document === 'undefined') return
   renderGuyResult(snapshot.guyResult, snapshot.result)
-})
+}, { replay: true })

@@ -157,7 +157,7 @@ export function optimizeAndCalculateProject(
     const optimization = optimizeProject(automaticInput, {
       diameters,
       stopAtFirstPassing: true,
-      freeze: options.freeze,
+      freezeResult: options.freezeResult,
       onProgress: (event) => options.onProgress?.({
         phase: 'optimize',
         label: `Подбор Ø${event.diameter} мм (${event.variantIndex + 1}/${event.variantCount}): ${event.inner.label}`,
@@ -187,7 +187,7 @@ export function optimizeAndCalculateProject(
       geometry: { ...automaticInput.geometry, barDiameterMm: diameter },
     }
     const result = calculateProject(selectedInput, {
-      freeze: options.freeze,
+      freezeResult: options.freezeResult,
       onProgress: (progress) => options.onProgress?.(normalizedJobProgress(
         progress,
         optimizationShare,

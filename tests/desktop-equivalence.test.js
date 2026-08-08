@@ -71,7 +71,8 @@ function canonicalProjectCases() {
     environment: { windPressurePa: 180, windDirectionDeg: 0 },
     equipment: { massKg: 5, windAreaM2: 0.2 },
   })
-  const guyedHeightM = application.previewProjectGeometry(guyedProject).mastHeightM
+  const resolvedGuyedProject = application.resolveProjectInput(guyedProject)
+  const guyedHeightM = resolvedGuyedProject.moduleCount * resolvedGuyedProject.moduleHeightMm / 1000
 
   return [
     {

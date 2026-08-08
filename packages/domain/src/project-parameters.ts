@@ -4,7 +4,7 @@ import {
   regularOctahedronHeightMm,
   theoreticalCutLengthMm,
 } from './catalog.js'
-import { resolveWindParameters, windSpeedFromPressurePa } from './weather.js'
+import { resolveWindParameters } from './weather.js'
 
 export const DEFAULT_LATERAL_CAPACITY_STEP_DEG = 15
 
@@ -189,25 +189,6 @@ export function flattenProjectInput(projectInput: unknown): JsonRecord {
 const DEFAULT_FLAT_INPUT = flattenProjectInput(DEFAULT_PROJECT_INPUT)
 const DEFAULT_BASE_METAL_TENSILE_STRENGTH_MPA = 490
 
-/** Internal resolved default for low-level engineering fixtures during #62. */
-export const DEFAULT_PARAMETERS = Object.freeze({
-  ...DEFAULT_FLAT_INPUT,
-  ribCutLengthMm: theoreticalCutLengthMm(DEFAULT_FLAT_INPUT.stockBarLengthMm, DEFAULT_FLAT_INPUT.stockBarPieces),
-  triangleSideMm: theoreticalCutLengthMm(DEFAULT_FLAT_INPUT.stockBarLengthMm, DEFAULT_FLAT_INPUT.stockBarPieces),
-  moduleHeightMm: regularOctahedronHeightMm(theoreticalCutLengthMm(DEFAULT_FLAT_INPUT.stockBarLengthMm, DEFAULT_FLAT_INPUT.stockBarPieces)),
-  youngModulusGPa: 200,
-  poissonRatio: 0.3,
-  yieldStrengthMPa: 390,
-  tensileStrengthMPa: 590,
-  densityKgM3: 7850,
-  reinforcementStandard: 'ГОСТ 34028-2016',
-  reinforcementWeldabilityGuaranteed: true,
-  effectiveLengthFactor: 0.5,
-  windSpeedMs: windSpeedFromPressurePa(DEFAULT_FLAT_INPUT.windPressurePa),
-  jointEffectiveRadiusMm: 18,
-  jointBaseMetalTensileStrengthMPa: DEFAULT_BASE_METAL_TENSILE_STRENGTH_MPA,
-})
-
 function resolveFlatCalculationParameters(parameters: JsonRecord = {}): ResolvedProject {
   const merged = { ...DEFAULT_FLAT_INPUT, ...parameters }
   const withMaterial = applyReinforcementClass(merged as JsonRecord & { reinforcementClass: string })
@@ -235,9 +216,4 @@ function resolveFlatCalculationParameters(parameters: JsonRecord = {}): Resolved
 /** Canonical public resolution path: ProjectInput -> ResolvedProject. */
 export function resolveProjectInput(projectInput: ProjectInput): ResolvedProject {
   return resolveFlatCalculationParameters(flattenProjectInput(projectInput))
-}
-
-/** Transitional low-level fixture resolver; removed when remaining flat consumers migrate in #62. */
-export function resolveCalculationParameters(parameters: JsonRecord = {}): ResolvedProject {
-  return resolveFlatCalculationParameters(parameters)
 }

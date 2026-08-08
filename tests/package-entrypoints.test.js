@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import path from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import * as application from '../packages/application/index.js'
 import * as design from '../packages/design/index.js'
 import * as domain from '../packages/domain/index.js'
@@ -9,6 +11,9 @@ import * as numerics from '../packages/numerics/index.js'
 import * as reporting from '../packages/reporting/index.js'
 import * as structural from '../packages/structural-analysis/index.js'
 import * as structuralTesting from '../packages/structural-analysis/testing.js'
+
+const runtimeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const sourceRoot = path.basename(runtimeRoot) === '.build' ? path.dirname(runtimeRoot) : runtimeRoot
 
 const packageContracts = [
   ['domain', domain, ['DEFAULT_PROJECT_INPUT', 'resolveProjectInput', 'getReinforcementClass']],
@@ -29,13 +34,20 @@ test('every production package public entrypoint imports in a plain Node process
   }
 })
 
+test('transition-only flat parameter API is physically absent from production entrypoints', () => {
+  for (const namespace of [domain, application]) {
+    assert.equal('DEFAULT_PARAMETERS' in namespace, false)
+    assert.equal('resolveCalculationParameters' in namespace, false)
+  }
+})
+
 test('structural response and engineering acceptance remain separate public contracts', () => {
   const structuralSource = fs.readFileSync(
-    new URL('../packages/structural-analysis/src/solver.js', import.meta.url),
+    path.join(sourceRoot, 'packages/structural-analysis/src/solver.ts'),
     'utf8',
   )
   const memberCheckSource = fs.readFileSync(
-    new URL('../packages/engineering/src/member-check.js', import.meta.url),
+    path.join(sourceRoot, 'packages/engineering/src/member-check.ts'),
     'utf8',
   )
 
@@ -55,5 +67,5 @@ test('independent dense FEM is available only from structural verification entry
 })
 
 test('pre-foundation site/engine implementation is physically absent', () => {
-  assert.equal(fs.existsSync(new URL('../site/engine/', import.meta.url)), false)
+  assert.equal(fs.existsSync(path.join(sourceRoot, 'site/engine')), false)
 })

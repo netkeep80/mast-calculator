@@ -13,12 +13,14 @@ function hasScenario(value) {
   return new RegExp(`name="usageScenario"\\s+value="${value}"`).test(html)
 }
 
-test('четыре пользовательских сценария сохранены как представления одного result workspace', () => {
+test('четыре пользовательских сценария сохранены как компактные представления одного result workspace', () => {
   for (const id of ['check', 'design', 'limits', 'verify']) assert.ok(hasScenario(id), `нет представления ${id}`)
-  assert.match(html, /Проверить конкретную мачту/)
-  assert.match(html, /Подобрать конструкцию/)
-  assert.match(html, /Узнать пределы/)
-  assert.match(html, /Проверить расчёт/)
+  assert.match(html, /scenario-card-title">Проверка</)
+  assert.match(html, /scenario-card-title">Подбор</)
+  assert.match(html, /scenario-card-title">Пределы</)
+  assert.match(html, /scenario-card-title">Верификация</)
+  assert.match(html, /id="usage-scenarios" class="view-switch"/)
+  assert.doesNotMatch(html, /Что вы хотите узнать о мачте\?|Проверить конкретную мачту|Выберите задачу|workflow-strip/)
   assert.match(scenarios, /createEngineeringSummary/)
 })
 

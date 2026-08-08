@@ -145,6 +145,21 @@ function createDetailsArea(nodes) {
   return area
 }
 
+function observeAppBarHeight(appBar) {
+  const root = document.documentElement
+  const sync = () => {
+    const height = Math.ceil(appBar.getBoundingClientRect().height)
+    if (height > 0) root.style.setProperty('--app-bar-height', `${height}px`)
+  }
+  sync()
+  if (typeof ResizeObserver === 'function') {
+    const observer = new ResizeObserver(sync)
+    observer.observe(appBar)
+    return
+  }
+  globalThis.addEventListener?.('resize', sync, { passive: true })
+}
+
 function installWorkspaceShell() {
   if (document.body.dataset.webUi === '2.0') return
 
@@ -163,12 +178,6 @@ function installWorkspaceShell() {
 
   if (!legacyHeader || !legacyMain || !parameters || !visual || !scenarioAnswer) return
 
-  const stylesheet = document.createElement('link')
-  stylesheet.rel = 'stylesheet'
-  stylesheet.href = './workspace.css'
-  stylesheet.dataset.webUiStyles = '2.0'
-  document.head.append(stylesheet)
-
   const appBar = createAppBar(legacyHeader, scenarioGrid, primaryActions)
   const workspace = makeElement('main', 'workspace-layout')
   workspace.dataset.webUi = '2.0'
@@ -184,6 +193,7 @@ function installWorkspaceShell() {
   legacyHeader.remove()
   scenarioPanel?.remove()
   document.body.dataset.webUi = '2.0'
+  observeAppBarHeight(appBar)
 }
 
 installWorkspaceShell()

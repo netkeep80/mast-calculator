@@ -133,7 +133,10 @@ test('static-site smoke serves the canonical Web adapter and public package APIs
     'apps/web/app.js',
     'apps/web/calculation-worker.js',
     'apps/web/viewer.js',
-    'apps/web/design-app.js',
+    'apps/web/result-tabs.js',
+    'apps/web/result-tabs.css',
+    'apps/web/reports-exports.js',
+    'apps/web/reports-exports.css',
     'apps/web/design-storage.js',
     'packages/domain/index.js',
     'packages/numerics/index.js',
@@ -145,6 +148,9 @@ test('static-site smoke serves the canonical Web adapter and public package APIs
   ]) assert.ok(ci.includes(modulePath), `ci.yml smoke missing ${modulePath}`)
   assert.match(ci, /<title>Калькулятор мачты<\/title>/)
   assert.match(ci, /Проверить конкретную мачту/)
+  assert.match(ci, /legacy design URL no longer redirects to Reports/)
+  assert.doesNotMatch(ci, /apps\/web\/design-app\.js/)
+  assert.doesNotMatch(ci, /apps\/web\/design\.css/)
 })
 
 test('Pages deploy uses canonical build:web and explicit writer concurrency', () => {

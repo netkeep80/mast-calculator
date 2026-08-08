@@ -76,6 +76,8 @@ test('joint bootstrap is a presenter over application previews and completed res
   assert.match(bootstrap, /getJointConfigurationOptions/)
   assert.match(bootstrap, /getJointClearanceNutOptions/)
   assert.match(bootstrap, /readProjectInputFromForm/)
+  assert.match(bootstrap, /applyProjectInputToForm/)
+  assert.match(bootstrap, /applyProjectInputToForm\(form, projectInput\)/)
   assert.match(bootstrap, /subscribeCalculationResult/)
   assert.doesNotMatch(bootstrap, /calculateBoltCapacity|checkJointNutSections|buildJointHardwareGeometry/)
   assert.doesNotMatch(bootstrap, /JointAwareWorker|globalThis\.Worker\s*=|class .*Worker|message\.action/)

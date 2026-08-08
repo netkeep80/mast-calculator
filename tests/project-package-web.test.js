@@ -25,8 +25,19 @@ test('project package presentation uses canonical project/v1, shared DOM mapping
   assert.match(browserFiles, /new Blob/)
   assert.match(browserFiles, /URL\.createObjectURL/)
   assert.match(browserFiles, /file\.text\(\)/)
-  assert.match(bootstrap, /initializeProjectPackageUi\(form\)/)
+  assert.match(bootstrap, /initializeProjectPackageUi\(form/)
   assert.doesNotMatch(adapter, /ribCutLengthMm|moduleHeightMm|jointEffectiveRadiusMm|calculateProject|calculateMast/)
+})
+
+test('main project package UI round-trips editable guys instead of retaining an invisible sidecar', () => {
+  const adapter = source('apps/web/project-package-ui.js')
+  const bootstrap = source('apps/web/app-bootstrap.js')
+
+  assert.match(adapter, /guyEditor \? guyEditor\.read\(\) : retainedGuys/)
+  assert.match(adapter, /guyEditor\?\.apply\(packageValue\.guys\)/)
+  assert.match(adapter, /editableGuys === undefined \? \{\} : \{ guys: editableGuys \}/)
+  assert.match(bootstrap, /const guyEditor = initializeGuyEditor\(form\)/)
+  assert.match(bootstrap, /initializeProjectPackageUi\(form, undefined, guyEditor\)/)
 })
 
 test('browser file/download APIs remain outside portable packages', () => {

@@ -33,7 +33,7 @@ function failureProject() {
       clearanceNutThreadMm: 30,
       boltLengthMm: 80,
       threadEngagementFactor: 2,
-      tighteningTorqueNm: 110,
+      tighteningTorqueNm: 112,
       preloadVariation: 0,
     },
     criteria: {
@@ -55,7 +55,7 @@ function highPretensionGuys(project) {
       guyCount: 3,
       azimuthOffsetDeg: 0,
       wireId: DEFAULT_GUY_WIRE_ID,
-      pretensionN: 13000,
+      pretensionN: 10000,
     }],
   }
 }

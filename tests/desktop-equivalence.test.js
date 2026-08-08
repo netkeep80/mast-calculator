@@ -66,6 +66,18 @@ function canonicalProjectCases() {
     environment: { windPressurePa: 380 },
     equipment: { massKg: 25, windAreaM2: 0.5, dragCoefficient: 1.4, loadFactor: 1.1 },
   })
+  const sp20Mean = compactProject({
+    geometry: { moduleCount: 2, barDiameterMm: 16 },
+    environment: {
+      windActionMode: 'sp20-mean-v1',
+      windRegion: 'III',
+      windTerrainType: 'B',
+      windPresetId: 'custom',
+      windPressurePa: 380,
+      windDirectionDeg: 30,
+    },
+    equipment: { massKg: 5, windAreaM2: 0.25 },
+  })
   const guyedProject = compactProject({
     geometry: { moduleCount: 4, barDiameterMm: 16 },
     environment: { windPressurePa: 180, windDirectionDeg: 0 },
@@ -109,6 +121,18 @@ function canonicalProjectCases() {
         assert.ok(Number.isFinite(summary.result.capacities.staticMaximumTopMassKg))
         assert.ok(Number.isFinite(summary.result.capacities.heightDesignMaximumM))
         assert.ok(Number.isFinite(summary.result.capacities.craneMaximumEndPayloadMassKg))
+      },
+    },
+    {
+      name: 'sp20-mean-wind',
+      package: application.createProjectPackage(sp20Mean, { metadata: { name: 'SP20 mean-wind oracle' } }),
+      verify: (summary) => {
+        assert.equal(summary.mode, 'bare')
+        assert.equal(summary.project.environment.windActionMode, 'sp20-mean-v1')
+        assert.equal(summary.project.environment.windRegion, 'III')
+        assert.equal(summary.project.environment.windTerrainType, 'B')
+        assert.ok(Number.isFinite(summary.result.response.maxUtilization))
+        assert.ok(Number.isFinite(summary.result.response.topDisplacementMm))
       },
     },
     {

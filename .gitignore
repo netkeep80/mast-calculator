@@ -2,3 +2,4 @@
 .vscode/
 .build/
 _site/
+apps/desktop/src-tauri/generated-icons/

@@ -1,7 +1,7 @@
 {
   "schema": "mast-calculator/architecture-baseline/v2",
-  "ownerIssue": "#52",
-  "policy": "Headless packages have no environment exceptions. Cross-package consumers use public entrypoints; exact-path exceptions require an owner issue and may not use wildcards.",
+  "ownerIssue": "#57",
+  "policy": "Final Architecture Foundation baseline. Headless packages have no environment exceptions, no production cycles, no legacy Web-engine path and no compatibility deep-import exceptions. Any future exception requires a named owner issue or ADR and must be exact-path, temporary and independently testable.",
   "environmentExceptions": [],
   "allowedCycles": []
 }

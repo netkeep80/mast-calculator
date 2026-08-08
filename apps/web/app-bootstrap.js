@@ -1,4 +1,3 @@
-import './workspace-shell.js'
 import {
   getJointClearanceNutOptions,
   getJointConfigurationOptions,
@@ -10,13 +9,15 @@ import {
   applyProjectInputToForm,
   readProjectInputFromForm,
 } from './project-form-dom.js'
-import { initializeProcurementExport } from './procurement-export.js'
 import { initializeProjectPackageUi } from './project-package-ui.js'
+import { initializeReportsExports } from './reports-exports.js'
 import { subscribeCalculationResult } from './result-channel.js'
+import { initializeResultTabs } from './result-tabs.js'
 import {
   enrichAndRenderUsageResult,
   initializeUsageExperience,
 } from './usage-scenarios.js'
+import { initializeWorkspaceBehavior } from './workspace-behavior.js'
 
 const $ = (selector) => document.querySelector(selector)
 const form = $('#parameters-form')
@@ -279,9 +280,11 @@ optimizeButton.addEventListener('click', () => {
 }, { capture: true })
 
 await import('./app.js')
+initializeWorkspaceBehavior()
+initializeResultTabs()
 const guyEditor = initializeGuyEditor(form)
 initializeProjectPackageUi(form, undefined, guyEditor)
-initializeProcurementExport()
+await initializeReportsExports()
 rebuildClearanceNutOptions(30)
 syncMode()
 initializeUsageExperience()

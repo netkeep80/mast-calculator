@@ -1,10 +1,7 @@
 import {
-  createDesignPackage,
   createEngineeringSummary,
   previewRibFabrication,
 } from '../../packages/application/index.js'
-import { saveDesignPackage } from './design-storage.js'
-import './navigation.js'
 import { readProjectInputFromForm } from './project-form-dom.js'
 import { renderReferenceCatalogs } from './reference-catalog.js'
 
@@ -23,8 +20,6 @@ const governingDetails = $('#governing-details')
 const verificationDetails = $('#verification-details')
 const referenceDetails = $('#reference-details')
 const jointInputDetails = $('#joint-input-details')
-let designWorkspaceButton = null
-let designWorkspaceNote = null
 let lastUsageSnapshot = null
 
 const SCENARIOS = Object.freeze({
@@ -66,74 +61,6 @@ const format = (value, digits = 2) => Number.isFinite(Number(value))
 
 function closestMetricArticle(id) {
   return document.querySelector(id)?.closest('article') ?? null
-}
-
-function setMetricLabel(id, text) {
-  const article = closestMetricArticle(id)
-  const caption = article?.querySelector('span')
-  if (caption) caption.textContent = text
-}
-
-function installIssue36Ui() {
-  const equipment = form?.elements.namedItem('equipmentMassKg')
-  if (equipment?.closest('label')) {
-    const label = equipment.closest('label')
-    for (const node of [...label.childNodes]) {
-      if (node.nodeType === Node.TEXT_NODE) node.textContent = ''
-    }
-    label.prepend(document.createTextNode('Уже установленная масса на вершине, кг'))
-  }
-
-  setMetricLabel('#metric-lateral-capacity', 'Чистый поперечный предел')
-  setMetricLabel('#metric-static-payload', 'Максимальная масса на вершине')
-  setMetricLabel('#metric-static-reserve', 'Сколько ещё можно добавить сверху')
-  const waterArticle = closestMetricArticle('#metric-water-volume')
-  if (waterArticle) waterArticle.hidden = true
-
-  const lateralCardTitle = document.querySelector('.lateral-card h3')
-  if (lateralCardTitle) lateralCardTitle.textContent = 'Поперечный unit-load и горизонтальная стрела'
-  const staticCardTitle = document.querySelector('.static-payload-card h3')
-  if (staticCardTitle) staticCardTitle.textContent = 'Масса груза на вершине вертикальной мачты'
-
-  const eyebrow = document.querySelector('.page-header .eyebrow')
-  if (eyebrow) eyebrow.textContent = 'Калькулятор мачты · прототип 1.4'
-  document.body.dataset.issue36StaticLoadModel = 'top-mass-only'
-}
-
-installIssue36Ui()
-
-function installDesignWorkspaceUi() {
-  const exportRow = document.querySelector('.export-row')
-  if (!exportRow) return
-  document.querySelector('#export-obj-button')?.remove()
-  const noteButton = document.querySelector('#export-note-button')
-  if (noteButton) {
-    noteButton.textContent = 'Скачать расчётный проект'
-    noteButton.title = 'Расчёт и верификация без конструкторской документации'
-  }
-  designWorkspaceButton = document.querySelector('#open-design-workspace-button')
-  if (!designWorkspaceButton) {
-    designWorkspaceButton = document.createElement('button')
-    designWorkspaceButton.id = 'open-design-workspace-button'
-    designWorkspaceButton.className = 'secondary'
-    designWorkspaceButton.type = 'button'
-    designWorkspaceButton.disabled = true
-    designWorkspaceButton.textContent = 'Открыть 3D и КД'
-    designWorkspaceButton.title = 'Подробная 3D-модель, OBJ и отдельный комплект конструкторской документации'
-    designWorkspaceButton.addEventListener('click', () => {
-      globalThis.location.href = './design.html'
-    })
-    exportRow.append(designWorkspaceButton)
-  }
-  designWorkspaceNote = document.querySelector('#design-workspace-note')
-  if (!designWorkspaceNote) {
-    designWorkspaceNote = document.createElement('p')
-    designWorkspaceNote.id = 'design-workspace-note'
-    designWorkspaceNote.className = 'hint practical-note'
-    designWorkspaceNote.textContent = 'Расчётный проект содержит только расчёты. Подробная 3D-модель, OBJ и КД по ЕСКД вынесены в отдельный модуль и становятся доступны после расчёта.'
-    exportRow.after(designWorkspaceNote)
-  }
-  document.body.dataset.issue47DesignWorkspace = 'separate'
 }
 
 function selectedScenario() {
@@ -328,7 +255,7 @@ function renderScenarioResult(result, guyResult = null) {
   governingDetails.open = scenario === 'limits'
 }
 
-function renderIssue36DetailedResult(result) {
+function renderStaticLoadDetails(result) {
   const lateral = result?.lateralCapacity
   const boom = result?.craneBoomCapacity
   const payload = result?.staticPayloadCapacity
@@ -393,23 +320,7 @@ function syncScenarioControls() {
   }
 }
 
-function publishDesignWorkspace(result) {
-  if (!designWorkspaceButton) return
-  try {
-    const designPackage = createDesignPackage(result)
-    const saved = saveDesignPackage(designPackage)
-    designWorkspaceButton.disabled = false
-    designWorkspaceButton.title = `Открыть подробную 3D-модель, OBJ и КД; пакет ${(saved.bytes / 1024).toFixed(0)} КиБ`
-    if (designWorkspaceNote) designWorkspaceNote.textContent = 'Расчётный проект отделён от КД. Последняя рассчитанная конструкция сохранена для модуля «3D и КД»; там доступны просмотр, OBJ, пакет JSON и отдельный комплект ЕСКД.'
-  } catch (error) {
-    designWorkspaceButton.disabled = true
-    designWorkspaceButton.title = error instanceof Error ? error.message : String(error)
-    if (designWorkspaceNote) designWorkspaceNote.textContent = `Не удалось передать конструкцию в модуль 3D/КД: ${designWorkspaceButton.title}`
-  }
-}
-
 export function initializeUsageExperience() {
-  installDesignWorkspaceUi()
   renderReferenceCatalogs(document)
   for (const radio of document.querySelectorAll('input[name="usageScenario"]')) {
     radio.addEventListener('change', syncScenarioControls)
@@ -424,9 +335,8 @@ export function initializeUsageExperience() {
 export function enrichAndRenderUsageResult(result, guyResult = null) {
   if (!result) return result
   renderAssemblyMass(result)
-  publishDesignWorkspace(result)
   lastUsageSnapshot = { result, guyResult }
   renderScenarioResult(result, guyResult)
-  queueMicrotask(() => renderIssue36DetailedResult(result))
+  queueMicrotask(() => renderStaticLoadDetails(result))
   return result
 }

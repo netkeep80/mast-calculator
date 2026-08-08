@@ -30,7 +30,7 @@ Commands:
 
 Options:
   --json               Machine-readable stdout for validate/calculate/optimize
-  --quiet              Suppress human success messages when output goes to a file
+  --quiet              Suppress human success messages and TTY progress
   -o, --output <file>  Write command output/artifact to a file
   --timeout <ms>       Kill the isolated calculation worker after the deadline
   -h, --help           Show this help
@@ -75,8 +75,10 @@ function exitCodeForError(error) {
   if (error?.category === 'input-validation' || error?.category === 'schema-error') return 2
   if (error?.category === 'unsupported-configuration') return 3
   if (error?.category === 'numerical-failure' || error?.category === 'convergence-failure') return 4
+  if (error?.category === 'io-error') return 5
   if (error?.category === 'cancelled') return 6
-  return 5
+  if (typeof error?.code === 'string' && /^E[A-Z0-9]+$/.test(error.code)) return 5
+  return 7
 }
 
 function errorText(error) {
@@ -84,16 +86,30 @@ function errorText(error) {
   return `${prefix}${error?.message ?? String(error)}`
 }
 
+function renderProgress(progress, request) {
+  if (!process.stderr.isTTY || request.json || request.quiet) return
+  const fraction = Number(progress?.fraction)
+  const percentage = Number.isFinite(fraction) ? `${Math.round(Math.max(0, Math.min(1, fraction)) * 100)}%` : '…'
+  const label = progress?.label ?? progress?.phase ?? 'Расчёт'
+  process.stderr.write(`\r${percentage.padStart(4)}  ${label}`)
+}
+
+function finishProgress(request) {
+  if (process.stderr.isTTY && !request.json && !request.quiet) process.stderr.write('\n')
+}
+
 async function runWorker(request) {
   const worker = new Worker(new URL('./job-worker.mjs', import.meta.url), { workerData: request })
   let timer = null
   let cancelled = false
+  let progressRendered = false
 
   const terminate = async (message, code = 'operation-cancelled') => {
     if (cancelled) return
     cancelled = true
     if (timer) clearTimeout(timer)
     await worker.terminate()
+    if (progressRendered) finishProgress(request)
     const error = new Error(message)
     error.category = 'cancelled'
     error.code = code
@@ -111,10 +127,17 @@ async function runWorker(request) {
 
   try {
     return await new Promise((resolve, reject) => {
-      worker.once('message', (message) => {
+      worker.on('message', (message) => {
+        if (message?.type === 'progress') {
+          renderProgress(message.progress, request)
+          progressRendered = process.stderr.isTTY && !request.json && !request.quiet
+          return
+        }
+        if (message?.type !== 'result') return
         if (timer) clearTimeout(timer)
-        if (message?.ok) resolve(message.result)
-        else reject(message?.error ?? new Error('CLI worker returned an invalid response'))
+        if (progressRendered) finishProgress(request)
+        if (message.ok) resolve(message.result)
+        else reject(message.error ?? new Error('CLI worker returned an invalid response'))
       })
       worker.once('error', reject)
       worker.once('exit', (code) => {
@@ -124,6 +147,7 @@ async function runWorker(request) {
         timer = setTimeout(() => {
           cancelled = true
           void worker.terminate().then(() => {
+            if (progressRendered) finishProgress(request)
             const error = new Error(`CLI watchdog timeout after ${request.timeoutMs} ms`)
             error.category = 'cancelled'
             error.code = 'operation-timeout'
@@ -142,8 +166,13 @@ async function runWorker(request) {
 async function emitResult(result, options) {
   if (options.output) {
     const target = path.resolve(options.output)
-    await fs.mkdir(path.dirname(target), { recursive: true })
-    await fs.writeFile(target, result.content, 'utf8')
+    try {
+      await fs.mkdir(path.dirname(target), { recursive: true })
+      await fs.writeFile(target, result.content, 'utf8')
+    } catch (error) {
+      if (error && typeof error === 'object') error.category = 'io-error'
+      throw error
+    }
     if (options.json) {
       const bytes = Buffer.byteLength(result.content, 'utf8')
       process.stdout.write(`${JSON.stringify({ ok: true, command: options.command, output: target, mediaType: result.mediaType, bytes })}\n`)

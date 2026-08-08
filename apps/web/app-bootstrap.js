@@ -4,6 +4,7 @@ import {
   getJointConfigurationOptions,
   previewJointConfiguration,
 } from '../../packages/application/index.js'
+import { initializeGuyEditor } from './guy-editor.js'
 import { JointViewer } from './joint-viewer.js'
 import {
   applyProjectInputToForm,
@@ -278,7 +279,8 @@ optimizeButton.addEventListener('click', () => {
 }, { capture: true })
 
 await import('./app.js')
-initializeProjectPackageUi(form)
+const guyEditor = initializeGuyEditor(form)
+initializeProjectPackageUi(form, undefined, guyEditor)
 initializeProcurementExport()
 rebuildClearanceNutOptions(30)
 syncMode()

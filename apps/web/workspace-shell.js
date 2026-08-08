@@ -82,8 +82,8 @@ function createProjectPane(parameters) {
 
   const quickLinks = makeElement('nav', 'project-quick-links')
   const guys = makeElement('a', 'workspace-link', 'Растяжки')
-  guys.href = './guys.html'
-  guys.title = 'До интеграции в единый project editor открывается существующее представление растяжек'
+  guys.href = '#guys'
+  guys.title = 'Параметры растяжек этого же project/v1'
   const docs = makeElement('a', 'workspace-link', '3D и КД')
   docs.href = './design.html'
   docs.title = 'Открывает последний рассчитанный design package'

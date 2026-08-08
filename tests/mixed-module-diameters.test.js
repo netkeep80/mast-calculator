@@ -2,11 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { calculateAssemblyMass } from '../packages/design/index.js'
-import {
-  calculateMast,
-  DEFAULT_PARAMETERS,
-  resolveCalculationParameters,
-} from '../packages/application/index.js'
+import { calculateMast, selectUniformDiameter } from '../packages/application/index.js'
 import {
   buildDiameterTiers,
   resolveModuleDiameters,
@@ -14,17 +10,16 @@ import {
 import { generateMastModel } from '../packages/structural-analysis/index.js'
 import { buildLoadCase } from '../packages/structural-analysis/index.js'
 import { repairMixedDiameterVerificationPassport } from '../packages/engineering/index.js'
-import { selectUniformDiameter } from '../packages/application/index.js'
 import { buildMaterialSummary } from '../packages/reporting/index.js'
 import { buildVerificationPassport } from '../packages/engineering/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 const close = (actual, expected, tolerance = 1e-9) => {
   assert.ok(Math.abs(actual - expected) <= tolerance * Math.max(1, Math.abs(expected)), `${actual} != ${expected}`)
 }
 
 function parameters(overrides = {}) {
-  return resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
+  return resolvedProject({
     moduleCount: 3,
     barDiameterMm: 8,
     moduleDiametersMm: [16, 12, 8],
@@ -32,8 +27,6 @@ function parameters(overrides = {}) {
     windDirectionDeg: 30,
     equipmentMassKg: 0,
     equipmentWindAreaM2: 0,
-    extraHorizontalLoadN: 0,
-    extraVerticalLoadN: 0,
     iceThicknessMm: 0,
     ...overrides,
   })
@@ -76,8 +69,9 @@ test('собственный вес использует фактическое 
   }, 0)
   close(loads.selfWeightN, expectedMassKg * 9.80665 * p.deadLoadFactor, 1e-10)
 
-  const uniform16 = generateMastModel({ ...p, moduleDiametersMm: [16, 16, 16] })
-  const uniformLoads = buildLoadCase(uniform16, p)
+  const uniform16Parameters = parameters({ moduleDiametersMm: [16, 16, 16] })
+  const uniform16 = generateMastModel(uniform16Parameters)
+  const uniformLoads = buildLoadCase(uniform16, uniform16Parameters)
   assert.ok(loads.selfWeightN < uniformLoads.selfWeightN)
 })
 

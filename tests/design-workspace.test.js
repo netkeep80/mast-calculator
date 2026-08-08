@@ -8,14 +8,9 @@ import {
   designResultFromPackage,
   parseDesignPackage,
   serializeDesignPackage,
+  buildDetailedMastModel,
+  createMastObj,
 } from '../packages/design/index.js'
-import {
-  DESIGN_PACKAGE_STORAGE_KEY,
-  loadDesignPackage,
-  saveDesignPackage,
-} from '../apps/web/design-storage.js'
-import { buildDetailedMastModel } from '../packages/design/index.js'
-import { createMastObj } from '../packages/design/index.js'
 import { resolvedProject } from './helpers/resolved-project.js'
 
 function calculation() {
@@ -25,15 +20,6 @@ function calculation() {
     windEnvelopeEnabled: false,
     lateralCapacityStepDeg: 60,
   }))
-}
-
-function memoryStorage() {
-  const values = new Map()
-  return {
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, String(value)),
-    removeItem: (key) => values.delete(key),
-  }
 }
 
 test('design package переносит только производственно значимую геометрию и выбранный узел', () => {
@@ -48,9 +34,8 @@ test('design package переносит только производствен�
   assert.ok(!('verification' in designPackage.result), 'паспорт верификации не должен дублироваться в пакет 3D/КД')
 })
 
-test('design package JSON имеет устойчивый round-trip и localStorage contract', () => {
+test('design package JSON имеет устойчивый round-trip без browser persistence contract', () => {
   const result = calculation()
-  const storage = memoryStorage()
   const designPackage = buildDesignPackage(result, {
     createdAt: '2026-08-07T00:00:00.000Z',
     ref: 'main',
@@ -59,13 +44,10 @@ test('design package JSON имеет устойчивый round-trip и localSto
   const text = serializeDesignPackage(designPackage)
   const parsed = parseDesignPackage(text)
   assert.deepEqual(parsed, designPackage)
-  const saved = saveDesignPackage(parsed, storage)
-  assert.ok(saved.bytes > 100)
-  assert.equal(storage.getItem(DESIGN_PACKAGE_STORAGE_KEY), text)
-  assert.deepEqual(loadDesignPackage(storage), designPackage)
+  assert.equal(serializeDesignPackage(parsed), text)
 })
 
-test('восстановленный design result строит тот же тип detailed mesh и OBJ без повторного FEM', () => {
+test('восстановленный design result строит тот же detailed mesh и OBJ без повторного FEM', () => {
   const result = calculation()
   const designPackage = buildDesignPackage(result)
   const restored = designResultFromPackage(parseDesignPackage(serializeDesignPackage(designPackage)))
@@ -77,18 +59,21 @@ test('восстановленный design result строит тот же ти
   assert.match(obj, /g joint_hardware/)
 })
 
-test('отдельная страница содержит 3D, OBJ, JSON и КД, а основной UX явно ведёт в неё', () => {
+test('Web UI exposes design, OBJ, KD and procurement in one Reports workspace', () => {
+  const reports = fs.readFileSync(new URL('../apps/web/reports-exports.js', import.meta.url), 'utf8')
+  assert.match(reports, /createDesignPackage/)
+  assert.match(reports, /serializeDesignPackage/)
+  assert.match(reports, /designResultFromPackage/)
+  assert.match(reports, /createMastObj/)
+  assert.match(reports, /createEskdConstructionDocumentationHtml/)
+  assert.match(reports, /createProcurementEstimateFromCalculation/)
+  assert.match(reports, /fileAdapter\.saveText/)
+  assert.doesNotMatch(reports, /calculateProject|calculateCompleteMast|analyzeFrame|Worker\s*\(|postMessage\s*\(/)
+})
+
+test('legacy design URL is compatibility-only and cannot remain a second product shell', () => {
   const designHtml = fs.readFileSync(new URL('../apps/web/design.html', import.meta.url), 'utf8')
-  const designApp = fs.readFileSync(new URL('../apps/web/design-app.js', import.meta.url), 'utf8')
-  const navigation = fs.readFileSync(new URL('../apps/web/navigation.js', import.meta.url), 'utf8')
-  assert.match(designHtml, /<title>3D и конструкторская документация мачты<\/title>/)
-  assert.match(designHtml, /id="export-obj"/)
-  assert.match(designHtml, /id="export-package"/)
-  assert.match(designHtml, /id="export-eskd"/)
-  assert.match(designHtml, /id="joint-canvas"/)
-  assert.match(designApp, /buildDesignPackage|serializeDesignPackage|parseDesignPackage|designResultFromPackage/)
-  assert.match(designApp, /createMastObj/)
-  assert.match(designApp, /createEskdConstructionDocumentationHtml/)
-  assert.match(navigation, /href = '\.\/design\.html'/)
-  assert.match(navigation, /dataDesignWorkspaceLink|designWorkspaceLink/)
+  assert.match(designHtml, /http-equiv="refresh" content="0; url=\.\/#reports"/)
+  assert.match(designHtml, /href="\.\/#reports"/)
+  assert.doesNotMatch(designHtml, /id="export-obj"|id="export-package"|id="joint-canvas"|design-app\.js/)
 })

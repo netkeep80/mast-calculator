@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { calculateMast } from '../packages/application/index.js'
+import { WIND_ACTION_MODE_SP20_MEAN_V1 } from '../packages/domain/index.js'
 import {
   buildHorizontalBoomLoadCase,
   calculateCraneBoomCapacity,
@@ -33,6 +34,30 @@ test('issue #36: горизонтальная стрела поворачива�
   approximately(loads.nodalResultant[0], 0)
   assert.ok(loads.memberDistributedLoads.every((load) => Math.abs(load[2]) < 1e-12))
   assert.ok(loads.memberLoadDetails.every((item) => item.horizontalBoomGravity === true))
+})
+
+test('issue #96: horizontal boom special case remains explicitly wind-free for an SP20 project', () => {
+  const result = mast({
+    windActionMode: WIND_ACTION_MODE_SP20_MEAN_V1,
+    windRegion: 'VII',
+    windTerrainType: 'A',
+    windPressurePa: 850,
+  })
+  assert.equal(result.parameters.windActionMode, WIND_ACTION_MODE_SP20_MEAN_V1)
+  assert.ok(result.loads.memberWindN > 0)
+
+  const loads = buildHorizontalBoomLoadCase(result.model, result.parameters, 0, 0)
+  assert.equal(loads.windActionProvenance.model, 'manual-custom-pressure')
+  assert.equal(loads.windActionProvenance.normative, false)
+  assert.equal(loads.memberWindN, 0)
+  assert.equal(loads.equipmentWindN, 0)
+  assert.equal(loads.equipmentCharacteristicMeanWindPressurePa, 0)
+  assert.equal(loads.equipmentDesignMeanWindPressurePa, 0)
+  assert.ok(loads.memberLoadDetails.every((item) => (
+    item.characteristicMeanWindPressurePa === 0
+    && item.designMeanWindPressurePa === 0
+    && item.windForcePerLengthN.every((value) => value === 0)
+  )))
 })
 
 test('issue #36: концевой груз добавляется к собственному весу горизонтальной стрелы', () => {

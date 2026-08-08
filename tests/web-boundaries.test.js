@@ -17,10 +17,14 @@ test('Web Worker delegates heavy actions to application use cases', () => {
   assert.doesNotMatch(worker, /STANDARD_DIAMETERS_MM|moduleDiametersMm|configuratorMode/)
 })
 
-test('browser persistence stays in apps/web and never leaks back into portable design package', () => {
+test('browser persistence stores application-built design packages without owning design orchestration', () => {
+  assert.match(usage, /createDesignPackage/)
+  assert.match(usage, /saveDesignPackage/)
   assert.match(usage, /from '\.\/design-storage\.js'/)
-  assert.doesNotMatch(usage, /saveDesignResult[^\n]+packages\/design/)
   assert.match(designStorage, /globalThis\.localStorage/)
-  assert.match(designStorage, /saveDesignResult/)
+  assert.match(designStorage, /saveDesignPackage/)
+  assert.doesNotMatch(designStorage, /buildDesignPackage|saveDesignResult/)
+  assert.doesNotMatch(usage, /calculateAssemblyMass|reinforcementMassPerMeterKg|theoreticalCutLengthMm/)
+  assert.doesNotMatch(usage, /result\.assemblyMass\s*=|__mastLastUsageResult/)
   assert.doesNotMatch(designPackage, /localStorage|DESIGN_PACKAGE_STORAGE_KEY|saveDesignResult|saveDesignPackage|loadDesignPackage/)
 })

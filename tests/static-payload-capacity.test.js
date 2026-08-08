@@ -1,19 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calculateMast, DEFAULT_PARAMETERS } from '../packages/application/index.js'
+import { calculateMast } from '../packages/application/index.js'
 import {
   calculateStaticPayloadCapacity,
   STATIC_PAYLOAD_PROGRESS_STEPS,
 } from '../packages/engineering/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 function oneModule(parameters = {}) {
-  const result = calculateMast({
-    ...DEFAULT_PARAMETERS,
+  const result = calculateMast(resolvedProject({
     moduleCount: 1,
     windEnvelopeEnabled: false,
     equipmentMassKg: 0,
     ...parameters,
-  })
+  }))
   return {
     model: result.model,
     parameters: result.parameters,
@@ -39,12 +39,7 @@ test('статическая грузоподъёмность вершины к�
 })
 
 test('остаток массы зависит только от уже заданной массы оборудования', () => {
-  const { model, parameters } = oneModule({
-    equipmentMassKg: 25,
-    // Legacy-поле намеренно передано для защиты от возврата старой семантики.
-    // Issue #36 удаляет произвольную вертикальную силу из пользовательской модели.
-    extraVerticalLoadN: 750,
-  })
+  const { model, parameters } = oneModule({ equipmentMassKg: 25 })
   const capacity = calculateStaticPayloadCapacity(model, parameters)
   const expectedReserve = Math.max(0, capacity.maximumTopEquipmentMassKg - 25)
 

@@ -7,6 +7,8 @@ import {
 } from '../../domain/index.js'
 import { calculateGuyedMast } from '../../engineering/index.js'
 import { augmentVerificationWithModuleChecks } from '../../structural-analysis/index.js'
+import type { ApplicationAbortSignal } from './contracts.js'
+import { throwIfApplicationAborted } from './cancellation.js'
 import { calculateCompleteMastWithConfiguredJoint } from './complete-calculation.js'
 import {
   selectUniformDiameter,
@@ -17,11 +19,16 @@ import { immutablePublicResult, type ImmutableResultOptions } from './immutabili
 import { toApplicationError } from './errors.js'
 
 type CalculatedProject = ReturnType<typeof calculateCompleteMastWithConfiguredJoint>
-type CalculateOptions = NonNullable<Parameters<typeof calculateCompleteMastWithConfiguredJoint>[1]> & ImmutableResultOptions
-type GuyedOptions = NonNullable<Parameters<typeof calculateGuyedMast>[2]> & ImmutableResultOptions
+type CalculateOptions = NonNullable<Parameters<typeof calculateCompleteMastWithConfiguredJoint>[1]>
+  & ImmutableResultOptions
+  & { readonly signal?: ApplicationAbortSignal }
+type GuyedOptions = NonNullable<Parameters<typeof calculateGuyedMast>[2]>
+  & ImmutableResultOptions
+  & { readonly signal?: ApplicationAbortSignal }
 
 export interface OptimizeProjectOptions extends SelectUniformDiameterOptions, ImmutableResultOptions {
   diameters?: readonly number[]
+  signal?: ApplicationAbortSignal
 }
 
 export interface ProjectJobProgress {
@@ -34,6 +41,7 @@ export interface OptimizeAndCalculateProjectOptions extends ImmutableResultOptio
   readonly diameters?: readonly number[]
   readonly optimizationShare?: number
   readonly onProgress?: (progress: ProjectJobProgress) => void
+  readonly signal?: ApplicationAbortSignal
 }
 
 function finalizedVerification(result: CalculatedProject): CalculatedProject {
@@ -53,6 +61,26 @@ function finalizedVerification(result: CalculatedProject): CalculatedProject {
 
 function resolveValidatedProject(input: ProjectInput): ResolvedProject {
   return resolveProjectInput(validateProjectInput(input))
+}
+
+function cancellableProgress<T>(
+  signal: ApplicationAbortSignal | undefined,
+  onProgress: ((event: T) => void) | undefined,
+): ((event: T) => void) | undefined {
+  if (!signal && !onProgress) return undefined
+  return (event) => {
+    throwIfApplicationAborted(signal)
+    onProgress?.(event)
+  }
+}
+
+function emitProgress<T>(
+  signal: ApplicationAbortSignal | undefined,
+  onProgress: ((event: T) => void) | undefined,
+  event: T,
+): void {
+  throwIfApplicationAborted(signal)
+  onProgress?.(event)
 }
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, Number(value) || 0))
@@ -153,8 +181,15 @@ export function previewProjectConfiguration(input: ProjectInput) {
  */
 export function calculateProject(input: ProjectInput, options: CalculateOptions = {}) {
   try {
+    const { signal, onProgress, ...forwardedOptions } = options
+    throwIfApplicationAborted(signal)
     const parameters = resolveValidatedProject(input)
-    const calculated = calculateCompleteMastWithConfiguredJoint(parameters, options)
+    const progress = cancellableProgress(signal, onProgress)
+    const calculationOptions = progress
+      ? { ...forwardedOptions, onProgress: progress }
+      : forwardedOptions
+    const calculated = calculateCompleteMastWithConfiguredJoint(parameters, calculationOptions)
+    throwIfApplicationAborted(signal)
     return immutablePublicResult(finalizedVerification(calculated), options)
   } catch (error) {
     throw toApplicationError(error)
@@ -164,9 +199,17 @@ export function calculateProject(input: ProjectInput, options: CalculateOptions 
 /** Headless uniform-diameter optimization over the same validated/resolved project contract. */
 export function optimizeProject(input: ProjectInput, options: OptimizeProjectOptions = {}) {
   try {
+    const { signal, onProgress, diameters: _ignoredDiameters, ...selectionOptions } = options
+    throwIfApplicationAborted(signal)
     const parameters = resolveValidatedProject(input)
     const diameters = options.diameters ?? STANDARD_DIAMETERS_MM
-    return immutablePublicResult(selectUniformDiameter(parameters, diameters, options), options)
+    const progress = cancellableProgress(signal, onProgress)
+    const optimizerOptions = progress
+      ? { ...selectionOptions, onProgress: progress }
+      : selectionOptions
+    const result = selectUniformDiameter(parameters, diameters, optimizerOptions)
+    throwIfApplicationAborted(signal)
+    return immutablePublicResult(result, options)
   } catch (error) {
     throw toApplicationError(error)
   }
@@ -183,11 +226,13 @@ export function optimizeAndCalculateProject(
   options: OptimizeAndCalculateProjectOptions = {},
 ) {
   try {
+    throwIfApplicationAborted(options.signal)
     const optimizationShare = clamp01(options.optimizationShare ?? 0.78)
     const diameters = options.diameters ?? STANDARD_DIAMETERS_MM
     const immutableOptions: ImmutableResultOptions = options.freezeResult === undefined
       ? {}
       : { freezeResult: options.freezeResult }
+    const cancellationOptions = options.signal === undefined ? {} : { signal: options.signal }
     const { moduleDiametersMm: _ignoredMixedProfile, ...uniformGeometry } = input.geometry
     const automaticInput: ProjectInput = {
       ...input,
@@ -195,7 +240,7 @@ export function optimizeAndCalculateProject(
       connection: { ...input.connection, configuratorMode: 'auto' },
     }
 
-    options.onProgress?.({
+    emitProgress(options.signal, options.onProgress, {
       phase: 'optimize',
       label: `Подбор арматуры и соединительного узла: до ${diameters.length} стандартных вариантов`,
       fraction: 0,
@@ -203,9 +248,10 @@ export function optimizeAndCalculateProject(
 
     const optimization = optimizeProject(automaticInput, {
       ...immutableOptions,
+      ...cancellationOptions,
       diameters,
       stopAtFirstPassing: true,
-      onProgress: (event) => options.onProgress?.({
+      onProgress: (event) => emitProgress(options.signal, options.onProgress, {
         phase: 'optimize',
         label: `Подбор Ø${event.diameter} мм (${event.variantIndex + 1}/${event.variantCount}): ${event.inner.label}`,
         fraction: clamp01(optimizationShare * event.fraction),
@@ -214,7 +260,7 @@ export function optimizeAndCalculateProject(
     const summary = buildOptimizationSummary(optimization)
 
     if (!optimization.recommended) {
-      options.onProgress?.({
+      emitProgress(options.signal, options.onProgress, {
         phase: 'done',
         label: 'Подбор завершён: подходящий комплект арматуры и узла не найден',
         fraction: 1,
@@ -223,7 +269,7 @@ export function optimizeAndCalculateProject(
     }
 
     const diameter = optimization.recommended.diameter
-    options.onProgress?.({
+    emitProgress(options.signal, options.onProgress, {
       phase: 'optimize',
       label: `Минимальный проходящий комплект найден после ${optimization.evaluatedCount} вариантов: арматура Ø${diameter} мм`,
       fraction: optimizationShare,
@@ -235,18 +281,23 @@ export function optimizeAndCalculateProject(
     }
     const result = calculateProject(selectedInput, {
       ...immutableOptions,
-      onProgress: (progress) => options.onProgress?.(normalizedJobProgress(
-        progress,
-        optimizationShare,
-        1 - optimizationShare,
-        `Итоговый расчёт Ø${diameter} мм`,
-      )),
+      ...cancellationOptions,
+      onProgress: (progress) => emitProgress(
+        options.signal,
+        options.onProgress,
+        normalizedJobProgress(
+          progress,
+          optimizationShare,
+          1 - optimizationShare,
+          `Итоговый расчёт Ø${diameter} мм`,
+        ),
+      ),
     })
     const joint = result.connections?.configurator
     const jointLabel = joint?.geometry
       ? `; болт M${joint.geometry.bolt.diameterMm}×${joint.geometry.bolt.lengthMm} ${joint.selected.boltClass}`
       : ''
-    options.onProgress?.({
+    emitProgress(options.signal, options.onProgress, {
       phase: 'done',
       label: `Подбор завершён: арматура Ø${diameter} мм${jointLabel}`,
       fraction: 1,
@@ -264,8 +315,12 @@ export function calculateGuyedProject(
   options: GuyedOptions = {},
 ) {
   try {
+    const { signal, ...guyedOptions } = options
+    throwIfApplicationAborted(signal)
     const parameters = resolveValidatedProject(input)
-    return immutablePublicResult(calculateGuyedMast(parameters, tiers, options), options)
+    const result = calculateGuyedMast(parameters, tiers, guyedOptions)
+    throwIfApplicationAborted(signal)
+    return immutablePublicResult(result, options)
   } catch (error) {
     throw toApplicationError(error)
   }

@@ -107,7 +107,7 @@ test('negative fixture blocks packages importing apps/web', () => {
   assert.ok(violations.some((item) => item.type === 'package-to-web'))
 })
 
-test('negative fixture blocks cross-package deep imports while public index is accepted', () => {
+test('negative fixture blocks cross-package deep imports while public package entrypoints are accepted', () => {
   const deep = fixture({
     'packages/domain/index.js': "export * from './src/catalog.js'\n",
     'packages/domain/src/catalog.js': 'export const value = 1\n',
@@ -115,12 +115,26 @@ test('negative fixture blocks cross-package deep imports while public index is a
   })
   assert.ok(evaluatePolicy(analyzeRepository(deep), {}).some((item) => item.type === 'deep-import'))
 
-  const publicOnly = fixture({
+  const publicIndex = fixture({
     'packages/domain/index.js': "export * from './src/catalog.js'\n",
     'packages/domain/src/catalog.js': 'export const value = 1\n',
     'packages/application/src/good.js': "import { value } from '../../domain/index.js'\nexport const good = value\n",
   })
-  assert.ok(!evaluatePolicy(analyzeRepository(publicOnly), {}).some((item) => item.type === 'deep-import'))
+  assert.ok(!evaluatePolicy(analyzeRepository(publicIndex), {}).some((item) => item.type === 'deep-import'))
+
+  const publicContracts = fixture({
+    'packages/domain/contracts.ts': "export type { Shape } from './src/contracts.js'\n",
+    'packages/domain/src/contracts.ts': 'export interface Shape { value: number }\n',
+    'packages/application/src/good.ts': "import type { Shape } from '../../domain/contracts.js'\nexport type Good = Shape\n",
+  })
+  assert.ok(!evaluatePolicy(analyzeRepository(publicContracts), {}).some((item) => item.type === 'deep-import'))
+
+  const deepContracts = fixture({
+    'packages/domain/contracts.ts': "export type { Shape } from './src/contracts.js'\n",
+    'packages/domain/src/contracts.ts': 'export interface Shape { value: number }\n',
+    'packages/application/src/bad.ts': "import type { Shape } from '../../domain/src/contracts.js'\nexport type Bad = Shape\n",
+  })
+  assert.ok(evaluatePolicy(analyzeRepository(deepContracts), {}).some((item) => item.type === 'deep-import'))
 })
 
 test('explicit exact-path exception remains narrow even though v2 baseline uses none', () => {

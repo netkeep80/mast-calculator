@@ -1,0 +1,110 @@
+.workspace-result-tabs {
+  min-width: 0;
+  padding: .8rem;
+}
+
+.result-tablist {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .35rem;
+  margin: 0 0 .8rem;
+  padding: .3rem;
+  border: 1px solid #d5dde5;
+  border-radius: 10px;
+  background: #f4f7f9;
+}
+
+.result-tab {
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  padding: .48rem .7rem;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #526474;
+  font-size: .76rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.result-tab:hover:not(:disabled) {
+  background: #e9eff4;
+}
+
+.result-tab[aria-selected='true'] {
+  border-color: #a9d3c5;
+  background: #e7f4ef;
+  color: #11634b;
+}
+
+.result-tab:focus-visible {
+  outline: 3px solid rgba(21, 128, 100, .22);
+  outline-offset: 2px;
+}
+
+.result-tabpanel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.result-tabpanel[hidden] {
+  display: none !important;
+}
+
+.result-tabpanel > :first-child {
+  margin-top: 0;
+}
+
+.result-tabpanel > :last-child {
+  margin-bottom: 0;
+}
+
+.result-tabpanel .detail-panel,
+.result-tabpanel .reference-panel,
+.result-tabpanel .guy-result-panel {
+  margin: .75rem 0 0;
+}
+
+.result-tab-note {
+  margin: 0 0 .75rem;
+  padding: .65rem .75rem;
+  border-left: 3px solid #6d8ca5;
+  background: #f2f6f9;
+  color: #506677;
+  font-size: .76rem;
+  line-height: 1.45;
+}
+
+.module-selectable-row {
+  cursor: pointer;
+}
+
+.module-selectable-row:focus-visible {
+  outline: 3px solid rgba(21, 128, 100, .24);
+  outline-offset: -3px;
+}
+
+.member-table tbody .module-selectable-row.module-selected-row,
+.guy-result-panel tbody .module-selectable-row.module-selected-row {
+  background: #e5f4ee;
+  box-shadow: inset 4px 0 #168565;
+}
+
+.member-table tbody .module-selectable-row.module-selected-row:hover,
+.guy-result-panel tbody .module-selectable-row.module-selected-row:hover {
+  background: #dff0e9;
+}
+
+@media (max-width: 680px) {
+  .result-tablist {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .result-tab {
+    width: 100%;
+    white-space: normal;
+  }
+}

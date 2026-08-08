@@ -1,3 +1,4 @@
+import './workspace-shell.js'
 import {
   getJointClearanceNutOptions,
   getJointConfigurationOptions,

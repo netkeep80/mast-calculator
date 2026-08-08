@@ -19,10 +19,12 @@ import { immutablePublicResult, type ImmutableResultOptions } from './immutabili
 import { toApplicationError } from './errors.js'
 
 type CalculatedProject = ReturnType<typeof calculateCompleteMastWithConfiguredJoint>
-type CalculateOptions = NonNullable<Parameters<typeof calculateCompleteMastWithConfiguredJoint>[1]>
+type LowLevelCalculateOptions = NonNullable<Parameters<typeof calculateCompleteMastWithConfiguredJoint>[1]>
+type LowLevelGuyedOptions = NonNullable<Parameters<typeof calculateGuyedMast>[2]>
+type CalculateOptions = LowLevelCalculateOptions
   & ImmutableResultOptions
   & { readonly signal?: ApplicationAbortSignal }
-type GuyedOptions = NonNullable<Parameters<typeof calculateGuyedMast>[2]>
+type GuyedOptions = LowLevelGuyedOptions
   & ImmutableResultOptions
   & { readonly signal?: ApplicationAbortSignal }
 
@@ -81,6 +83,16 @@ function emitProgress<T>(
 ): void {
   throwIfApplicationAborted(signal)
   onProgress?.(event)
+}
+
+function lowLevelGuyedOptions(options: GuyedOptions): LowLevelGuyedOptions {
+  const forwarded: LowLevelGuyedOptions = {}
+  if (options.safetyFactor !== undefined) forwarded.safetyFactor = options.safetyFactor
+  if (options.terminationEfficiency !== undefined) forwarded.terminationEfficiency = options.terminationEfficiency
+  if (options.maximumIterations !== undefined) forwarded.maximumIterations = options.maximumIterations
+  if (options.displacementToleranceM !== undefined) forwarded.displacementToleranceM = options.displacementToleranceM
+  if (options.relativeTensionTolerance !== undefined) forwarded.relativeTensionTolerance = options.relativeTensionTolerance
+  return forwarded
 }
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, Number(value) || 0))
@@ -181,13 +193,11 @@ export function previewProjectConfiguration(input: ProjectInput) {
  */
 export function calculateProject(input: ProjectInput, options: CalculateOptions = {}) {
   try {
-    const { signal, onProgress, ...forwardedOptions } = options
+    const { signal, onProgress } = options
     throwIfApplicationAborted(signal)
     const parameters = resolveValidatedProject(input)
     const progress = cancellableProgress(signal, onProgress)
-    const calculationOptions = progress
-      ? { ...forwardedOptions, onProgress: progress }
-      : forwardedOptions
+    const calculationOptions: LowLevelCalculateOptions = progress ? { onProgress: progress } : {}
     const calculated = calculateCompleteMastWithConfiguredJoint(parameters, calculationOptions)
     throwIfApplicationAborted(signal)
     return immutablePublicResult(finalizedVerification(calculated), options)
@@ -199,14 +209,15 @@ export function calculateProject(input: ProjectInput, options: CalculateOptions 
 /** Headless uniform-diameter optimization over the same validated/resolved project contract. */
 export function optimizeProject(input: ProjectInput, options: OptimizeProjectOptions = {}) {
   try {
-    const { signal, onProgress, diameters: _ignoredDiameters, ...selectionOptions } = options
+    const { signal, onProgress } = options
     throwIfApplicationAborted(signal)
     const parameters = resolveValidatedProject(input)
     const diameters = options.diameters ?? STANDARD_DIAMETERS_MM
     const progress = cancellableProgress(signal, onProgress)
-    const optimizerOptions = progress
-      ? { ...selectionOptions, onProgress: progress }
-      : selectionOptions
+    const optimizerOptions: SelectUniformDiameterOptions = {}
+    if (options.stopAtFirstPassing !== undefined) optimizerOptions.stopAtFirstPassing = options.stopAtFirstPassing
+    if (progress) optimizerOptions.onProgress = progress
+    if (options.onVariant !== undefined) optimizerOptions.onVariant = options.onVariant
     const result = selectUniformDiameter(parameters, diameters, optimizerOptions)
     throwIfApplicationAborted(signal)
     return immutablePublicResult(result, options)
@@ -315,10 +326,10 @@ export function calculateGuyedProject(
   options: GuyedOptions = {},
 ) {
   try {
-    const { signal, ...guyedOptions } = options
+    const { signal } = options
     throwIfApplicationAborted(signal)
     const parameters = resolveValidatedProject(input)
-    const result = calculateGuyedMast(parameters, tiers, guyedOptions)
+    const result = calculateGuyedMast(parameters, tiers, lowLevelGuyedOptions(options))
     throwIfApplicationAborted(signal)
     return immutablePublicResult(result, options)
   } catch (error) {

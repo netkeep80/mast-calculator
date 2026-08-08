@@ -1,5 +1,4 @@
 import type { ResolvedProject } from '../../domain/contracts.js'
-import { resolveCalculationParameters } from '../../domain/index.js'
 import {
   analyzeCheckedFrame,
   buildVerificationPassport,
@@ -82,7 +81,6 @@ export interface CalculationProgressEvent {
 }
 
 interface CalculateMastOptions {
-  resolvedProject?: ResolvedProject
   model?: MastModel
   frameSystem?: FrameSystem
   moduleStack?: ModuleStack
@@ -97,13 +95,11 @@ interface HeightProgressEvent {
 }
 
 interface CalculateMaximumHeightOptions {
-  resolvedProject?: ResolvedProject
   knownResult?: ReturnType<typeof calculateMast>
   onProgress?: (event: HeightProgressEvent) => void
 }
 
 interface CalculateCompleteMastOptions {
-  resolvedProject?: ResolvedProject
   onProgress?: (event: CalculationProgressEvent) => void
 }
 
@@ -351,10 +347,9 @@ function prepareMastCalculation(parameters: ResolvedProject, options: CalculateM
 }
 
 export function calculateMast(
-  inputParameters: Record<string, unknown>,
+  parameters: ResolvedProject,
   options: CalculateMastOptions = {},
 ) {
-  const parameters = options.resolvedProject ?? resolveCalculationParameters(inputParameters)
   const directions = windDirections(parameters)
   options.onProgress?.({ phase: 'compile', label: 'Сборка глобальной и помодульной систем жёсткости', completed: 0, total: directions.length + 1 })
   const { model, frameSystem, moduleStack } = prepareMastCalculation(parameters, options)
@@ -527,10 +522,9 @@ function searchHeightBoundary(
 }
 
 export function calculateMaximumHeight(
-  inputParameters: Record<string, unknown>,
+  parameters: ResolvedProject,
   options: CalculateMaximumHeightOptions = {},
 ) {
-  const parameters = options.resolvedProject ?? resolveCalculationParameters(inputParameters)
   const maxModules = parameters.heightSearchMaxModules
   const cache = new Map<number, CompactHeightCase>()
   let evaluationCount = 0
@@ -543,7 +537,7 @@ export function calculateMaximumHeight(
       result = options.knownResult
     } else {
       const trialParameters: ResolvedProject = { ...parameters, moduleCount }
-      result = calculateMast(trialParameters as unknown as Record<string, unknown>, { resolvedProject: trialParameters })
+      result = calculateMast(trialParameters)
     }
     const compact = compactHeightCase(moduleCount, result, parameters)
     cache.set(moduleCount, compact)
@@ -607,10 +601,9 @@ function fixedPhysicalJointParameters(parameters: ResolvedProject, connections: 
 }
 
 export function calculateCompleteMast(
-  inputParameters: Record<string, unknown>,
+  parameters: ResolvedProject,
   options: CalculateCompleteMastOptions = {},
 ) {
-  const parameters = options.resolvedProject ?? resolveCalculationParameters(inputParameters)
   const model = generateMastModel(parameters)
   const directions = windDirections(parameters)
   const lateral = lateralDirections(parameters.lateralCapacityStepDeg)
@@ -677,8 +670,7 @@ export function calculateCompleteMast(
   })
 
   const heightOffset = staticPayloadOffset + STATIC_PAYLOAD_PROGRESS_STEPS
-  const rawHeightCapacity = calculateMaximumHeight(fixed as unknown as Record<string, unknown>, {
-    resolvedProject: fixed,
+  const rawHeightCapacity = calculateMaximumHeight(fixed, {
     knownResult: configuredResult,
     onProgress: (event) => options.onProgress?.({
       phase: 'height-capacity',

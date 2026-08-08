@@ -141,6 +141,9 @@ export function optimizeAndCalculateProject(
   try {
     const optimizationShare = clamp01(options.optimizationShare ?? 0.78)
     const diameters = options.diameters ?? STANDARD_DIAMETERS_MM
+    const immutableOptions: ImmutableResultOptions = options.freezeResult === undefined
+      ? {}
+      : { freezeResult: options.freezeResult }
     const { moduleDiametersMm: _ignoredMixedProfile, ...uniformGeometry } = input.geometry
     const automaticInput: ProjectInput = {
       ...input,
@@ -155,9 +158,9 @@ export function optimizeAndCalculateProject(
     })
 
     const optimization = optimizeProject(automaticInput, {
+      ...immutableOptions,
       diameters,
       stopAtFirstPassing: true,
-      freezeResult: options.freezeResult,
       onProgress: (event) => options.onProgress?.({
         phase: 'optimize',
         label: `Подбор Ø${event.diameter} мм (${event.variantIndex + 1}/${event.variantCount}): ${event.inner.label}`,
@@ -187,7 +190,7 @@ export function optimizeAndCalculateProject(
       geometry: { ...automaticInput.geometry, barDiameterMm: diameter },
     }
     const result = calculateProject(selectedInput, {
-      freezeResult: options.freezeResult,
+      ...immutableOptions,
       onProgress: (progress) => options.onProgress?.(normalizedJobProgress(
         progress,
         optimizationShare,

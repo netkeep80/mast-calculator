@@ -44,7 +44,8 @@ test('конфигуратор узла использует выпадающи�
   assert.match(html, /длинн(?:ая|ой) соединительн(?:ая|ой) гайк/i)
   assert.match(bootstrap, /modeSelect\.value = 'auto'/)
   assert.match(bootstrap, /jointConfiguratorMode/)
-  assert.match(bootstrap, /message\.action === 'optimize' \? 'auto'/)
+  assert.match(bootstrap, /subscribeCalculationResult/)
+  assert.doesNotMatch(bootstrap, /message\.action|JointAwareWorker|globalThis\.Worker\s*=/)
 })
 
 test('эффективный радиус и длинная гайка являются производными параметрами', () => {

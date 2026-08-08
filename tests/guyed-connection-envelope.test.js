@@ -148,6 +148,10 @@ test('issue #88: guyed member/cable envelope can pass while the same fixed physi
   assert.equal(guyedResult.structuralAndCablePasses, true, `members/cables must pass: ${diagnostic}`)
   assert.equal(guyedResult.connectionEnvelope.passes, false, `fixed guyed connection must fail: ${diagnostic}`)
   assert.ok(guyedResult.connectionEnvelope.maximumBoltUtilization > 1, `bolt must govern this fixture: ${diagnostic}`)
+  assert.equal(guyedResult.connectionEnvelope.statusReason, 'configured-bolt-capacity')
+  assert.deepEqual(guyedResult.connectionEnvelope.failureReasons, ['configured-bolt-capacity'])
+  assert.equal(guyedResult.connectionEnvelope.selectedJoint.tighteningTorqueNm, 112)
+  assert.equal(guyedResult.connectionEnvelope.selectedJoint.preloadVariation, 0)
   assert.equal(guyedResult.passes, false)
 
   const summary = createEngineeringSummary(result, guyedResult)

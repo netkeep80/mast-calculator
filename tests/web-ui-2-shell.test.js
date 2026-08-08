@@ -17,6 +17,7 @@ const resultTabs = read('result-tabs.js')
 const resultTabStyles = read('result-tabs.css')
 const resultChannel = read('result-channel.js')
 const guyResultPanel = read('guy-result-panel.js')
+const guyedConnectionPanel = read('guyed-connection-panel.js')
 const reportsExports = read('reports-exports.js')
 
 function requires(text, pattern, message) {
@@ -59,7 +60,7 @@ test('runtime version is supplied by build-info instead of a hardcoded prototype
 })
 
 test('workspace behavior is presentation-only and cannot acquire engineering ownership', () => {
-  for (const source of [behavior, resultTabs]) {
+  for (const source of [behavior, resultTabs, guyedConnectionPanel]) {
     assert.doesNotMatch(source, /packages\/(domain|numerics|structural-analysis|engineering|application|design|reporting)/)
     assert.doesNotMatch(source, /calculateProject|analyzeFrame|solveModuleStack|buildLoadCase|checkBoltDemand/)
   }
@@ -136,6 +137,16 @@ test('Guys tab is conditional and scenario presets only change result focus', ()
   requires(resultTabs, /design:\s*'connections'/, 'design scenario does not focus Connections')
   requires(resultTabs, /limits:\s*'limits'/, 'limits scenario does not focus Limits')
   requires(resultTabs, /verify:\s*'verification'/, 'verify scenario does not focus Verification')
+})
+
+test('issue #88: Connections and Verification show guyed governing demand and provenance without recalculation', () => {
+  requires(resultTabs, /renderGuyedConnectionProjection\(snapshot\)/, 'guyed connection projection is not wired to current result snapshot')
+  requires(guyedConnectionPanel, /#result-panel-connections/, 'guyed connection result is not projected into Connections')
+  requires(guyedConnectionPanel, /#result-panel-verification/, 'guyed connection provenance is not projected into Verification')
+  for (const token of ['governingBoltDemand', 'criticalWeld', 'windDirectionDeg', 'caseIndex', 'tensionN', 'shearN', 'bendingMomentNm', 'torsionNm', 'physicalJointSource', 'scope']) {
+    assert.ok(guyedConnectionPanel.includes(token), `guyed connection presentation misses ${token}`)
+  }
+  assert.doesNotMatch(guyedConnectionPanel, /Worker\s*\(|postMessage\s*\(|calculateProject|calculateConnectionChecks/)
 })
 
 test('late result presenters replay the current snapshot without changing existing subscribers', () => {

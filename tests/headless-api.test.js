@@ -5,8 +5,12 @@ import {
   calculateProject,
   createProjectInput,
   createVerification,
+  getJointClearanceNutOptions,
+  getJointConfigurationOptions,
   optimizeAndCalculateProject,
   optimizeProject,
+  previewJointConfiguration,
+  previewProjectConfiguration,
 } from '../packages/application/index.js'
 
 const compactInput = createProjectInput({
@@ -74,4 +78,32 @@ test('application owns optimize-then-calculate job semantics used by adapters', 
   assert.equal(Object.isFrozen(output), true)
   assert.equal(progress.at(-1).phase, 'done')
   assert.equal(progress.at(-1).fraction, 1)
+})
+
+test('application owns form-derived fabrication, material and weather preview', () => {
+  const preview = previewProjectConfiguration(compactInput)
+  const result = calculateProject(compactInput)
+
+  assert.equal(preview.geometry.ribCutLengthMm, result.parameters.ribCutLengthMm)
+  assert.equal(preview.geometry.moduleHeightMm, result.parameters.moduleHeightMm)
+  assert.equal(preview.geometry.mastHeightM, result.parameters.moduleHeightMm / 1000)
+  assert.equal(preview.material.id, result.parameters.reinforcementClass)
+  assert.equal(preview.material.standard, result.parameters.reinforcementStandard)
+  assert.equal(preview.material.yieldStrengthMPa, result.parameters.yieldStrengthMPa)
+  assert.equal(preview.weather.pressurePa, result.parameters.windPressurePa)
+  assert.equal(preview.weather.speedMs, result.parameters.windSpeedMs)
+  assert.equal(preview.weather.custom, true)
+  assert.equal(Object.isFrozen(preview), true)
+})
+
+test('application owns joint configuration options and physical preview', () => {
+  const options = getJointConfigurationOptions()
+  const preview = previewJointConfiguration(compactInput)
+  const clearance = getJointClearanceNutOptions(preview.geometry.bolt.diameterMm)
+
+  assert.ok(options.boltLengthsMm.length > 0)
+  assert.ok(clearance.some((item) => item.threadDiameterMm === preview.geometry.bottomClearanceNut.threadDiameterMm))
+  assert.ok(preview.strength.maximumPreloadN > 0)
+  assert.ok(preview.strength.minimumNutSectionRatio > 0)
+  assert.equal(Object.isFrozen(preview), true)
 })

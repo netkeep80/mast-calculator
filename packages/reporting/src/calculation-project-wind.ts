@@ -31,8 +31,11 @@ function windActionSection(parameters: ResolvedProject): string {
 <tr><td>k(ze) на опорной высоте</td><td>${number(provenance.referenceHeightCoefficient, 5)}</td><td>табл. 11.2 / формула 11.4 в зависимости от высоты</td></tr>
 <tr><td>Характеристическое среднее давление на опорной высоте</td><td>${number(provenance.referenceCharacteristicMeanPressurePa, 3)} Па</td><td>w₀·k(ze), до γf и аэродинамического коэффициента</td></tr>
 <tr><td>γf ветровой нагрузки</td><td>${number(provenance.loadReliabilityFactor, 3)}</td><td>коэффициент надёжности; не является коэффициентом динамичности</td></tr>
+<tr><td>Аэродинамический коэффициент рёбер</td><td>${number(provenance.memberAerodynamicCoefficient, 3)}</td><td>${escapeHtml(provenance.aerodynamicCoefficientSource)}</td></tr>
+<tr><td>Аэродинамический коэффициент оборудования</td><td>${number(provenance.equipmentAerodynamicCoefficient, 3)}</td><td>${escapeHtml(provenance.aerodynamicCoefficientSource)}</td></tr>
 </tbody>
 </table>
+<p class="notice"><strong>Граница нормативности:</strong> w₀, k(ze) и γf имеют указанную нормативную provenance; аэродинамические коэффициенты сейчас приходят из ProjectInput и не заявляются как автоматически выбранные по приложению СП 20.</p>
 <p class="notice"><strong>Граница модели:</strong> средняя составляющая учтена; пульсационная составляющая — ${provenance.pulsationComponentIncluded ? 'учтена' : 'НЕ УЧТЕНА'}; динамический/модальный отклик — ${provenance.dynamicResponseIncluded ? 'учтён' : 'НЕ УЧТЁН'}. Поэтому этот расчёт нельзя описывать как полный нормативный ветровой расчёт до завершения отдельной dynamic-модели.</p>`
   }
 
@@ -43,7 +46,7 @@ function windActionSection(parameters: ResolvedProject): string {
   <div>q = 0,5·1,225·${number(parameters.windSpeedMs, 3)}² = ${number(parameters.windPressurePa, 3)} Па</div>
   <div class="formula-result">γf = ${number(provenance.loadReliabilityFactor, 3)}</div>
 </div>
-<p class="equation-note">Шкала Бофорта и пользовательское давление являются сравнительными сценариями, а не нормативным ветровым районированием. Пульсационная составляющая и динамический отклик в этом режиме не заявляются.</p>`
+<p class="equation-note">Шкала Бофорта и пользовательское давление являются сравнительными сценариями, а не нормативным ветровым районированием. Аэродинамические коэффициенты берутся из ProjectInput. Пульсационная составляющая и динамический отклик в этом режиме не заявляются.</p>`
 }
 
 export function createCalculationProjectHtml(

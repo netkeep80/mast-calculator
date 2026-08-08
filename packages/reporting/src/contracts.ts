@@ -17,9 +17,20 @@ export interface ReportingModuleAction {
 }
 
 export interface ReportingModuleResult {
+  readonly moduleIndex?: number
+  readonly moduleNumber: number
   readonly bottomNodeIds: readonly number[]
   readonly topNodeIds: readonly number[]
   readonly memberIds: readonly number[]
+  readonly criticalMemberId: number
+  readonly maxUtilization: number
+  readonly maxStressUtilization: number
+  readonly maxBucklingUtilization: number
+  readonly maxRuptureUtilization: number
+  readonly verticalFailureMode: 'local-member-buckling' | 'tensile-rupture'
+  readonly verticalFailureMemberId: number
+  readonly verticalFailureUtilization: number
+  readonly verticalFailureLoadFactor: number
   readonly topAppliedFromAbove: readonly ReportingModuleAction[]
   readonly bottomReactionFromBelow: readonly ReportingModuleAction[]
   readonly topResultantFromAbove: {
@@ -68,31 +79,53 @@ export interface ReportingEnvelope {
   readonly minimumBucklingFactor: number
 }
 
+export interface BottomModuleCapacity {
+  readonly mode: 'local-member-buckling' | 'tensile-rupture'
+  readonly utilization: number
+  readonly reserveFactor: number
+  readonly windDirectionDeg: number
+  readonly memberId: number
+  readonly maxBucklingUtilization: number
+  readonly maxRuptureUtilization: number
+  readonly explanation: string
+}
+
 export interface HeightLimitCase {
-  readonly designMode?: string | null
-  readonly ultimateMode?: string | null
-  readonly [key: string]: unknown
+  readonly moduleCount: number
+  readonly heightM: number
+  readonly designPasses: boolean
+  readonly designScore: number
+  readonly designMode: string
+  readonly ultimatePasses: boolean
+  readonly ultimateScore: number
+  readonly ultimateMode: string
+  readonly memberUtilization: number
+  readonly topDisplacementMm: number
+  readonly bucklingFactor: number
+  readonly boltUtilization: number
+  readonly bottomModule: BottomModuleCapacity | null
 }
 
 export interface HeightBoundary {
   readonly bounded: boolean
   readonly maximumModules: number
+  readonly firstFailModules: number | null
   readonly maximumHeightM: number
-  readonly firstFailCase?: HeightLimitCase | null
-  readonly [key: string]: unknown
-}
-
-export interface BottomModuleCapacity {
-  readonly mode?: string | null
-  readonly [key: string]: unknown
+  readonly limitCase: HeightLimitCase | null
+  readonly firstFailCase: HeightLimitCase | null
+  readonly criteria: string
 }
 
 export interface HeightCapacity {
-  readonly design?: HeightBoundary
-  readonly ultimateResistance?: HeightBoundary
-  readonly bottomModuleAtDesignLimit?: BottomModuleCapacity | null
-  readonly bottomModuleAtFirstDesignOverload?: BottomModuleCapacity | null
-  readonly [key: string]: unknown
+  readonly method: string
+  readonly searchLimitModules: number
+  readonly evaluationCount: number
+  readonly moduleHeightM: number
+  readonly design: HeightBoundary
+  readonly ultimateResistance: HeightBoundary
+  readonly bottomModuleAtDesignLimit: BottomModuleCapacity | null
+  readonly bottomModuleAtFirstDesignOverload: BottomModuleCapacity | null
+  readonly evaluatedCases: readonly HeightLimitCase[]
 }
 
 export interface CalculationMethodInfo {

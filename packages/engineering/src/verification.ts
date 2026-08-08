@@ -122,203 +122,311 @@ function numericCheck({
 }: NumericCheckInput): VerificationCheck {
   const error = relativeError(actual, expected)
   return {
-    id, level, title, explanation, formula, substitution,
-    actual, expected, tolerance, relativeError: error, unit,
-    status: error <= tolerance ? PASS : FAIL,
+    id,
+    level,
+    title,
+    explanation,
+    formula,
+    substitution,
+    actual,
+    expected,
+    tolerance,
+    relativeError: error,
+    unit,
+    status: Number.isFinite(actual) && Number.isFinite(expected) && error <= tolerance ? PASS : FAIL,
     howToCheck,
   }
 }
 
-function booleanCheck({ id, level, title, explanation, passed, evidence, howToCheck }: BooleanCheckInput): VerificationCheck {
-  return { id, level, title, explanation, status: passed ? PASS : FAIL, evidence, howToCheck }
+function booleanCheck({
+  id,
+  level,
+  title,
+  explanation,
+  passed,
+  evidence,
+  howToCheck,
+}: BooleanCheckInput): VerificationCheck {
+  return {
+    id,
+    level,
+    title,
+    explanation,
+    status: passed ? PASS : FAIL,
+    evidence,
+    howToCheck,
+  }
 }
 
-function pendingCheck(id: string, level: number, title: string, explanation: string, howToCheck: string): VerificationCheck {
+function pendingCheck(
+  id: string,
+  level: number,
+  title: string,
+  explanation: string,
+  howToCheck: string,
+): VerificationCheck {
   return { id, level, title, explanation, status: PENDING, howToCheck }
+}
+
+function memberLength(model: MastModel, member: MastModel['members'][number]): number {
+  const a = model.nodes[member.nodeA]?.position
+  const b = model.nodes[member.nodeB]?.position
+  if (!a || !b) throw new Error(`Не найдены узлы ребра ${member.id} для verification passport`)
+  return Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2])
 }
 
 function geometryAndMaterialChecks(result: VerificationResult): VerificationCheck[] {
   const p = result.parameters
-  const firstMember = result.model.members[0]!
-  const diameterM = firstMember.diameterM
+  const model = result.model
+  const aExpectedMm = p.stockBarLengthMm / p.stockBarPieces
+  const hExpectedMm = aExpectedMm * Math.sqrt(2 / 3)
+  const heightExpectedM = p.moduleCount * hExpectedMm / 1000
+  const actualZ = model.nodes.map((node) => node.position[2])
+  const heightActualM = Math.max(...actualZ) - Math.min(...actualZ)
+  const expectedMemberCount = p.moduleCount * 9
+  const targetLengthM = p.ribCutLengthMm / 1000
+  const lengths = model.members.map((member) => memberLength(model, member))
+  const maximumLengthErrorM = Math.max(...lengths.map((length) => Math.abs(length - targetLengthM)), 0)
+  const diameterM = p.barDiameterMm / 1000
   const areaM2 = Math.PI * diameterM ** 2 / 4
-  const inertiaM4 = Math.PI * diameterM ** 4 / 64
-  const ribLengthM = p.ribCutLengthMm / 1000
-  const expectedHeightM = p.moduleCount * p.moduleHeightMm / 1000
-  const expectedSingleMemberMassKg = p.densityKgM3 * areaM2 * ribLengthM
-  const expectedTotalMassKg = expectedSingleMemberMassKg * result.model.members.length
+  const totalLengthM = model.members.length * targetLengthM
+  const expectedMassKg = totalLengthM * areaM2 * p.densityKgM3
+  const expectedSelfWeightN = expectedMassKg * VERIFICATION_GRAVITY_M_S2 * p.deadLoadFactor
+  const expectedPressurePa = 0.5 * AIR_DENSITY_KG_M3 * p.windSpeedMs ** 2
+
   return [
     numericCheck({
-      id: 'module-height', level: 1,
-      title: 'Высота мачты следует из геометрии правильного октаэдра',
-      explanation: 'Высота одного модуля равна a·√(2/3), а высота всей мачты — числу модулей, умноженному на эту высоту.',
-      formula: 'H = n · a · √(2/3)',
-      substitution: `H = ${p.moduleCount} · ${(p.ribCutLengthMm / 1000).toFixed(6)} · √(2/3)`,
-      actual: expectedHeightM,
-      expected: expectedHeightM,
-      tolerance: 1e-12,
-      unit: 'м',
-      howToCheck: 'Разделите закупочную длину прутка на число частей, умножьте на √(2/3), затем на число модулей.',
+      id: 'cut-length', level: 1,
+      title: 'Длина ребра из закупочного прутка',
+      explanation: 'Первую величину можно проверить обычным делением на калькуляторе.',
+      formula: 'a = L₀ / n',
+      substitution: `${p.stockBarLengthMm} мм / ${p.stockBarPieces} = ${aExpectedMm} мм`,
+      actual: p.ribCutLengthMm, expected: aExpectedMm, tolerance: 1e-12, unit: 'мм',
+      howToCheck: 'Разделите закупочную длину прутка в миллиметрах на число равных частей и сравните с полем «Длина ребра».',
     }),
     numericCheck({
-      id: 'section-area', level: 1,
-      title: 'Площадь круглого сечения',
-      explanation: 'Для сплошного круглого прутка площадь должна быть πd²/4.',
-      formula: 'A = πd²/4',
-      substitution: `d = ${(diameterM * 1000).toFixed(3)} мм`,
-      actual: firstMember.areaM2,
-      expected: areaM2,
-      tolerance: 1e-12,
-      unit: 'м²',
-      howToCheck: 'Возьмите диаметр в метрах, возведите в квадрат, умножьте на π и разделите на 4.',
+      id: 'octahedron-height', level: 1,
+      title: 'Высота правильного октаэдра',
+      explanation: 'Высота модуля не является независимым вводом.',
+      formula: 'h = a·√(2/3)',
+      substitution: `${aExpectedMm}·√(2/3) = ${hExpectedMm} мм`,
+      actual: p.moduleHeightMm, expected: hExpectedMm, tolerance: 1e-12, unit: 'мм',
+      howToCheck: 'Умножьте длину ребра на √(2/3) ≈ 0,81649658.',
     }),
     numericCheck({
-      id: 'section-inertia', level: 1,
-      title: 'Момент инерции круглого сечения',
-      explanation: 'Для сплошного круглого прутка I = πd⁴/64.',
-      formula: 'I = πd⁴/64',
-      substitution: `d = ${(diameterM * 1000).toFixed(3)} мм`,
-      actual: firstMember.inertiaM4,
-      expected: inertiaM4,
-      tolerance: 1e-12,
-      unit: 'м⁴',
-      howToCheck: 'Возьмите диаметр в метрах, возведите в четвёртую степень, умножьте на π и разделите на 64.',
+      id: 'mast-height', level: 1,
+      title: 'Полная высота геометрической модели',
+      explanation: 'Проверяется не подпись UI, а фактические координаты узлов FEM-модели.',
+      formula: 'H = N·h',
+      substitution: `${p.moduleCount}·${hExpectedMm} мм = ${heightExpectedM} м`,
+      actual: heightActualM, expected: heightExpectedM, tolerance: 1e-12, unit: 'м',
+      howToCheck: 'Умножьте число модулей на вычисленную высоту одного октаэдра.',
+    }),
+    booleanCheck({
+      id: 'member-count', level: 1,
+      title: 'Количество рёбер соответствует топологии',
+      explanation: 'Каждый физический модуль содержит собственный верхний треугольник и шесть диагональных рёбер — всего 9 рёбер; отдельного closeTopRing в канонической геометрии нет.',
+      passed: model.members.length === expectedMemberCount,
+      evidence: `модель: ${model.members.length}; ожидается: ${expectedMemberCount}`,
+      howToCheck: `Посчитайте 9·${p.moduleCount}.`,
+    }),
+    booleanCheck({
+      id: 'equal-edges', level: 1,
+      title: 'Все рёбра модели имеют заданную длину',
+      explanation: 'Это прямой контроль координат всех стержней, а не только формулы высоты.',
+      passed: maximumLengthErrorM <= Math.max(1e-10, targetLengthM * 1e-10),
+      evidence: `максимальное отклонение длины = ${maximumLengthErrorM} м`,
+      howToCheck: 'В расчётном проекте длины рёбер должны совпадать с a; программа дополнительно проверяет все координаты автоматически.',
     }),
     numericCheck({
       id: 'steel-mass', level: 1,
-      title: 'Масса стержней соответствует ρ·A·L',
-      explanation: 'Масса вычисляется напрямую из плотности стали, площади сечения и длины всех рёбер.',
-      formula: 'm = ρ · A · ΣL',
-      substitution: `ρ=${p.densityKgM3}; A=${areaM2}; рёбер=${result.model.members.length}; L=${ribLengthM}`,
-      actual: result.analysis.totalMassKg,
-      expected: expectedTotalMassKg,
-      tolerance: 1e-10,
-      unit: 'кг',
-      howToCheck: 'Посчитайте массу одного ребра ρ·A·L и умножьте на число рёбер.',
+      title: 'Масса арматурного каркаса',
+      explanation: 'Для одинаковых круглых рёбер массу можно независимо получить из общей длины, площади сечения и плотности стали.',
+      formula: 'm = LΣ·(πd²/4)·ρ',
+      substitution: `${totalLengthM} м · π·${diameterM}²/4 · ${p.densityKgM3} = ${expectedMassKg} кг`,
+      actual: result.analysis.totalMassKg, expected: expectedMassKg, tolerance: 1e-10, unit: 'кг',
+      howToCheck: 'Посчитайте число рёбер, умножьте на длину одного ребра, затем на πd²/4 и плотность стали.',
+    }),
+    numericCheck({
+      id: 'self-weight', level: 1,
+      title: 'Расчётный собственный вес',
+      explanation: 'Проверяется преобразование массы стали в расчётную силу тяжести.',
+      formula: 'G = m·g·γg',
+      substitution: `${expectedMassKg}·${VERIFICATION_GRAVITY_M_S2}·${p.deadLoadFactor} = ${expectedSelfWeightN} Н`,
+      actual: result.loads.selfWeightN, expected: expectedSelfWeightN, tolerance: 1e-10, unit: 'Н',
+      howToCheck: 'Умножьте массу стали на 9,80665 и коэффициент постоянной нагрузки γg.',
+    }),
+    numericCheck({
+      id: 'wind-pressure', level: 1,
+      title: 'Скорость ветра переводится в давление',
+      explanation: 'Проверяет погодный слой до FEM.',
+      formula: 'q = ρair·v²/2',
+      substitution: `0,5·${AIR_DENSITY_KG_M3}·${p.windSpeedMs}² = ${expectedPressurePa} Па`,
+      actual: p.windPressurePa, expected: expectedPressurePa, tolerance: 1e-10, unit: 'Па',
+      howToCheck: 'Возведите скорость ветра в квадрат, умножьте на 1,225 и разделите на 2.',
     }),
   ]
 }
 
 function equilibriumChecks(result: VerificationResult): VerificationCheck[] {
+  const cases = result.cases
+  const worstRelativeResidual = Math.max(...cases.map((item) => item.analysis.diagnostics.relativeResidual))
+  const worstNodeResidual = Math.max(...cases.map((item) => item.analysis.diagnostics.maximumNodeEquilibriumResidual))
+  const worstMomentResidual = Math.max(...cases.map((item) => item.analysis.diagnostics.globalMomentResidual))
+  const worstBucklingResidual = Math.max(...cases.map((item) => item.analysis.buckling.residual))
   const governing = result.envelope.governing
-  const analysis = governing.analysis
-  const loads = governing.loads
-  const residual = analysis.diagnostics.relativeResidual
-  const freeEquilibrium = analysis.diagnostics.maximumFreeEquilibriumResidual
-  const forceBalance = add3(analysis.totalReaction, loads.totalAppliedLoad)
-  const forceScale = Math.max(1, norm3(loads.totalAppliedLoad))
-  const forceResidual = norm3(forceBalance) / forceScale
+  const reaction = governing.analysis.reactions.reduce<MutableVector3>((sum, value) => add3(sum, value), [0, 0, 0])
+  const forceClosure = add3(reaction, governing.loads.totalAppliedLoad)
+  const forceScale = Math.max(1, norm3(governing.loads.totalAppliedLoad), norm3(reaction))
+  const forceClosureRatio = norm3(forceClosure) / forceScale
+
   return [
     booleanCheck({
-      id: 'linear-residual', level: 2,
-      title: 'Линейная система K·u=F решена с малой невязкой',
-      explanation: 'После решения подставляем найденные перемещения обратно в уравнение равновесия.',
-      passed: residual <= 1e-8,
-      evidence: `relativeResidual = ${residual}`,
-      howToCheck: 'Число должно быть существенно меньше 1e−8. Это проверяет численное решение, но не правильность самой физической модели.',
+      id: 'global-force-equilibrium', level: 2,
+      title: 'Сумма сил замыкается',
+      explanation: 'Реакции основания должны быть равны внешним силам с противоположным знаком.',
+      passed: forceClosureRatio < 1e-8,
+      evidence: `|ΣR + ΣF| / scale = ${forceClosureRatio}`,
+      howToCheck: 'В проекте сложите X/Y/Z-компоненты внешних сил и реакций. Для каждой оси сумма должна быть практически нулевой.',
+    }),
+    booleanCheck({
+      id: 'global-moment-equilibrium', level: 2,
+      title: 'Сумма моментов замыкается',
+      explanation: 'Проверяется физическое равновесие моментов внешних нагрузок и реакций относительно начала координат.',
+      passed: worstMomentResidual < 1e-8,
+      evidence: `худшая относительная невязка моментов = ${worstMomentResidual}`,
+      howToCheck: 'Это более трудоёмкая ручная проверка: для каждой силы вычисляется r×F и добавляются реактивные моменты. В проекте приведена готовая относительная невязка.',
+    }),
+    booleanCheck({
+      id: 'linear-system-residual', level: 2,
+      title: 'Матрица действительно удовлетворяет K·u = F',
+      explanation: 'Даже если формулы модели правильны, численный решатель должен решить собранную систему.',
+      passed: worstRelativeResidual < 1e-8,
+      evidence: `max ||K·u−F||/||F|| = ${worstRelativeResidual}`,
+      howToCheck: 'Неспециалисту не нужно перемножать всю матрицу: достаточно убедиться, что невязка на много порядков меньше 1. Порог приложения — 1e−8.',
     }),
     booleanCheck({
       id: 'free-dof-equilibrium', level: 2,
-      title: 'На свободных степенях нет необъяснимых сил',
-      explanation: 'Сумма внутренних и внешних сил на незакреплённых DOF должна быть близка к нулю.',
-      passed: freeEquilibrium <= 1e-8,
-      evidence: `normalized free-DOF residual = ${freeEquilibrium}`,
-      howToCheck: 'Нормированная невязка должна быть меньше 1e−8.',
+      title: 'В свободных степенях свободы нет необъяснимых сил',
+      explanation: 'После восстановления внутренних усилий каждый свободный узел должен быть в равновесии.',
+      passed: worstNodeResidual < 1e-8,
+      evidence: `максимальная нормированная невязка свободной DOF = ${worstNodeResidual}`,
+      howToCheck: 'Смотрите этот показатель как контрольную сумму FEM: значение порядка 1e−10…1e−12 хорошо, выше 1e−8 приложение считает подозрительным.',
     }),
     booleanCheck({
-      id: 'global-force-balance', level: 2,
-      title: 'Реакции основания уравновешивают внешние силы',
-      explanation: 'Вектор суммы реакций и внешних сил должен быть близок к нулю.',
-      passed: forceResidual <= 1e-8,
-      evidence: `|R+F|/max(1,|F|) = ${forceResidual}`,
-      howToCheck: 'Сложите три компоненты суммарной реакции и суммарной внешней нагрузки; остаток должен быть близок к нулю.',
+      id: 'buckling-residual', level: 2,
+      title: 'Найденная форма устойчивости удовлетворяет eigen-уравнению',
+      explanation: 'Проверяется исходное уравнение (K + λKG)φ = 0, а не только внутренний критерий Lanczos.',
+      passed: worstBucklingResidual < 1e-5,
+      evidence: `max buckling residual = ${worstBucklingResidual}`,
+      howToCheck: 'Для eigen-задачи принят более мягкий численный порог 1e−5. Большая невязка означает, что критический множитель нельзя считать надёжно найденным.',
     }),
   ]
 }
 
+function singleBeamModel({ lengthM, diameterM, axis = [1, 0, 0] }: SingleBeamInput): MastModel {
+  const end = axis.map((value) => value * lengthM) as MutableVector3
+  return {
+    moduleCount: 1,
+    topNodeIds: [1],
+    nodes: [
+      { id: 0, position: [0, 0, 0], restrained: [true, true, true, true, true, true] },
+      { id: 1, position: end, restrained: [false, false, false, false, false, false] },
+    ],
+    members: [{
+      id: 0,
+      nodeA: 0,
+      nodeB: 1,
+      diameterM,
+      youngModulusPa: 200e9,
+      yieldStrengthPa: 400e6,
+      tensileStrengthPa: 400e6,
+      poissonRatio: 0.3,
+      densityKgM3: 7850,
+      effectiveLengthFactor: 0.5,
+    }],
+  }
+}
+
+function zeroLoadCase(model: MastModel, nodalLoads: readonly Vector3[]): LoadCase {
+  return {
+    nodalLoads,
+    nodalMoments: model.nodes.map(() => [0, 0, 0]),
+    memberDistributedLoads: model.members.map(() => [0, 0, 0]),
+    totalAppliedLoad: nodalLoads.reduce<MutableVector3>((sum, value) => add3(sum, value), [0, 0, 0]),
+    selfWeightN: 0,
+    iceWeightN: 0,
+    memberWindN: 0,
+    equipmentWindN: 0,
+  }
+}
+
 function analyticalBenchmarkChecks(): VerificationCheck[] {
-  const E = 210e9
-  const d = 0.02
-  const L = 2
-  const P = 1_000
-  const F = 100
-  const I = Math.PI * d ** 4 / 64
-  const A = Math.PI * d ** 2 / 4
-  const single: SingleBeamInput = { lengthM: L, diameterM: d }
-  const axial = analyzeFrame({
-    parameters: { youngModulusGPa: E / 1e9, poissonRatio: 0.3 } as ResolvedProject,
-    model: {
-      nodes: [
-        { id: 0, position: [0, 0, 0], fixed: true },
-        { id: 1, position: [0, 0, L], fixed: false },
-      ],
-      members: [{ id: 0, nodeA: 0, nodeB: 1, ...single, areaM2: A, inertiaM4: I, polarInertiaM4: 2 * I }],
-      topNodeIds: [1],
-      moduleCount: 1,
-    } as MastModel,
-    loadCase: {
-      nodalLoads: [[0, 0, 0], [0, 0, P]],
-      nodalMoments: [[0, 0, 0], [0, 0, 0]],
-      memberDistributedLoads: [[0, 0, 0]],
-      totalAppliedLoad: [0, 0, P],
-      distributedResultant: [0, 0, 0],
-      nodalResultant: [0, 0, P],
-    } as unknown as LoadCase,
-  })
-  const cantilever = analyzeFrame({
-    parameters: { youngModulusGPa: E / 1e9, poissonRatio: 0.3 } as ResolvedProject,
-    model: {
-      nodes: [
-        { id: 0, position: [0, 0, 0], fixed: true },
-        { id: 1, position: [0, 0, L], fixed: false },
-      ],
-      members: [{ id: 0, nodeA: 0, nodeB: 1, ...single, areaM2: A, inertiaM4: I, polarInertiaM4: 2 * I }],
-      topNodeIds: [1],
-      moduleCount: 1,
-    } as MastModel,
-    loadCase: {
-      nodalLoads: [[0, 0, 0], [F, 0, 0]],
-      nodalMoments: [[0, 0, 0], [0, 0, 0]],
-      memberDistributedLoads: [[0, 0, 0]],
-      totalAppliedLoad: [F, 0, 0],
-      distributedResultant: [0, 0, 0],
-      nodalResultant: [F, 0, 0],
-    } as unknown as LoadCase,
-  })
-  const expectedAxial = P * L / (E * A)
-  const expectedCantilever = F * L ** 3 / (3 * E * I)
+  const parameters = {
+    materialSafetyFactor: 1,
+    effectiveLengthFactor: 0.5,
+  }
+
+  const axialLengthM = 2
+  const axialDiameterM = 0.01
+  const axialForceN = 10_000
+  const axialModel = singleBeamModel({ lengthM: axialLengthM, diameterM: axialDiameterM })
+  const axial = analyzeFrame(
+    axialModel as Parameters<typeof analyzeFrame>[0],
+    zeroLoadCase(axialModel, [[0, 0, 0], [axialForceN, 0, 0]]) as Parameters<typeof analyzeFrame>[1],
+    parameters as Parameters<typeof analyzeFrame>[2],
+  )
+  const axialAreaM2 = Math.PI * axialDiameterM ** 2 / 4
+  const axialExpectedM = axialForceN * axialLengthM / (200e9 * axialAreaM2)
+
+  const bendLengthM = 2
+  const bendDiameterM = 0.02
+  const bendForceN = 500
+  const bendModel = singleBeamModel({ lengthM: bendLengthM, diameterM: bendDiameterM })
+  const bend = analyzeFrame(
+    bendModel as Parameters<typeof analyzeFrame>[0],
+    zeroLoadCase(bendModel, [[0, 0, 0], [0, bendForceN, 0]]) as Parameters<typeof analyzeFrame>[1],
+    parameters as Parameters<typeof analyzeFrame>[2],
+  )
+  const inertiaM4 = Math.PI * bendDiameterM ** 4 / 64
+  const bendExpectedM = bendForceN * bendLengthM ** 3 / (3 * 200e9 * inertiaM4)
+  const rotationExpectedRad = bendForceN * bendLengthM ** 2 / (2 * 200e9 * inertiaM4)
+
   return [
     numericCheck({
-      id: 'axial-bar', level: 3,
-      title: 'Растяжение прямого стержня совпадает с PL/EA',
-      explanation: 'Это элементарная задача сопротивления материалов с известным аналитическим ответом.',
-      formula: 'δ = PL/(EA)',
-      substitution: `P=${P}; L=${L}; E=${E}; A=${A}`,
-      actual: axial.displacements[1]?.[2] ?? Number.NaN,
-      expected: expectedAxial,
-      tolerance: 1e-10,
-      unit: 'м',
-      howToCheck: 'Подставьте числа в PL/EA и сравните с перемещением верхнего узла по оси стержня.',
+      id: 'reference-axial-bar', level: 3,
+      title: 'Эталон 1: растяжение одного стержня',
+      explanation: 'Программа сама решает простейшую задачу, у которой ответ известен в одну формулу.',
+      formula: 'δ = F·L/(E·A)',
+      substitution: `${axialForceN}·${axialLengthM}/(200e9·π·${axialDiameterM}²/4) = ${axialExpectedM} м`,
+      actual: axial.displacements[1]![0], expected: axialExpectedM, tolerance: 1e-9, unit: 'м',
+      howToCheck: 'Эту формулу можно набрать на любом инженерном калькуляторе. Совпадение проверяет осевую часть frame-element и систему единиц.',
     }),
     numericCheck({
-      id: 'cantilever-tip', level: 3,
-      title: 'Прогиб консоли совпадает с FL³/(3EI)',
-      explanation: 'Классическая поперечная задача для Euler–Bernoulli балки.',
-      formula: 'δ = FL³/(3EI)',
-      substitution: `F=${F}; L=${L}; E=${E}; I=${I}`,
-      actual: cantilever.displacements[1]?.[0] ?? Number.NaN,
-      expected: expectedCantilever,
-      tolerance: 1e-8,
-      unit: 'м',
-      howToCheck: 'Подставьте F, L, E и I в формулу консольной балки и сравните с FEM.',
+      id: 'reference-cantilever-deflection', level: 3,
+      title: 'Эталон 2: прогиб консоли',
+      explanation: 'Проверяется изгибная часть 3D frame-element на классической консоли.',
+      formula: 'δ = P·L³/(3·E·I)',
+      substitution: `${bendForceN}·${bendLengthM}³/(3·200e9·${inertiaM4}) = ${bendExpectedM} м`,
+      actual: bend.displacements[1]![1], expected: bendExpectedM, tolerance: 1e-8, unit: 'м',
+      howToCheck: 'Посчитайте I=πd⁴/64, затем подставьте P, L, E и I в формулу прогиба консоли.',
+    }),
+    numericCheck({
+      id: 'reference-cantilever-rotation', level: 3,
+      title: 'Эталон 3: поворот конца консоли',
+      explanation: 'Одновременно проверяется вращательная степень свободы узла.',
+      formula: 'θ = P·L²/(2·E·I)',
+      substitution: `${bendForceN}·${bendLengthM}²/(2·200e9·${inertiaM4}) = ${rotationExpectedRad} рад`,
+      actual: Math.abs(bend.rotations[1]![2]), expected: rotationExpectedRad, tolerance: 1e-8, unit: 'рад',
+      howToCheck: 'Используйте тот же I, что в предыдущем шаге. Независимое совпадение двух величин труднее получить при случайной ошибке в матрице элемента.',
     }),
   ]
 }
 
 function crossAlgorithmChecks(): VerificationCheck[] {
   const matrix = [
-    [8, -2, 0.5, 0, 0],
-    [-2, 7, -1, 0.25, 0],
+    [7, -2, 0.5, 0, 0],
+    [-2, 8, -1, 0.25, 0],
     [0.5, -1, 6, -1.5, 0.2],
     [0, 0.25, -1.5, 7, -1],
     [0, 0, 0.2, -1, 5],

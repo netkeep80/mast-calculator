@@ -71,6 +71,16 @@ function isPublicEntrypoint(file) {
     || /^packages\/structural-analysis\/testing\.(?:js|ts|mjs|mts|cjs|cts)$/.test(file)
 }
 
+function finalTestCategory(testItem) {
+  if (testItem.category !== 'unclassified') return testItem.category
+  const name = testItem.path.toLowerCase()
+  if (/(package-entrypoints|typescript-package-source|web-application-boundary|web-boundaries)/.test(name)) return 'architecture'
+  if (/(application-cancellation|contracts\.test|headless-api)/.test(name)) return 'public API/contract'
+  if (/(project-form-dom|web-state)/.test(name)) return 'UI contract'
+  if (/(calculation-controller|cli-artifacts|cli-oracle|desktop-adapter|desktop-packaging|project-package-web)/.test(name)) return 'adapter contract'
+  return 'unclassified'
+}
+
 const publicEntrypoints = report.modules
   .filter((module) => isPublicEntrypoint(module.path))
   .map((module) => ({
@@ -91,9 +101,15 @@ const highestFanOut = [...report.modules]
   }))
   .sort((left, right) => right.dependencies - left.dependencies || right.importers - left.importers || left.path.localeCompare(right.path))
   .slice(0, 10)
-const testCategories = Object.entries(report.testCategoryCounts)
+
+const classifiedTests = report.tests.map((item) => ({ ...item, category: finalTestCategory(item) }))
+const testCategoryCounts = classifiedTests.reduce((counts, item) => {
+  counts[item.category] = (counts[item.category] ?? 0) + 1
+  return counts
+}, {})
+const testCategories = Object.entries(testCategoryCounts)
   .sort(([left], [right]) => left.localeCompare(right))
-const unclassifiedTests = report.tests.filter((item) => item.category === 'unclassified')
+const unclassifiedTests = classifiedTests.filter((item) => item.category === 'unclassified')
 
 const lines = [
   '# Architecture Foundation metrics',
@@ -140,3 +156,6 @@ const lines = [
 ]
 
 process.stdout.write(`${lines.join('\n')}\n`)
+if (unclassifiedTests.length) {
+  throw new Error(`Every retained test needs a durable responsibility; unclassified: ${unclassifiedTests.map((item) => item.path).join(', ')}`)
+}

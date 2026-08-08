@@ -57,7 +57,7 @@ export interface ModuleResult {
 
 export interface ModuleAnalysis {
   readonly method: string
-  readonly displacementVector: readonly number[]
+  readonly displacementVector: ArrayLike<number>
   readonly modules: readonly ModuleResult[]
   readonly relativeDisplacementDifference: number
   readonly interfaceEquilibriumResidual: number

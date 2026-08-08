@@ -3,6 +3,7 @@ import {
   parseProjectPackage,
   serializeProjectPackage,
 } from '../../packages/application/index.js'
+import { fileAdapter as defaultFileAdapter } from './file-adapter.js'
 import {
   applyProjectInputToForm,
   readProjectInputFromForm,
@@ -30,7 +31,7 @@ function dispatchFormSynchronization(form) {
   }
 }
 
-export function initializeProjectPackageUi(form, fileAdapter) {
+export function initializeProjectPackageUi(form, fileAdapter = defaultFileAdapter) {
   const exportRow = document.querySelector('.export-row')
   if (!exportRow || !form || !fileAdapter) return null
 

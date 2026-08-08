@@ -3,13 +3,12 @@ import test from 'node:test'
 import {
   calculateMast,
   calculateMaximumHeight,
-  DEFAULT_PARAMETERS,
-  resolveCalculationParameters,
 } from '../packages/application/index.js'
 import { generateMastModel } from '../packages/structural-analysis/index.js'
 import { buildLoadCase } from '../packages/structural-analysis/index.js'
 import { compileModuleStack, solveModuleStack } from '../packages/structural-analysis/index.js'
 import { analyzeFrame, compileFrameSystem } from '../packages/structural-analysis/index.js'
+import { resolvedProject } from './helpers/resolved-project.js'
 
 const norm = (vector) => Math.hypot(...vector)
 
@@ -21,8 +20,7 @@ function analysisVector(analysis) {
 }
 
 test('Schur-расчёт сверху вниз совпадает с глобальной banded FEM по всем 6 DOF', () => {
-  const parameters = resolveCalculationParameters({
-    ...DEFAULT_PARAMETERS,
+  const parameters = resolvedProject({
     moduleCount: 4,
     windEnvelopeEnabled: false,
     windDirectionDeg: 37,
@@ -44,16 +42,13 @@ test('Schur-расчёт сверху вниз совпадает с глоба�
 })
 
 test('верхний модуль не получает нагрузку от несуществующего вышестоящего модуля', () => {
-  const result = calculateMast({
-    ...DEFAULT_PARAMETERS,
+  const result = calculateMast(resolvedProject({
     moduleCount: 3,
     windEnvelopeEnabled: false,
     windPressurePa: 0,
     equipmentMassKg: 0,
     equipmentWindAreaM2: 0,
-    extraHorizontalLoadN: 0,
-    extraVerticalLoadN: 0,
-  })
+  }))
   const modules = result.analysis.moduleResults
   const top = modules.at(-1)
   assert.ok(norm(top.topResultantFromAbove.forceN) < 1e-7)
@@ -61,16 +56,13 @@ test('верхний модуль не получает нагрузку от н
 })
 
 test('воздействие верхних модулей на нижние интерфейсы нарастает сверху вниз', () => {
-  const result = calculateMast({
-    ...DEFAULT_PARAMETERS,
+  const result = calculateMast(resolvedProject({
     moduleCount: 4,
     windEnvelopeEnabled: false,
     windPressurePa: 0,
     equipmentMassKg: 0,
     equipmentWindAreaM2: 0,
-    extraHorizontalLoadN: 0,
-    extraVerticalLoadN: 0,
-  })
+  }))
   const modules = result.analysis.moduleResults
   const interfaceVertical = modules.map((module) => Math.abs(module.topResultantFromAbove.forceN[2]))
   assert.ok(interfaceVertical[0] > interfaceVertical[1])
@@ -80,11 +72,10 @@ test('воздействие верхних модулей на нижние и�
 })
 
 test('calculateMast публикует модульный cross-check и по одному результату на физический модуль', () => {
-  const result = calculateMast({
-    ...DEFAULT_PARAMETERS,
+  const result = calculateMast(resolvedProject({
     moduleCount: 5,
     windEnvelopeEnabled: false,
-  })
+  }))
   assert.equal(result.analysis.moduleResults.length, 5)
   assert.equal(result.analysis.modular.method, 'module-schur-top-down-v1')
   assert.ok(result.analysis.modular.relativeDisplacementDifference < 1e-8)
@@ -93,13 +84,12 @@ test('calculateMast публикует модульный cross-check и по о
 })
 
 test('поиск максимальной высоты возвращает дискретный предел и механизм нижнего модуля', { timeout: 30_000 }, () => {
-  const result = calculateMaximumHeight({
-    ...DEFAULT_PARAMETERS,
+  const result = calculateMaximumHeight(resolvedProject({
     moduleCount: 3,
     heightSearchMaxModules: 12,
     windEnvelopeEnabled: false,
     windPressurePa: 150,
-  })
+  }))
   assert.equal(result.method, 'integer-module-height-search-v1')
   assert.ok(result.design.maximumModules >= 0)
   assert.ok(result.design.maximumModules <= 12)

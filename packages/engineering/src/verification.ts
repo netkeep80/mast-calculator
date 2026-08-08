@@ -27,6 +27,7 @@ type MutableVector3 = [number, number, number]
 type VectorLike = readonly number[]
 
 interface VerificationCheck {
+  [key: string]: unknown
   id: string
   level: number
   title: string
@@ -68,6 +69,7 @@ interface BooleanCheckInput {
 }
 
 interface VerificationLevel {
+  [key: string]: unknown
   number: number
   title: string
   description: string
@@ -181,7 +183,7 @@ function geometryAndMaterialChecks(result: VerificationResult): VerificationChec
   const heightExpectedM = p.moduleCount * hExpectedMm / 1000
   const actualZ = model.nodes.map((node) => node.position[2])
   const heightActualM = Math.max(...actualZ) - Math.min(...actualZ)
-  const expectedMemberCount = p.moduleCount * 9 + (p.closeTopRing ? 3 : 0)
+  const expectedMemberCount = p.moduleCount * 9
   const targetLengthM = p.ribCutLengthMm / 1000
   const lengths = model.members.map((member) => memberLength(model, member))
   const maximumLengthErrorM = Math.max(...lengths.map((length) => Math.abs(length - targetLengthM)), 0)
@@ -223,10 +225,10 @@ function geometryAndMaterialChecks(result: VerificationResult): VerificationChec
     booleanCheck({
       id: 'member-count', level: 1,
       title: 'Количество рёбер соответствует топологии',
-      explanation: 'На модуль приходится 3 горизонтальных + 6 диагональных рёбер; при замыкании вершины добавляются ещё 3.',
+      explanation: 'Каждый физический модуль содержит собственный верхний треугольник и шесть диагональных рёбер — всего 9 рёбер; отдельного closeTopRing в канонической геометрии нет.',
       passed: model.members.length === expectedMemberCount,
       evidence: `модель: ${model.members.length}; ожидается: ${expectedMemberCount}`,
-      howToCheck: `Посчитайте 9·${p.moduleCount}${p.closeTopRing ? ' + 3 верхних' : ''}.`,
+      howToCheck: `Посчитайте 9·${p.moduleCount}.`,
     }),
     booleanCheck({
       id: 'equal-edges', level: 1,

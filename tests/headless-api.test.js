@@ -5,6 +5,7 @@ import {
   calculateProject,
   createProjectInput,
   createVerification,
+  optimizeAndCalculateProject,
   optimizeProject,
 } from '../packages/application/index.js'
 
@@ -55,4 +56,22 @@ test('public application API exposes optimization and guyed calculation without 
   assert.equal(guyed.cableSystem.cables.length, 0)
   assert.ok(Number.isFinite(guyed.envelope.maxTopDisplacementM))
   assert.equal(Object.isFrozen(guyed), true)
+})
+
+test('application owns optimize-then-calculate job semantics used by adapters', () => {
+  const progress = []
+  const output = optimizeAndCalculateProject(compactInput, {
+    diameters: [12],
+    onProgress: (event) => progress.push(event),
+  })
+
+  assert.equal(output.optimization.evaluatedCount, 1)
+  assert.equal(output.optimization.recommendedDiameter, 12)
+  assert.equal(output.optimization.variants[0].diameter, 12)
+  assert.ok(output.result)
+  assert.equal(output.result.parameters.barDiameterMm, 12)
+  assert.equal(output.result.parameters.jointConfiguratorMode, 'auto')
+  assert.equal(Object.isFrozen(output), true)
+  assert.equal(progress.at(-1).phase, 'done')
+  assert.equal(progress.at(-1).fraction, 1)
 })

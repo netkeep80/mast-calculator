@@ -9,7 +9,6 @@ import {
   readProjectInputFromForm,
 } from './project-form-dom.js'
 import { initializeRuntimeInfo } from './runtime-info.js'
-import './workspace-shell.js'
 
 void initializeRuntimeInfo()
 

@@ -197,10 +197,10 @@ body[data-web-ui='2.0'] {
 
 .workspace-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 330px) minmax(0, 1fr) minmax(280px, 330px);
+  grid-template-columns: minmax(280px, 320px) minmax(560px, 1fr) minmax(280px, 320px);
   grid-template-areas:
     'project view summary'
-    'details details details';
+    'project details summary';
   gap: .75rem;
   width: 100%;
   max-width: 1920px;
@@ -244,6 +244,7 @@ body[data-web-ui='2.0'] {
   grid-area: details;
   display: grid;
   gap: .75rem;
+  align-self: start;
 }
 
 .workspace-pane-heading {
@@ -551,12 +552,12 @@ body[data-web-ui='2.0'] .parameters > .button-row.scenario-actions {
       'details details';
   }
 
+  .workspace-project-pane,
   .workspace-summary-pane {
     position: static;
-    display: grid;
-    grid-template-columns: 1fr;
     max-height: none;
     overflow: visible;
+    padding-right: 0;
   }
 }
 

@@ -29,20 +29,111 @@ const desktopApplication = desktopAvailable ? await import(moduleUrl(desktopRoot
 const desktopDesign = desktopAvailable ? await import(moduleUrl(desktopRoot, 'design')) : null
 const desktopReporting = desktopAvailable ? await import(moduleUrl(desktopRoot, 'reporting')) : null
 
-function compactProject() {
+const FAST_ENVIRONMENT = Object.freeze({
+  windPresetId: 'custom',
+  windPressurePa: 250,
+  windEnvelopeEnabled: false,
+  lateralCapacityStepDeg: 90,
+})
+const FAST_CRITERIA = Object.freeze({ heightSearchMaxModules: 2 })
+
+function compactProject(overrides = {}) {
   return application.createProjectInput({
-    geometry: {
-      moduleCount: 2,
-      moduleDiametersMm: [16, 12],
-    },
-    environment: {
-      windPresetId: 'custom',
-      windPressurePa: 250,
-      windEnvelopeEnabled: false,
-      lateralCapacityStepDeg: 60,
-    },
-    criteria: { heightSearchMaxModules: 2 },
+    geometry: { moduleCount: 2, ...(overrides.geometry ?? {}) },
+    environment: { ...FAST_ENVIRONMENT, ...(overrides.environment ?? {}) },
+    equipment: { ...(overrides.equipment ?? {}) },
+    connection: { ...(overrides.connection ?? {}) },
+    criteria: { ...FAST_CRITERIA, ...(overrides.criteria ?? {}) },
   })
+}
+
+function canonicalProjectCases() {
+  const basic = compactProject({ geometry: { moduleCount: 1, barDiameterMm: 12 } })
+  const mixed = compactProject({ geometry: { moduleCount: 2, moduleDiametersMm: [16, 12] } })
+  const manualJoint = compactProject({
+    geometry: { moduleCount: 1, barDiameterMm: 16 },
+    connection: {
+      configuratorMode: 'manual',
+      boltDiameterMm: 24,
+      boltClass: '8.8',
+      clearanceNutThreadMm: 30,
+      boltLengthMm: 80,
+      threadEngagementFactor: 2,
+    },
+  })
+  const capacities = compactProject({
+    geometry: { moduleCount: 2, barDiameterMm: 16 },
+    environment: { windPressurePa: 380 },
+    equipment: { massKg: 25, windAreaM2: 0.5, dragCoefficient: 1.4, loadFactor: 1.1 },
+  })
+  const guyedProject = compactProject({
+    geometry: { moduleCount: 4, barDiameterMm: 16 },
+    environment: { windPressurePa: 180, windDirectionDeg: 0 },
+    equipment: { massKg: 5, windAreaM2: 0.2 },
+  })
+  const guyedHeightM = application.previewProjectGeometry(guyedProject).mastHeightM
+
+  return [
+    {
+      name: 'basic-auto-joint',
+      package: application.createProjectPackage(basic, { metadata: { name: 'Basic auto-joint oracle' } }),
+      verify: (summary) => {
+        assert.equal(summary.mode, 'bare')
+        assert.equal(summary.result.geometry.moduleCount, 1)
+        assert.equal(summary.result.connection.mode, 'auto')
+      },
+    },
+    {
+      name: 'mixed-diameters',
+      package: application.createProjectPackage(mixed, { metadata: { name: 'Mixed-diameter oracle' } }),
+      verify: (summary) => {
+        assert.deepEqual(summary.result.geometry.moduleDiametersMm, [16, 12])
+      },
+    },
+    {
+      name: 'manual-joint',
+      package: application.createProjectPackage(manualJoint, { metadata: { name: 'Manual-joint oracle' } }),
+      verify: (summary) => {
+        assert.equal(summary.result.connection.mode, 'manual')
+        assert.equal(summary.result.connection.bolt?.diameterMm, 24)
+        assert.equal(summary.result.connection.bolt?.lengthMm, 80)
+        assert.equal(summary.result.connection.clearanceNutThreadMm, 30)
+      },
+    },
+    {
+      name: 'capacities',
+      package: application.createProjectPackage(capacities, { metadata: { name: 'Capacity oracle' } }),
+      verify: (summary) => {
+        assert.ok(Number.isFinite(summary.result.capacities.lateralCriticalForceKgf))
+        assert.ok(Number.isFinite(summary.result.capacities.staticMaximumTopMassKg))
+        assert.ok(Number.isFinite(summary.result.capacities.heightDesignMaximumM))
+        assert.ok(Number.isFinite(summary.result.capacities.craneMaximumEndPayloadMassKg))
+      },
+    },
+    {
+      name: 'guys',
+      package: application.createProjectPackage(guyedProject, {
+        metadata: { name: 'Guy-wire oracle' },
+        guys: {
+          tiers: [{
+            heightM: guyedHeightM,
+            anchorRadiusM: 5,
+            guyCount: 3,
+            azimuthOffsetDeg: 0,
+            wireId: 'galv-6x19-iwrc-6',
+            pretensionN: 600,
+          }],
+          safetyFactor: 3,
+          terminationEfficiency: 0.8,
+        },
+      }),
+      verify: (summary) => {
+        assert.equal(summary.mode, 'guyed')
+        assert.equal(summary.result.guys.cableCount, 3)
+        assert.ok(Number.isFinite(summary.result.response.maximumCableUtilization))
+      },
+    },
+  ]
 }
 
 function cleanCliEnvironment() {
@@ -72,32 +163,50 @@ function runCliSummary(packageText) {
   }
 }
 
-test('canonical project is exactly equivalent through direct, CLI, Web and Desktop adapters', { skip: !adaptersAvailable }, async () => {
-  const projectPackage = application.createProjectPackage(compactProject(), {
-    metadata: { name: 'Cross-adapter oracle' },
-  })
-  const packageText = application.serializeProjectPackage(projectPackage)
+function directSummary(projectPackage, provenance) {
+  if (projectPackage.guys) {
+    const result = application.calculateGuyedProject(
+      projectPackage.project,
+      projectPackage.guys.tiers,
+      {
+        ...(projectPackage.guys.safetyFactor === undefined ? {} : { safetyFactor: projectPackage.guys.safetyFactor }),
+        ...(projectPackage.guys.terminationEfficiency === undefined ? {} : { terminationEfficiency: projectPackage.guys.terminationEfficiency }),
+      },
+    )
+    return application.createGuyedResultSummary(projectPackage, result, { provenance })
+  }
+  return application.createBareResultSummary(
+    projectPackage,
+    application.calculateProject(projectPackage.project),
+    { provenance },
+  )
+}
+
+test('canonical project set is exactly equivalent through direct, CLI, Web and Desktop adapters', { skip: !adaptersAvailable, timeout: 180_000 }, async (t) => {
   const provenance = {
     toolVersion: String(packageJson.version),
     coreVersion: String(packageJson.version),
     command: 'calculate',
   }
-  const direct = application.createBareResultSummary(
-    projectPackage,
-    application.calculateProject(projectPackage.project),
-    { provenance },
-  )
-  const cli = runCliSummary(packageText)
-  const web = await calculateBuiltAdapterSummary(webRoot, packageText, provenance)
-  const desktop = await calculateBuiltAdapterSummary(desktopRoot, packageText, provenance)
 
-  assert.deepEqual(cli, direct)
-  assert.deepEqual(web, direct)
-  assert.deepEqual(desktop, direct)
+  for (const scenario of canonicalProjectCases()) {
+    await t.test(scenario.name, async () => {
+      const packageText = application.serializeProjectPackage(scenario.package)
+      const direct = directSummary(scenario.package, provenance)
+      const cli = runCliSummary(packageText)
+      const web = await calculateBuiltAdapterSummary(webRoot, packageText, provenance)
+      const desktop = await calculateBuiltAdapterSummary(desktopRoot, packageText, provenance)
+
+      scenario.verify(direct)
+      assert.deepEqual(cli, direct)
+      assert.deepEqual(web, direct)
+      assert.deepEqual(desktop, direct)
+    })
+  }
 })
 
 test('Desktop packaged core produces byte-identical design/report/export artifacts', { skip: !desktopAvailable }, () => {
-  const project = compactProject()
+  const project = compactProject({ geometry: { moduleCount: 2, moduleDiametersMm: [16, 12] } })
   const desktopProject = desktopApplication.createProjectInput(project)
   const directResult = application.calculateProject(project)
   const desktopResult = desktopApplication.calculateProject(desktopProject)

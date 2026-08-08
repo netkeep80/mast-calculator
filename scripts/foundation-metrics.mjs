@@ -91,6 +91,9 @@ const highestFanOut = [...report.modules]
   }))
   .sort((left, right) => right.dependencies - left.dependencies || right.importers - left.importers || left.path.localeCompare(right.path))
   .slice(0, 10)
+const testCategories = Object.entries(report.testCategoryCounts)
+  .sort(([left], [right]) => left.localeCompare(right))
+const unclassifiedTests = report.tests.filter((item) => item.category === 'unclassified')
 
 const lines = [
   '# Architecture Foundation metrics',
@@ -103,6 +106,18 @@ const lines = [
   `- production cycles: **${report.cycles.length}**`,
   `- environment exceptions: **${baseline.environmentExceptions?.length ?? 0}**`,
   `- policy violations: **${violations.length}**`,
+  `- unclassified test files: **${unclassifiedTests.length}**`,
+  '',
+  '## Test responsibility inventory',
+  '',
+  '| role | test files |',
+  '|---|---:|',
+  ...testCategories.map(([category, count]) => `| ${category} | ${count} |`),
+  ...(unclassifiedTests.length ? [
+    '',
+    'Unclassified tests:',
+    ...unclassifiedTests.map((item) => `- \`${item.path}\``),
+  ] : []),
   '',
   '## Public entrypoints',
   '',

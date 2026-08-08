@@ -65,24 +65,35 @@ function unitTopPointLoad(directionDeg: number): [number, number, number] {
 function governingMemberLimit(analysis: CheckedAnalysis) {
   let critical = analysis.memberResults[0]
   for (const candidate of analysis.memberResults) {
-    if (!critical || candidate.utilization > critical.utilization) critical = candidate
+    const candidateUtilization = candidate.utilization ?? 0
+    const criticalUtilization = critical?.utilization ?? Number.NEGATIVE_INFINITY
+    if (!critical || candidateUtilization > criticalUtilization) critical = candidate
   }
-  if (!(critical?.utilization > Number.EPSILON)) {
+  if (!critical) {
     return {
       forceN: Number.POSITIVE_INFINITY,
-      memberId: critical?.memberId ?? null,
+      memberId: null,
       mode: 'none' as const,
-      unitUtilization: critical?.utilization ?? 0,
+      unitUtilization: 0,
     }
   }
-  const mode = critical.bucklingUtilization >= critical.stressUtilization
+  const utilization = critical.utilization ?? 0
+  if (!(utilization > Number.EPSILON)) {
+    return {
+      forceN: Number.POSITIVE_INFINITY,
+      memberId: critical.memberId ?? null,
+      mode: 'none' as const,
+      unitUtilization: utilization,
+    }
+  }
+  const mode = (critical.bucklingUtilization ?? 0) >= (critical.stressUtilization ?? 0)
     ? 'local-member-buckling' as const
     : 'material-strength' as const
   return {
-    forceN: 1 / critical.utilization,
+    forceN: 1 / utilization,
     memberId: critical.memberId,
     mode,
-    unitUtilization: critical.utilization,
+    unitUtilization: utilization,
   }
 }
 

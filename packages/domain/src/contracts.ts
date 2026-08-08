@@ -158,9 +158,37 @@ export interface ResolvedProject {
   readonly weldMinimumStiffnessRetention?: number
 }
 
+export interface GuyTierInput {
+  readonly id?: string
+  readonly heightM?: number
+  readonly anchorRadiusM?: number
+  readonly anchorDistanceM?: number
+  readonly guyCount?: number
+  readonly azimuthOffsetDeg?: number
+  readonly pretensionN?: number
+  readonly wireId?: string
+  readonly safetyFactor?: number
+  readonly terminationEfficiency?: number
+}
+
+export interface ProjectGuysInput {
+  readonly tiers: readonly GuyTierInput[]
+  readonly safetyFactor?: number
+  readonly terminationEfficiency?: number
+}
+
+export interface ProjectPackageMetadata {
+  readonly name?: string
+  readonly description?: string
+  readonly createdAt?: string
+  readonly modifiedAt?: string
+}
+
 export const PROJECT_PACKAGE_SCHEMA = 'mast-calculator/project/v1' as const
 
 export interface ProjectPackageV1 {
   readonly schema: typeof PROJECT_PACKAGE_SCHEMA
+  readonly metadata?: ProjectPackageMetadata
   readonly project: ProjectInput
+  readonly guys?: ProjectGuysInput
 }

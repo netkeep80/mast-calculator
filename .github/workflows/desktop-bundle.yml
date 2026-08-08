@@ -89,6 +89,30 @@ jobs:
       - name: Build Tauri bundle
         working-directory: apps/desktop
         run: npx --yes @tauri-apps/cli@2.11.4 build --bundles ${{ matrix.bundle }}
+      - name: Report Linux/macOS bundle size
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          shopt -s nullglob
+          artifacts=( ${{ matrix.artifact_path }} )
+          test "${#artifacts[@]}" -gt 0
+          for artifact in "${artifacts[@]}"; do
+            kib="$(du -sk "$artifact" | cut -f1)"
+            mib="$(awk -v kib="$kib" 'BEGIN { printf "%.2f", kib / 1024 }')"
+            echo "${{ matrix.label }}: $artifact = ${mib} MiB"
+            echo "- **${{ matrix.label }}**: ${mib} MiB — \`$artifact\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Report Windows bundle size
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $artifacts = @(Get-ChildItem -Path '${{ matrix.artifact_path }}')
+          if ($artifacts.Count -eq 0) { throw 'Desktop bundle was not produced' }
+          foreach ($artifact in $artifacts) {
+            $mib = [Math]::Round($artifact.Length / 1MB, 2)
+            Write-Host "${{ matrix.label }}: $($artifact.FullName) = $mib MiB"
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- **${{ matrix.label }}**: $mib MiB — ``$($artifact.Name)``"
+          }
       - name: Upload unsigned Desktop bundle
         uses: actions/upload-artifact@v7
         with:

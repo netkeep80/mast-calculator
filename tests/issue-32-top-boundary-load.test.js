@@ -86,7 +86,7 @@ test('issue #36: масса оборудования остаётся единс
   approximately(fixture.nodalResultant[2], -500)
 })
 
-test('issue #36: UI физически содержит только массу и не требует runtime-удаления legacy сил', () => {
+test('issue #36: UI физически содержит только массу и не требует runtime-переименования legacy полей', () => {
   const viewer = fs.readFileSync(new URL('../apps/web/module-viewer.js', import.meta.url), 'utf8')
   const usage = fs.readFileSync(new URL('../apps/web/usage-scenarios.js', import.meta.url), 'utf8')
   const html = fs.readFileSync(new URL('../apps/web/index.html', import.meta.url), 'utf8')
@@ -95,9 +95,11 @@ test('issue #36: UI физически содержит только массу 
   assert.doesNotMatch(viewer, /нагрузка от стека сверху/i)
   assert.doesNotMatch(html, /name=["']extraHorizontalLoadN["']/)
   assert.doesNotMatch(html, /name=["']extraVerticalLoadN["']/)
-  assert.doesNotMatch(usage, /removeLegacyForceControl/)
-  assert.match(usage, /Уже установленная масса на вершине, кг/)
+  assert.match(html, /Уже установленная масса на вершине, кг/)
+  assert.match(html, /Поперечный unit-load и горизонтальная стрела/)
+  assert.doesNotMatch(usage, /removeLegacyForceControl|installIssue36Ui|setMetricLabel|page-header|прототип\s+1\./i)
   assert.match(usage, /unit-load/i)
   assert.match(usage, /горизонтальн.*стрел/i)
   assert.match(usage, /boomSelfMassEquivalentKg/)
+  assert.match(usage, /renderStaticLoadDetails/)
 })

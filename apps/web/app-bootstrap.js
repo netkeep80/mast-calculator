@@ -255,11 +255,11 @@ function synchronizeFromResult(result) {
   syncMode()
 }
 
-subscribeCalculationResult(({ projectInput, result }) => {
+subscribeCalculationResult(({ projectInput, result, guyResult }) => {
   if (projectInput) applyProjectInputToForm(form, projectInput)
   if (!result) return
   synchronizeFromResult(result)
-  enrichAndRenderUsageResult(result)
+  enrichAndRenderUsageResult(result, guyResult)
 })
 
 modeSelect.addEventListener('change', syncMode)

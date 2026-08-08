@@ -1,4 +1,5 @@
 import type { ProjectPackageV1 } from '../../domain/contracts.js'
+import { createEngineeringSummary } from './engineering-summary.js'
 import type {
   calculateGuyedProject,
   calculateProject,
@@ -26,6 +27,13 @@ export interface ResultSummaryOptions {
 type BareResult = ReturnType<typeof calculateProject>
 type GuyedResult = ReturnType<typeof calculateGuyedProject>
 type OptimizationJob = ReturnType<typeof optimizeAndCalculateProject>
+
+const LEGACY_BARE_PASS_CRITERIA = Object.freeze([
+  'bare-member-utilization',
+  'bare-global-buckling',
+  'bare-top-displacement',
+  'bare-connection',
+])
 
 function sourceSummary(projectPackage: ProjectPackageV1, provenance: ResultSummaryProvenance) {
   return {
@@ -86,12 +94,18 @@ function commonGeometry(parameters: BareResult['parameters'] | GuyedResult['para
   }
 }
 
+function legacyBarePasses(result: BareResult): boolean {
+  const engineering = createEngineeringSummary(result)
+  return LEGACY_BARE_PASS_CRITERIA.every((id) => (
+    engineering.criteria.find((item) => item.id === id)?.status === 'pass'
+  ))
+}
+
 function bareResultPayload(result: BareResult) {
   return {
-    passes: result.envelope.maxUtilization <= 1
-      && result.envelope.maxTopDisplacementM * 1000 <= result.parameters.displacementLimitMm
-      && result.envelope.minimumBucklingFactor >= result.parameters.minimumBucklingFactor
-      && result.connections?.passes !== false,
+    // result-summary/v1 keeps its original four-criterion meaning for compatibility.
+    // New consumers that need verification/pending-guy semantics use engineering-summary/v1.
+    passes: legacyBarePasses(result),
     geometry: commonGeometry(result.parameters),
     response: {
       maxUtilization: result.envelope.maxUtilization,

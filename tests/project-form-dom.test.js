@@ -5,7 +5,10 @@ import {
   applyProjectInputToForm,
   readProjectInputFromForm,
 } from '../apps/web/project-form-dom.js'
-import { createProjectInput } from '../packages/application/index.js'
+import {
+  WIND_ACTION_MODE_SP20_MEAN_V1,
+  createProjectInput,
+} from '../packages/application/index.js'
 
 function fakeForm(fieldNames) {
   const fields = new Map(fieldNames.map((name) => [name, {
@@ -44,10 +47,11 @@ test('shared DOM adapter reads canonical ProjectInput with integer/boolean/strin
   assert.equal(input.environment.windPresetId, 'custom')
   assert.equal(input.environment.windPressurePa, 321.5)
   assert.equal(input.environment.windEnvelopeEnabled, false)
+  assert.equal(input.environment.windActionMode, undefined)
   assert.equal(input.equipment.massKg, 8.5)
 })
 
-test('ProjectInput can be written to the same DOM adapter and read back', () => {
+test('legacy ProjectInput can be written to the same DOM adapter and read back unchanged', () => {
   const form = fakeForm([
     'moduleCount', 'stockBarLengthMm', 'stockBarPieces', 'barDiameterMm',
     'reinforcementClass', 'windPresetId', 'windPressurePa', 'windEnvelopeEnabled',
@@ -61,6 +65,34 @@ test('ProjectInput can be written to the same DOM adapter and read back', () => 
     criteria: { displacementLimitMm: 55 },
   })
 
+  applyProjectInputToForm(form, input)
+  const roundTrip = readProjectInputFromForm(form)
+  assert.deepEqual(roundTrip, input)
+})
+
+test('SP20 wind mode region and terrain round-trip as optional project/v1 fields', () => {
+  const form = fakeForm([
+    'moduleCount', 'stockBarLengthMm', 'stockBarPieces', 'barDiameterMm',
+    'reinforcementClass', 'windActionMode', 'windRegion', 'windTerrainType',
+    'windPresetId', 'windPressurePa', 'windEnvelopeEnabled',
+    'equipmentMassKg', 'equipmentWindAreaM2', 'displacementLimitMm',
+  ])
+  const input = createProjectInput({
+    geometry: { moduleCount: 8, stockBarLengthMm: 12000, stockBarPieces: 5, barDiameterMm: 16 },
+    material: { reinforcementClass: 'A500C' },
+    environment: {
+      windActionMode: WIND_ACTION_MODE_SP20_MEAN_V1,
+      windRegion: 'III',
+      windTerrainType: 'B',
+      windPresetId: 'custom',
+      windPressurePa: 380,
+      windEnvelopeEnabled: true,
+    },
+    equipment: { massKg: 12, windAreaM2: 0.45 },
+    criteria: { displacementLimitMm: 55 },
+  })
+
+  applyDefaultProjectInputToForm(form)
   applyProjectInputToForm(form, input)
   const roundTrip = readProjectInputFromForm(form)
   assert.deepEqual(roundTrip, input)

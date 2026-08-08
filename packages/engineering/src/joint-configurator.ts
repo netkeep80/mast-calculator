@@ -7,6 +7,7 @@ import {
   maximumModuleDiameterMm,
   suggestedWeldLegMm,
   type BoltPropertyClassId,
+  type JointHardwareOptions,
 } from '../../domain/index.js'
 import {
   calculateBoltCapacity,
@@ -31,7 +32,6 @@ export const AUTO_BOLT_CLASS_ORDER = Object.freeze([
 export const AUTO_MAX_PRELOAD_UTILIZATION = 0.55
 
 type JointGeometry = ReturnType<typeof buildJointHardwareGeometry>
-type JointStrengthParameters = ReturnType<typeof resolveJointStrengthParameters>
 
 export interface JointResultant {
   forceGlobalN: readonly number[]
@@ -109,13 +109,18 @@ function evaluateCandidate(
   geometryOverrides: GeometryOverrides = {},
   candidateOptions: CandidateOptions = {},
 ) {
-  const geometry = buildJointHardwareGeometry({
+  const hardwareOptions: JointHardwareOptions = {
     boltDiameterMm: diameterMm,
     boltClass,
     threadEngagementFactor: geometryOverrides.threadEngagementFactor ?? DEFAULT_THREAD_ENGAGEMENT_FACTOR,
-    clearanceNutThreadMm: geometryOverrides.clearanceNutThreadMm,
-    boltLengthMm: geometryOverrides.boltLengthMm,
-  })
+    ...(geometryOverrides.clearanceNutThreadMm === undefined
+      ? {}
+      : { clearanceNutThreadMm: geometryOverrides.clearanceNutThreadMm }),
+    ...(geometryOverrides.boltLengthMm === undefined
+      ? {}
+      : { boltLengthMm: geometryOverrides.boltLengthMm }),
+  }
+  const geometry = buildJointHardwareGeometry(hardwareOptions)
   const strength = resolveJointStrengthParameters(parameters)
   const tighteningTorqueNm = candidateOptions.automaticTorque === false
     ? strength.jointTighteningTorqueNm

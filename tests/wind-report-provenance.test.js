@@ -19,6 +19,7 @@ function sp20Project() {
       windTerrainType: 'B',
       windPresetId: 'custom',
       windPressurePa: 380,
+      dragCoefficient: 1.2,
       windEnvelopeEnabled: false,
       windDirectionDeg: 0,
       lateralCapacityStepDeg: 60,
@@ -26,6 +27,7 @@ function sp20Project() {
     equipment: {
       massKg: 0,
       windAreaM2: 0.1,
+      dragCoefficient: 1.4,
     },
     criteria: {
       displacementLimitMm: 1000,
@@ -47,6 +49,9 @@ test('SP20 wind provenance is identical in result, verification passport and pap
   assert.ok(provenance.referenceHeightCoefficient > 0)
   assert.equal(provenance.referenceCharacteristicMeanPressurePa, result.parameters.windPressurePa)
   assert.equal(provenance.loadReliabilityFactor, result.parameters.windLoadFactor)
+  assert.equal(provenance.aerodynamicCoefficientSource, 'project-input-not-sp20-annex')
+  assert.equal(provenance.memberAerodynamicCoefficient, 1.2)
+  assert.equal(provenance.equipmentAerodynamicCoefficient, 1.4)
   assert.equal(provenance.pulsationComponentIncluded, false)
   assert.equal(provenance.dynamicResponseIncluded, false)
 
@@ -58,11 +63,15 @@ test('SP20 wind provenance is identical in result, verification passport and pap
     sha: 'test',
   })
   assert.match(html, /10\.1\. Нормативная модель средней ветровой нагрузки/)
-  assert.match(html, /СП 20\.13330\.2016, изм\. №6, раздел 11/)
+  assert.match(html, /СП 20\.13330\.2016[\s\S]*изм\. №6[\s\S]*раздел 11/)
+  assert.match(html, /05\.09\.2024/)
+  assert.match(html, /25\.09\.2024/)
   assert.match(html, /<td>III<\/td>/)
   assert.match(html, /<td>B<\/td>/)
   assert.match(html, /γf ветровой нагрузки/)
   assert.match(html, /не является коэффициентом динамичности/)
+  assert.match(html, /project-input-not-sp20-annex/)
+  assert.match(html, /не заявляются как автоматически выбранные по приложению СП 20/)
   assert.match(html, /пульсационная составляющая — НЕ УЧТЕНА/i)
   assert.match(html, /динамический\/модальный отклик — НЕ УЧТЁН/i)
   assert.doesNotMatch(html, /dynamicCoefficient\s*=\s*2\.5/)

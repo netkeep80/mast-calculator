@@ -108,7 +108,9 @@ test('SP20 controls are static UI while normative wind formulas stay outside Web
   const controller = source('apps/web/main-project-form.js')
   const formAdapter = source('apps/web/project-form.js')
   const domAdapter = source('apps/web/project-form-dom.js')
-  const webSources = [controller, formAdapter, domAdapter]
+  const presenter = source('apps/web/wind-action-result.js')
+  const resultTabs = source('apps/web/result-tabs.js')
+  const webSources = [controller, formAdapter, domAdapter, presenter]
 
   for (const name of ['windActionMode', 'windRegion', 'windTerrainType']) {
     assert.match(index, new RegExp(`name="${name}"`), `missing static ${name} control`)
@@ -118,10 +120,16 @@ test('SP20 controls are static UI while normative wind formulas stay outside Web
   assert.match(controller, /WIND_ACTION_MODE_SP20_MEAN_V1/, 'Web controller cannot select SP20 mean mode')
   assert.match(controller, /Пульсация и динамический отклик ещё не включены/, 'UI hides the mean-only model boundary')
   assert.match(controller, /preset\.disabled = normative/, 'Beaufort remains active as a fake normative wind region')
+  assert.match(resultTabs, /renderWindActionProvenance\(snapshot\)/, 'resolved wind provenance is not projected into Verification')
+  assert.match(presenter, /windActionProvenance/, 'Verification presenter does not read canonical provenance')
+  assert.match(presenter, /γf — коэффициент надёжности по нагрузке, не коэффициент динамичности/, 'result UI confuses reliability and dynamics')
+  assert.match(presenter, /Пульсационная составляющая/, 'result UI hides the pulsation boundary')
+  assert.match(presenter, /Динамический\/модальный отклик/, 'result UI hides the dynamic boundary')
 
   for (const text of webSources) {
     assert.doesNotMatch(text, /sp20HeightCoefficient|sp20CharacteristicMeanPressurePa|SP20_TERRAIN_PARAMETERS/)
     assert.doesNotMatch(text, /Math\.pow|\*\*\s*\(?.*alpha|w0\s*\*|k\(ze\)\s*\*/i)
     assert.doesNotMatch(text, /dynamicCoefficient\s*=\s*2\.5/)
+    assert.doesNotMatch(text, /calculateProject|buildLoadCase|analyzeFrame|Worker\s*\(|postMessage\s*\(/)
   }
 })

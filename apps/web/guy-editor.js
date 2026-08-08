@@ -9,6 +9,15 @@ let singleton = null
 
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback
 
+function ensureStyles() {
+  if (document.querySelector('link[data-guy-editor-styles]')) return
+  const stylesheet = document.createElement('link')
+  stylesheet.rel = 'stylesheet'
+  stylesheet.href = './guy-editor.css'
+  stylesheet.dataset.guyEditorStyles = 'true'
+  document.head.append(stylesheet)
+}
+
 function element(tag, className = '', text = '') {
   const node = document.createElement(tag)
   if (className) node.className = className
@@ -107,10 +116,11 @@ function tierValue(card, field) {
 export function initializeGuyEditor(form) {
   if (singleton) return singleton
   if (!form) throw new Error('Guy editor requires the canonical project form')
+  ensureStyles()
 
   const details = element('details', 'input-details guy-editor')
   details.id = 'guy-input-details'
-  details.open = false
+  details.open = globalThis.location?.hash === '#guys'
   const summary = element('summary', '', 'Растяжки — отключены')
   const intro = element('p', 'hint practical-note', 'Растяжки являются частью того же project/v1. При включении основной расчёт дополнительно выполняет нелинейный tension-only cable analysis; отдельная форма мачты не используется.')
 
@@ -206,7 +216,7 @@ export function initializeGuyEditor(form) {
     safety.value = String(finite(value?.safetyFactor, 3))
     termination.value = String(finite(value?.terminationEfficiency, 0.8))
     rebuild(hasGuys ? value.tiers.length : 2, hasGuys ? value.tiers : [])
-    details.open = hasGuys
+    details.open = hasGuys || globalThis.location?.hash === '#guys'
     notify()
   }
 

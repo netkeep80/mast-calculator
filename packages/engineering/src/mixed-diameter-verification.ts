@@ -9,31 +9,31 @@ const PENDING = 'not-verified'
 type VerificationStatus = typeof PASS | typeof FAIL | typeof PENDING
 
 interface VerificationCheck {
-  id: string
-  level: number
-  status: VerificationStatus
-  [key: string]: unknown
+  readonly id: string
+  readonly level: number
+  readonly status: VerificationStatus
+  readonly [key: string]: unknown
 }
 
 interface VerificationLevel {
-  number: number
-  status?: VerificationStatus
-  checkIds?: readonly string[]
-  [key: string]: unknown
+  readonly number: number
+  readonly status?: VerificationStatus
+  readonly checkIds?: readonly string[]
+  readonly [key: string]: unknown
 }
 
 interface VerificationPassportLike {
-  checks?: VerificationCheck[]
-  levels?: VerificationLevel[]
-  counts?: Readonly<Record<string, number>>
-  [key: string]: unknown
+  readonly checks?: readonly VerificationCheck[]
+  readonly levels?: readonly VerificationLevel[]
+  readonly counts?: Readonly<Record<string, number>>
+  readonly [key: string]: unknown
 }
 
 interface MixedDiameterResult {
-  model: GeneratedMastModel
-  parameters: ResolvedProject
-  analysis: { totalMassKg: number }
-  loads: { selfWeightN: number }
+  readonly model: GeneratedMastModel
+  readonly parameters: ResolvedProject
+  readonly analysis: { readonly totalMassKg: number }
+  readonly loads: { readonly selfWeightN: number }
 }
 
 const relativeError = (actual: number, expected: number): number => (
@@ -57,7 +57,7 @@ function memberLength(model: GeneratedMastModel, member: GeneratedMastModel['mem
   return Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2])
 }
 
-function recalculatePassportStatus(passport: VerificationPassportLike): VerificationPassportLike {
+function recalculatePassportStatus<T extends VerificationPassportLike>(passport: T): T {
   const checks = passport.checks ?? []
   const passed = checks.filter((check) => check.status === PASS).length
   const failed = checks.filter((check) => check.status === FAIL).length
@@ -83,13 +83,13 @@ function recalculatePassportStatus(passport: VerificationPassportLike): Verifica
       ? 'Внутренняя проверка обнаружила несоответствие — результат нельзя считать надёжным.'
       : 'Внутренние проверки пройдены; независимая внешняя верификация и натурное подтверждение пока не выполнены.',
     levels,
-  }
+  } as T
 }
 
-export function repairMixedDiameterVerificationPassport(
-  passport: VerificationPassportLike | null | undefined,
+export function repairMixedDiameterVerificationPassport<T extends VerificationPassportLike>(
+  passport: T | null | undefined,
   result: MixedDiameterResult | null | undefined,
-): VerificationPassportLike | null | undefined {
+): T | null | undefined {
   if (!passport?.checks || !result?.model?.members?.length) return passport
   const repaired = cloneValue(passport)
   const model = result.model

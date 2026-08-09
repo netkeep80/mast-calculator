@@ -1,3 +1,4 @@
 export * from './src/linear-algebra.js'
 export * from './src/banded.js'
+export * from './src/generalized-eigen.js'
 export * from './src/vector.js'

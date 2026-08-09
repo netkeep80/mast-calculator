@@ -3,6 +3,7 @@ import {
   parseProjectPackage,
   serializeProjectPackage,
 } from '../../packages/application/index.js'
+import { initializeErectionEditor } from './erection-editor.js'
 import { fileAdapter as defaultFileAdapter } from './file-adapter.js'
 import {
   applyProjectInputToForm,
@@ -42,6 +43,7 @@ export function initializeProjectPackageUi(
 ) {
   const actions = document.querySelector('#project-file-actions') ?? document.querySelector('.export-row')
   if (!actions || !form || !fileAdapter) return null
+  const editableErection = erectionEditor ?? initializeErectionEditor(form)
 
   let retainedMetadata = undefined
   let retainedGuys = undefined
@@ -70,11 +72,11 @@ export function initializeProjectPackageUi(
     try {
       const project = readProjectInputFromForm(form)
       const editableGuys = guyEditor ? guyEditor.read() : retainedGuys
-      const editableErection = erectionEditor ? erectionEditor.read() : retainedErection
+      const erection = editableErection ? editableErection.read() : retainedErection
       const packageValue = createProjectPackage(project, {
         ...(retainedMetadata === undefined ? {} : { metadata: retainedMetadata }),
         ...(editableGuys === undefined ? {} : { guys: editableGuys }),
-        ...(editableErection === undefined ? {} : { erection: editableErection }),
+        ...(erection === undefined ? {} : { erection }),
       })
       retainedGuys = packageValue.guys
       retainedErection = packageValue.erection
@@ -109,7 +111,7 @@ export function initializeProjectPackageUi(
       applyProjectInputToForm(form, packageValue.project)
       dispatchFormSynchronization(form)
       guyEditor?.apply(packageValue.guys)
-      erectionEditor?.apply(packageValue.erection)
+      editableErection?.apply(packageValue.erection)
       const stageNotes = [
         packageValue.guys ? 'растяжки загружены в редактор' : null,
         packageValue.erection?.mode === 'tilt-up' ? 'монтаж загружен в редактор' : null,
@@ -132,5 +134,6 @@ export function initializeProjectPackageUi(
     get retainedMetadata() { return retainedMetadata },
     get retainedGuys() { return retainedGuys },
     get retainedErection() { return retainedErection },
+    erectionEditor: editableErection,
   })
 }

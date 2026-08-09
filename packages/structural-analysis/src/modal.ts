@@ -14,6 +14,8 @@ import { compileFrameSystem } from './solver.js'
 const DOF_PER_NODE = 6
 const TRANSLATIONAL_DOF_COUNT = 3
 
+type CompiledFrameSystem = ReturnType<typeof compileFrameSystem>
+
 export const MODAL_MASS_MODEL_ID = 'frame-lumped-translational-v1' as const
 
 export interface ModalMassComponents {
@@ -127,11 +129,11 @@ function modalPhysicalMass(
   }
 }
 
-export function assembleModalMass(
+function assembleModalMassForSystem(
   model: GeneratedMastModel,
   parameters: ResolvedProject,
+  system: CompiledFrameSystem,
 ): ModalMassAssembly {
-  const system = compileFrameSystem(model, parameters)
   const { nodalMassKg, components } = modalPhysicalMass(model, parameters)
   const matrix = createSymmetricBandMatrix(system.freeDofs.length, 0)
   const active: [number, number, number] = [0, 0, 0]
@@ -143,7 +145,7 @@ export function assembleModalMass(
       const reducedDof = system.reducedIndexByGlobalDof[globalDof] ?? -1
       if (reducedDof < 0) continue
       addBandValue(matrix, reducedDof, reducedDof, massKg)
-      active[axis] += massKg
+      active[axis] = (active[axis] ?? 0) + massKg
     }
   }
 
@@ -160,6 +162,13 @@ export function assembleModalMass(
       note: 'Physical member steel, physical ice and top equipment mass are lumped equally to member/top nodes. Load reliability factors are never inertia mass. Rotational inertia and connection hardware mass are intentionally outside v1.',
     },
   }
+}
+
+export function assembleModalMass(
+  model: GeneratedMastModel,
+  parameters: ResolvedProject,
+): ModalMassAssembly {
+  return assembleModalMassForSystem(model, parameters, compileFrameSystem(model, parameters))
 }
 
 function massNormalize(vector: readonly number[], mass: SymmetricBandMatrix): number[] {
@@ -247,7 +256,7 @@ export function calculateNaturalModes(
   options: NaturalModesOptions = {},
 ): NaturalModesResult {
   const system = compileFrameSystem(model, parameters)
-  const massAssembly = assembleModalMass(model, parameters)
+  const massAssembly = assembleModalMassForSystem(model, parameters, system)
   const requested = Math.max(1, Math.floor(options.modeCount ?? 6))
   const positiveMassDofs = massAssembly.matrix.rows.reduce(
     (count, row) => count + (row[0]! > 0 ? 1 : 0),

@@ -4,6 +4,7 @@ export * from './src/complete-calculation.js'
 export * from './src/optimize.js'
 export * from './src/use-cases.js'
 export * from './src/project-with-guys.js'
+export * from './src/project-erection.js'
 export * from './src/engineering-summary.js'
 export * from './src/joint-preview.js'
 export * from './src/fabrication-preview.js'
@@ -26,6 +27,7 @@ export {
   parseProjectPackage,
   resolveProjectInput,
   serializeProjectPackage,
+  validateProjectErectionInput,
   validateProjectInput,
 } from '../domain/index.js'
 export { buildReferenceData, REFERENCE_DATA_SCHEMA } from '../reporting/index.js'

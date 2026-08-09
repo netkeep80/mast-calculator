@@ -191,6 +191,37 @@ export interface ProjectGuysInput {
   readonly terminationEfficiency?: number
 }
 
+export type ErectionTopologyIndex = 0 | 1 | 2
+export type ErectionRotationSense = 1 | -1
+
+export interface ProjectErectionSamplingInput {
+  readonly initialSegments: number
+  readonly relativeTolerance: number
+  readonly minimumAngleStepDeg: Degrees
+  readonly maximumEvaluations: number
+  readonly maximumDepth: number
+}
+
+export interface ProjectErectionDisabledInput {
+  readonly mode: 'disabled'
+}
+
+export interface ProjectTiltUpErectionInput {
+  readonly mode: 'tilt-up'
+  /** Base edge i connects base corners i and (i + 1) mod 3. */
+  readonly hingeBaseEdgeIndex: ErectionTopologyIndex
+  /** Stable top-face corner selector, resolved against generated model topology. */
+  readonly attachmentTopCornerIndex: ErectionTopologyIndex
+  /** Fixed world-coordinate hoist/anchor point in metres. */
+  readonly anchorPointM: readonly [Meters, Meters, Meters]
+  readonly rotationSense: ErectionRotationSense
+  readonly startAngleDeg: Degrees
+  readonly endAngleDeg: Degrees
+  readonly sampling: ProjectErectionSamplingInput
+}
+
+export type ProjectErectionInput = ProjectErectionDisabledInput | ProjectTiltUpErectionInput
+
 export interface ProjectPackageMetadata {
   readonly name?: string
   readonly description?: string
@@ -205,4 +236,5 @@ export interface ProjectPackageV1 {
   readonly metadata?: ProjectPackageMetadata
   readonly project: ProjectInput
   readonly guys?: ProjectGuysInput
+  readonly erection?: ProjectErectionInput
 }

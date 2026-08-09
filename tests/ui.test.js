@@ -135,7 +135,7 @@ test('погодные явления выбираются из выпадающ
   assert.match(html, /<select name="windPresetId"><\/select>/)
   assert.match(mainForm, /WEATHER_PRESETS/)
   assert.match(mainForm, /getWeatherPreset/)
-  assert.match(html, /Скорость:/)
+  assert.match(html, /Эквивалентная скорость на вершине:/)
   assert.match(html, /name="windSpeedMs"[^>]*readonly/)
 })
 

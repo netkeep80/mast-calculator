@@ -72,8 +72,7 @@ export interface FrameMemberResult {
   axialForceAtBN: number
 }
 
-export interface FrameStaticAnalysisResult {
-  analysisScope: 'linear-static'
+interface FrameLinearAnalysisResult {
   solver: 'linear-3d-frame-euler-bernoulli'
   linearSystemSolver: 'symmetric-band-cholesky'
   degreesOfFreedomPerNode: 6
@@ -96,20 +95,13 @@ export interface FrameStaticAnalysisResult {
   }
 }
 
-export interface FrameAnalysisResult {
-  solver: 'linear-3d-frame-euler-bernoulli'
-  linearSystemSolver: 'symmetric-band-cholesky'
-  degreesOfFreedomPerNode: 6
-  displacements: MutableVector3[]
-  rotations: MutableVector3[]
-  reactions: MutableVector3[]
-  reactionMoments: MutableVector3[]
-  memberResults: FrameMemberResult[]
-  maxDisplacementM: number
-  maxTopDisplacementM: number
+export interface FrameStaticAnalysisResult extends FrameLinearAnalysisResult {
+  analysisScope: 'linear-static'
+}
+
+export interface FrameAnalysisResult extends FrameLinearAnalysisResult {
   maxUtilization: null
   criticalMemberId: null
-  totalMassKg: number
   buckling: {
     criticalLoadFactor: number
     mode: MutableVector3[]
@@ -117,15 +109,6 @@ export interface FrameAnalysisResult {
     residual: number
     eigenResidual: number
     iterations: number
-  }
-  diagnostics: {
-    relativeResidual: number
-    minPivotRatio: number
-    freeDofCount: number
-    stiffnessBandwidth: number
-    stiffnessFactorizationCount: number
-    maximumNodeEquilibriumResidual: number
-    globalMomentResidual: number
   }
 }
 

@@ -172,6 +172,6 @@ test('direct application erection boundary normalizes invalid configuration erro
   const erection = stableErectionInput(project)
   assert.throws(
     () => calculateProjectErection(project, { ...erection, hingeBaseEdgeIndex: 9 }),
-    (error) => error instanceof MastApplicationError && error.category === 'schema-error',
+    (error) => error instanceof MastApplicationError && error.category === 'input-validation',
   )
 })

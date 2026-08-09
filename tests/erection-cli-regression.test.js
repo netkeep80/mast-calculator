@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import {
   calculateProjectErection,
   createProjectInput,
@@ -14,7 +16,14 @@ import {
   calculateErectionState,
   generateMastModel,
 } from '../packages/structural-analysis/index.js'
-import { executeCliRequest } from '../apps/cli/cli-runtime.mjs'
+
+const runtimeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const sourceRoot = path.basename(runtimeRoot) === '.build' ? path.dirname(runtimeRoot) : runtimeRoot
+const cliPath = path.join(sourceRoot, 'apps', 'cli', 'mast-calc.mjs')
+const cleanEnv = { ...process.env }
+delete cleanEnv.GITHUB_SHA
+delete cleanEnv.GITHUB_REF
+delete cleanEnv.GITHUB_RUN_ID
 
 const add = (a, b) => a.map((value, index) => value + b[index])
 const sub = (a, b) => a.map((value, index) => value - b[index])
@@ -26,6 +35,15 @@ const cross = (a, b) => [
 ]
 const norm = (a) => Math.hypot(...a)
 const unit = (a) => scale(a, 1 / norm(a))
+
+function runCli(args) {
+  return spawnSync(process.execPath, [cliPath, ...args], {
+    cwd: sourceRoot,
+    env: cleanEnv,
+    encoding: 'utf8',
+    timeout: 120_000,
+  })
+}
 
 function erectionInput(project) {
   const parameters = resolveProjectInput(project)
@@ -70,9 +88,10 @@ test('CLI erection --json is an exact oracle for the headless application erecti
 
   try {
     const direct = calculateProjectErection(project, erection)
-    const cli = await executeCliRequest({ command: 'erection', projectFile, json: true, quiet: true })
-    assert.deepEqual(JSON.parse(cli.content), direct)
-    assert.equal(cli.mediaType, 'application/json')
+    const cli = runCli(['erection', projectFile, '--json', '--quiet'])
+    assert.equal(cli.status, 0, cli.stderr)
+    assert.equal(cli.stderr, '')
+    assert.deepEqual(JSON.parse(cli.stdout), direct)
   } finally {
     await fs.rm(directory, { recursive: true, force: true })
   }
@@ -86,10 +105,10 @@ test('CLI erection fails explicitly when the project has no enabled tilt-up stag
   await fs.writeFile(projectFile, serializeProjectPackage(packageValue), 'utf8')
 
   try {
-    await assert.rejects(
-      () => executeCliRequest({ command: 'erection', projectFile, json: true, quiet: true }),
-      (error) => error?.category === 'unsupported-configuration' && error?.code === 'erection-disabled',
-    )
+    const cli = runCli(['erection', projectFile, '--json', '--quiet'])
+    assert.equal(cli.status, 3)
+    assert.equal(cli.stdout, '')
+    assert.match(cli.stderr, /erection-disabled|не включена монтажная стадия tilt-up/)
   } finally {
     await fs.rm(directory, { recursive: true, force: true })
   }

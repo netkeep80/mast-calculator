@@ -12,7 +12,7 @@ import {
 } from '../../numerics/index.js'
 import type { GeneratedMastModel } from './geometry.js'
 import type { BuiltLoadCase } from './loads.js'
-import { analyzeFrame, compileFrameSystem, type FrameAnalysisResult } from './solver.js'
+import { analyzeFrameStatic, compileFrameSystem, type FrameStaticAnalysisResult } from './solver.js'
 
 const GRAVITY_M_S2 = 9.80665
 const DOF_PER_NODE = 6
@@ -64,7 +64,7 @@ export interface ErectionEquilibriumOk {
   readonly physicalSteelWeightN: number
   readonly physicalEquipmentWeightN: number
   readonly loadCase: BuiltLoadCase
-  readonly analysis: FrameAnalysisResult
+  readonly analysis: FrameStaticAnalysisResult
 }
 
 export interface ErectionEquilibriumInfeasible {
@@ -386,7 +386,7 @@ export function calculateErectionState(
   const requiredCableTensionN = Math.max(0, rawTensionN)
   const loadCase = buildErectionLoadCase(model, parameters, geometry, requiredCableTensionN, physical)
   const compiled = compileFrameSystem(model, parameters)
-  const analysis = analyzeFrame(model, loadCase, parameters, compiled)
+  const analysis = analyzeFrameStatic(model, loadCase, parameters, compiled)
   const gaugeReactionN = analysis.reactions[geometry.gaugeNodeId]![geometry.gaugeTranslationAxis]
   const normalizedGaugeReaction = Math.abs(gaugeReactionN) / Math.max(
     1,

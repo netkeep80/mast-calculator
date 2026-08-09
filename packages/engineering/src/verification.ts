@@ -549,5 +549,6 @@ export function buildVerificationPassport(result: VerificationResult): Verificat
       globalMomentResidual: 1e-8,
       bucklingResidual: 1e-5,
     },
+    windActionProvenance: result.parameters.windActionProvenance,
   }
 }

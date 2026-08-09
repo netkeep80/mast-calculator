@@ -4,7 +4,14 @@ import {
   regularOctahedronHeightMm,
   theoreticalCutLengthMm,
 } from './catalog.js'
-import { resolveWindParameters } from './weather.js'
+import {
+  WIND_ACTION_MODE_SP20_MEAN_V1,
+  resolveWindAction,
+} from './wind-action.js'
+import {
+  resolveWindParameters,
+  windSpeedFromPressurePa,
+} from './weather.js'
 
 export const DEFAULT_LATERAL_CAPACITY_STEP_DEG = 15
 
@@ -83,6 +90,9 @@ const PROJECT_INPUT_GROUPS = Object.freeze({
   environment: Object.freeze({
     deadLoadFactor: 'deadLoadFactor',
     windLoadFactor: 'windLoadFactor',
+    windActionMode: 'windActionMode',
+    windRegion: 'windRegion',
+    windTerrainType: 'windTerrainType',
     windPresetId: 'windPresetId',
     windPressurePa: 'windPressurePa',
     dragCoefficient: 'dragCoefficient',
@@ -167,6 +177,10 @@ export function assertProjectInput(value: unknown): ProjectInput {
       throw new Error(`Неизвестные поля ProjectInput.${groupName}: ${unknownFields.join(', ')}`)
     }
     for (const requiredField of Object.keys(DEFAULT_PROJECT_INPUT[groupName])) {
+      const windPressureDerived = groupName === 'environment'
+        && requiredField === 'windPressurePa'
+        && (group.windActionMode === WIND_ACTION_MODE_SP20_MEAN_V1 || group.windPresetId !== 'custom')
+      if (windPressureDerived) continue
       if (!(requiredField in group)) throw new Error(`Отсутствует ProjectInput.${groupName}.${requiredField}`)
     }
   }
@@ -192,16 +206,29 @@ const DEFAULT_BASE_METAL_TENSILE_STRENGTH_MPA = 490
 function resolveFlatCalculationParameters(parameters: JsonRecord = {}): ResolvedProject {
   const merged = { ...DEFAULT_FLAT_INPUT, ...parameters }
   const withMaterial = applyReinforcementClass(merged as JsonRecord & { reinforcementClass: string })
-  const withWind = resolveWindParameters(withMaterial as JsonRecord & { windPresetId?: string; windPressurePa?: unknown })
-  const ribCutLengthMm = theoreticalCutLengthMm(withWind.stockBarLengthMm, withWind.stockBarPieces)
+  const withWeather = resolveWindParameters(withMaterial as JsonRecord & { windPresetId?: string; windPressurePa?: unknown })
+  const ribCutLengthMm = theoreticalCutLengthMm(withWeather.stockBarLengthMm, withWeather.stockBarPieces)
   const moduleHeightMm = regularOctahedronHeightMm(ribCutLengthMm)
+  const referenceHeightM = Number(withWeather.moduleCount) * moduleHeightMm / 1000
+  const withWindAction = resolveWindAction(
+    withWeather as typeof withWeather & { windLoadFactor: number },
+    referenceHeightM,
+  )
+  const normalizedWind = withWindAction.windActionMode === WIND_ACTION_MODE_SP20_MEAN_V1
+    ? {
+        ...withWindAction,
+        windPresetLabel: `СП 20: район ${withWindAction.windRegion}, местность ${withWindAction.windTerrainType}; средняя составляющая`,
+        beaufortForce: null,
+        windSpeedMs: windSpeedFromPressurePa(withWindAction.windPressurePa),
+      }
+    : withWindAction
   const heightSearchMaxModules = Math.max(
     1,
-    Math.min(500, Math.floor(Number(withWind.heightSearchMaxModules) || Number(DEFAULT_FLAT_INPUT.heightSearchMaxModules))),
+    Math.min(500, Math.floor(Number(withWeather.heightSearchMaxModules) || Number(DEFAULT_FLAT_INPUT.heightSearchMaxModules))),
   )
   const baseMetalStrength = Number(parameters.jointBaseMetalTensileStrengthMPa)
   return {
-    ...withWind,
+    ...normalizedWind,
     ribCutLengthMm,
     triangleSideMm: ribCutLengthMm,
     moduleHeightMm,

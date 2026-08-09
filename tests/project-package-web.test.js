@@ -3,6 +3,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import {
+  PROJECT_PACKAGE_SCHEMA,
+  createProjectInput,
+  createProjectPackage,
+  parseProjectPackage,
+  serializeProjectPackage,
+} from '../packages/application/index.js'
+import { WIND_ACTION_MODE_SP20_MEAN_V1 } from '../packages/domain/index.js'
 
 const runtimeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const sourceRoot = path.basename(runtimeRoot) === '.build' ? path.dirname(runtimeRoot) : runtimeRoot
@@ -27,6 +35,50 @@ test('project package presentation uses canonical project/v1, shared DOM mapping
   assert.match(browserFiles, /file\.text\(\)/)
   assert.match(bootstrap, /initializeProjectPackageUi\(form/)
   assert.doesNotMatch(adapter, /ribCutLengthMm|moduleHeightMm|jointEffectiveRadiusMm|calculateProject|calculateMast/)
+})
+
+test('project/v1 keeps legacy packages readable and round-trips optional SP20 wind fields without a schema fork', () => {
+  const legacyProject = createProjectInput({
+    geometry: { moduleCount: 3 },
+    environment: { windPresetId: 'custom', windPressurePa: 380 },
+  })
+  assert.equal(legacyProject.environment.windActionMode, undefined)
+  const legacyPackage = createProjectPackage(legacyProject)
+  const legacyParsed = parseProjectPackage(serializeProjectPackage(legacyPackage))
+  assert.equal(legacyParsed.schema, PROJECT_PACKAGE_SCHEMA)
+  assert.deepEqual(legacyParsed.project, legacyProject)
+  assert.equal(legacyParsed.project.environment.windActionMode, undefined)
+
+  const sp20Project = createProjectInput({
+    geometry: { moduleCount: 8 },
+    environment: {
+      windActionMode: WIND_ACTION_MODE_SP20_MEAN_V1,
+      windRegion: 'III',
+      windTerrainType: 'B',
+      windPresetId: 'custom',
+      windPressurePa: 380,
+    },
+  })
+  const sp20Parsed = parseProjectPackage(serializeProjectPackage(createProjectPackage(sp20Project)))
+  assert.equal(sp20Parsed.schema, PROJECT_PACKAGE_SCHEMA)
+  assert.deepEqual(sp20Parsed.project, sp20Project)
+  assert.equal(sp20Parsed.project.environment.windActionMode, WIND_ACTION_MODE_SP20_MEAN_V1)
+  assert.equal(sp20Parsed.project.environment.windRegion, 'III')
+  assert.equal(sp20Parsed.project.environment.windTerrainType, 'B')
+
+  const handAuthoredSp20 = JSON.parse(serializeProjectPackage(createProjectPackage(sp20Project)))
+  delete handAuthoredSp20.project.environment.windPressurePa
+  const withoutPressure = parseProjectPackage(JSON.stringify(handAuthoredSp20))
+  assert.equal(withoutPressure.project.environment.windPressurePa, undefined)
+  assert.equal(withoutPressure.project.environment.windActionMode, WIND_ACTION_MODE_SP20_MEAN_V1)
+
+  const invalidRegion = JSON.parse(serializeProjectPackage(createProjectPackage(sp20Project)))
+  invalidRegion.project.environment.windRegion = 'VIII'
+  assert.throws(() => parseProjectPackage(JSON.stringify(invalidRegion)), /windRegion не поддерживается/)
+
+  const manualWithoutPressure = JSON.parse(serializeProjectPackage(legacyPackage))
+  delete manualWithoutPressure.project.environment.windPressurePa
+  assert.throws(() => parseProjectPackage(JSON.stringify(manualWithoutPressure)), /windPressurePa/)
 })
 
 test('main project package UI round-trips editable guys instead of retaining an invisible sidecar', () => {

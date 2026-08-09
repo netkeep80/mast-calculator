@@ -1,4 +1,5 @@
 import type { ResolvedProject } from '../../domain/contracts.js'
+import { meanWindPressureAtHeightPa } from '../../domain/index.js'
 import type { Vector3 as NumericVector3 } from '../../numerics/index.js'
 import { dot3, norm3, scale3, sub3, unit3 } from '../../numerics/index.js'
 import type { GeneratedMastModel } from './geometry.js'
@@ -16,6 +17,9 @@ interface MemberLoadDetail {
   readonly lengthM: number
   readonly steelWeightPerLengthN: number
   readonly iceWeightPerLengthN: number
+  readonly windReferenceHeightM: number
+  readonly characteristicMeanWindPressurePa: number
+  readonly designMeanWindPressurePa: number
   readonly windForcePerLengthN: MutableVector3
   readonly resultantForcePerLengthN: MutableVector3
 }
@@ -33,6 +37,10 @@ export interface BuiltLoadCase {
   memberWindN: number
   equipmentWeightN: number
   equipmentWindN: number
+  equipmentWindReferenceHeightM: number
+  equipmentCharacteristicMeanWindPressurePa: number
+  equipmentDesignMeanWindPressurePa: number
+  windActionProvenance: ResolvedProject['windActionProvenance']
   topPointLoadN: MutableVector3
   topHorizontalLoadN: number
   topVerticalLoadN: number
@@ -119,15 +127,22 @@ export function buildLoadCase(
     selfWeightN += steelWeightN
     iceWeightN += memberIceWeightN
 
+    // СП 20 для башен/мачт задаёт ze по высоте рассматриваемого участка.
+    // Frame-element несёт равномерную q, поэтому для короткого стержня используем
+    // давление в его средней отметке как midpoint quadrature; это не отдельный
+    // аэродинамический коэффициент и не динамический multiplier.
+    const windReferenceHeightM = Math.max(0, (nodeA.position[2] + nodeB.position[2]) / 2)
+    const characteristicMeanWindPressurePa = meanWindPressureAtHeightPa(parameters, windReferenceHeightM)
+    const designMeanWindPressurePa = characteristicMeanWindPressurePa * parameters.windLoadFactor
+
     // Для цилиндрического стержня учитываем только компонент скорости/давления,
     // нормальный к его оси. Вектор (wind - axis*(axis·wind)) одновременно задаёт
     // направление силы и коэффициент пространственной проекции.
     const axisWindProjection = dot3(axis, wind)
     const windNormal = sub3(wind, scale3(axis, axisWindProjection))
-    const windCoefficientNPerM = parameters.windPressurePa
+    const windCoefficientNPerM = designMeanWindPressurePa
       * parameters.dragCoefficient
       * outerDiameterM
-      * parameters.windLoadFactor
     const windPerLength = scale3(windNormal, windCoefficientNPerM)
     const windForceN = norm3(windPerLength) * lengthM
     memberWindN += windForceN
@@ -140,6 +155,9 @@ export function buildLoadCase(
       lengthM,
       steelWeightPerLengthN,
       iceWeightPerLengthN,
+      windReferenceHeightM,
+      characteristicMeanWindPressurePa,
+      designMeanWindPressurePa,
       windForcePerLengthN: [...windPerLength],
       resultantForcePerLengthN: [...distributed],
     }
@@ -150,10 +168,12 @@ export function buildLoadCase(
   // вершины. Она переводится в расчётный вес по m*g*equipmentLoadFactor.
   const equipmentMassKg = Math.max(0, Number(parameters.equipmentMassKg))
   const equipmentWeightN = equipmentMassKg * GRAVITY * parameters.equipmentLoadFactor
-  const equipmentWindN = parameters.windPressurePa
+  const equipmentWindReferenceHeightM = Math.max(0, ...model.topNodeIds.map((nodeId) => model.nodes[nodeId]?.position[2] ?? 0))
+  const equipmentCharacteristicMeanWindPressurePa = meanWindPressureAtHeightPa(parameters, equipmentWindReferenceHeightM)
+  const equipmentDesignMeanWindPressurePa = equipmentCharacteristicMeanWindPressurePa * parameters.windLoadFactor
+  const equipmentWindN = equipmentDesignMeanWindPressurePa
     * parameters.equipmentDragCoefficient
     * parameters.equipmentWindAreaM2
-    * parameters.windLoadFactor
 
   const topCount = Math.max(model.topNodeIds.length, 1)
   for (const nodeId of model.topNodeIds) {
@@ -183,6 +203,10 @@ export function buildLoadCase(
     memberWindN,
     equipmentWeightN,
     equipmentWindN,
+    equipmentWindReferenceHeightM,
+    equipmentCharacteristicMeanWindPressurePa,
+    equipmentDesignMeanWindPressurePa,
+    windActionProvenance: parameters.windActionProvenance,
     topPointLoadN: [...topPointLoadN],
     topHorizontalLoadN: Math.hypot(
       equipmentWindN * wind[0] + topPointLoadN[0],

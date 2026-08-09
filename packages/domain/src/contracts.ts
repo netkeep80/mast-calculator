@@ -1,3 +1,10 @@
+import type {
+  Sp20TerrainType,
+  Sp20WindRegion,
+  WindActionMode,
+  WindActionProvenance,
+} from './wind-action.js'
+
 export type Millimeters = number
 export type Meters = number
 export type Newtons = number
@@ -25,6 +32,9 @@ export interface MaterialInput {
 export interface EnvironmentInput {
   readonly deadLoadFactor: number
   readonly windLoadFactor: number
+  readonly windActionMode?: WindActionMode
+  readonly windRegion?: Sp20WindRegion
+  readonly windTerrainType?: Sp20TerrainType
   readonly windPresetId: string
   /** Required only for the custom wind preset; presets derive pressure from their design speed. */
   readonly windPressurePa?: Pascals
@@ -113,6 +123,10 @@ export interface ResolvedProject {
   readonly materialSafetyFactor: number
   readonly deadLoadFactor: number
   readonly windLoadFactor: number
+  readonly windActionMode: WindActionMode
+  readonly windRegion: Sp20WindRegion | null
+  readonly windTerrainType: Sp20TerrainType | null
+  readonly windActionProvenance: WindActionProvenance
   readonly equipmentLoadFactor: number
   readonly windPresetId: string
   readonly windPresetLabel: string

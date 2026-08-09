@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
@@ -19,6 +19,16 @@ function collectTests(directory, relative = '') {
   return tests.sort()
 }
 
+function printFailedTapTests(stdout) {
+  const failed = String(stdout)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^not ok\s+\d+\s+-\s+/.test(line))
+  if (failed.length === 0) return
+  console.error('\nRegression failed tests:')
+  for (const line of failed) console.error(`  ${line}`)
+}
+
 const totalStarted = performance.now()
 execFileSync(process.execPath, ['scripts/build-test-runtime.mjs'], {
   cwd: root,
@@ -29,10 +39,19 @@ const testFiles = collectTests(path.join(emittedRoot, 'tests')).map((file) => pa
 if (testFiles.length === 0) throw new Error('Regression runner did not discover any tests')
 
 const testsStarted = performance.now()
-execFileSync(process.execPath, ['--test', ...testFiles], {
+const testRun = spawnSync(process.execPath, ['--test', ...testFiles], {
   cwd: emittedRoot,
-  stdio: 'inherit',
+  encoding: 'utf8',
+  maxBuffer: 32 * 1024 * 1024,
 })
+if (testRun.stdout) process.stdout.write(testRun.stdout)
+if (testRun.stderr) process.stderr.write(testRun.stderr)
+if (testRun.error) throw testRun.error
+if (testRun.status !== 0) {
+  printFailedTapTests(testRun.stdout)
+  throw new Error(`Regression test process exited with status ${testRun.status}`)
+}
+
 const testsElapsedMs = performance.now() - testsStarted
 const totalElapsedMs = performance.now() - totalStarted
 

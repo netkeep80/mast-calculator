@@ -53,11 +53,32 @@ interface VerificationModel {
   readonly members: readonly VerificationMember[]
 }
 
+interface WindActionProvenanceShape {
+  readonly model: string
+  readonly source: string
+  readonly normative: boolean
+  readonly meanComponentIncluded: boolean
+  readonly pulsationComponentIncluded: boolean
+  readonly dynamicResponseIncluded: boolean
+  readonly windRegion: string | null
+  readonly terrainType: string | null
+  readonly basicWindPressurePa: number | null
+  readonly referenceHeightM: number | null
+  readonly referenceHeightCoefficient: number | null
+  readonly referenceCharacteristicMeanPressurePa: number
+  readonly loadReliabilityFactor: number
+  readonly aerodynamicCoefficientsAppliedSeparately: boolean
+  readonly aerodynamicCoefficientSource: string
+  readonly memberAerodynamicCoefficient: number | null
+  readonly equipmentAerodynamicCoefficient: number | null
+}
+
 interface VerificationResult {
   readonly cases?: readonly VerificationCase[]
   readonly model: VerificationModel
   readonly parameters: {
     readonly moduleCount: number
+    readonly windActionProvenance?: WindActionProvenanceShape
   }
 }
 
@@ -102,7 +123,7 @@ function recompute<T extends VerificationPassportShape>(passport: T, checks: rea
 export function augmentVerificationWithModuleChecks<T extends VerificationPassportShape>(
   passport: T,
   result: VerificationResult,
-): T {
+): T & { readonly windActionProvenance: WindActionProvenanceShape | null } {
   const cases = result.cases ?? []
   const worstDisplacementDifference = Math.max(
     0,
@@ -160,5 +181,8 @@ export function augmentVerificationWithModuleChecks<T extends VerificationPasspo
     },
   ]
 
-  return recompute(passport, [...passport.checks, ...additions])
+  return {
+    ...recompute(passport, [...passport.checks, ...additions]),
+    windActionProvenance: result.parameters.windActionProvenance ?? null,
+  }
 }

@@ -72,6 +72,30 @@ export interface FrameMemberResult {
   axialForceAtBN: number
 }
 
+export interface FrameStaticAnalysisResult {
+  analysisScope: 'linear-static'
+  solver: 'linear-3d-frame-euler-bernoulli'
+  linearSystemSolver: 'symmetric-band-cholesky'
+  degreesOfFreedomPerNode: 6
+  displacements: MutableVector3[]
+  rotations: MutableVector3[]
+  reactions: MutableVector3[]
+  reactionMoments: MutableVector3[]
+  memberResults: FrameMemberResult[]
+  maxDisplacementM: number
+  maxTopDisplacementM: number
+  totalMassKg: number
+  diagnostics: {
+    relativeResidual: number
+    minPivotRatio: number
+    freeDofCount: number
+    stiffnessBandwidth: number
+    stiffnessFactorizationCount: number
+    maximumNodeEquilibriumResidual: number
+    globalMomentResidual: number
+  }
+}
+
 export interface FrameAnalysisResult {
   solver: 'linear-3d-frame-euler-bernoulli'
   linearSystemSolver: 'symmetric-band-cholesky'
@@ -542,12 +566,12 @@ function physicalMomentResidual(
   return norm3(add3(externalMoment, reactionMoment)) / momentScale
 }
 
-export function analyzeFrame(
+export function analyzeFrameStatic(
   model: GeneratedMastModel,
   loadCase: BuiltLoadCase,
   parameters: ResolvedProject,
   compiledSystem: CompiledFrameSystem | null = null,
-): FrameAnalysisResult {
+): FrameStaticAnalysisResult {
   const system = compiledSystem ?? compileFrameSystem(model, parameters)
   const { loadVector, memberLoads } = assembleLoadVector(model, loadCase, system)
   const reducedLoad = Float64Array.from(system.freeDofs, (globalDof) => loadVector[globalDof]!)
@@ -585,8 +609,43 @@ export function analyzeFrame(
     reactions,
     reactionMoments,
   )
+  const maxDisplacementM = Math.max(...displacements.map(norm3))
+  const maxTopDisplacementM = Math.max(...model.topNodeIds.map((nodeId) => norm3(displacements[nodeId]!)))
 
-  const buckling = buildBuckling(model, system, memberResults)
+  return {
+    analysisScope: 'linear-static',
+    solver: 'linear-3d-frame-euler-bernoulli',
+    linearSystemSolver: system.method,
+    degreesOfFreedomPerNode: DOF_PER_NODE,
+    displacements,
+    rotations,
+    reactions,
+    reactionMoments,
+    memberResults,
+    maxDisplacementM,
+    maxTopDisplacementM,
+    totalMassKg: system.totalMassKg,
+    diagnostics: {
+      relativeResidual: residual,
+      minPivotRatio: system.factorization.minPivotRatio,
+      freeDofCount: system.freeDofs.length,
+      stiffnessBandwidth: system.bandwidth,
+      stiffnessFactorizationCount: system.factorizationCount,
+      maximumNodeEquilibriumResidual,
+      globalMomentResidual,
+    },
+  }
+}
+
+export function analyzeFrame(
+  model: GeneratedMastModel,
+  loadCase: BuiltLoadCase,
+  parameters: ResolvedProject,
+  compiledSystem: CompiledFrameSystem | null = null,
+): FrameAnalysisResult {
+  const system = compiledSystem ?? compileFrameSystem(model, parameters)
+  const staticResult = analyzeFrameStatic(model, loadCase, parameters, system)
+  const buckling = buildBuckling(model, system, staticResult.memberResults)
   const bucklingModeVector = zeroVector(system.dofCount)
   system.freeDofs.forEach((globalDof, index) => { bucklingModeVector[globalDof] = buckling.mode[index] ?? 0 })
   const bucklingMode: MutableVector3[] = model.nodes.map((node) => [
@@ -600,22 +659,20 @@ export function analyzeFrame(
     bucklingModeVector[degreeOfFreedom(node.id, 5)]!,
   ])
 
-  const maxDisplacementM = Math.max(...displacements.map(norm3))
-  const maxTopDisplacementM = Math.max(...model.topNodeIds.map((nodeId) => norm3(displacements[nodeId]!)))
   return {
-    solver: 'linear-3d-frame-euler-bernoulli',
-    linearSystemSolver: system.method,
-    degreesOfFreedomPerNode: DOF_PER_NODE,
-    displacements,
-    rotations,
-    reactions,
-    reactionMoments,
-    memberResults,
-    maxDisplacementM,
-    maxTopDisplacementM,
+    solver: staticResult.solver,
+    linearSystemSolver: staticResult.linearSystemSolver,
+    degreesOfFreedomPerNode: staticResult.degreesOfFreedomPerNode,
+    displacements: staticResult.displacements,
+    rotations: staticResult.rotations,
+    reactions: staticResult.reactions,
+    reactionMoments: staticResult.reactionMoments,
+    memberResults: staticResult.memberResults,
+    maxDisplacementM: staticResult.maxDisplacementM,
+    maxTopDisplacementM: staticResult.maxTopDisplacementM,
     maxUtilization: null,
     criticalMemberId: null,
-    totalMassKg: system.totalMassKg,
+    totalMassKg: staticResult.totalMassKg,
     buckling: {
       criticalLoadFactor: buckling.factor,
       mode: bucklingMode,
@@ -624,15 +681,7 @@ export function analyzeFrame(
       eigenResidual: buckling.eigenResidual,
       iterations: buckling.iterations,
     },
-    diagnostics: {
-      relativeResidual: residual,
-      minPivotRatio: system.factorization.minPivotRatio,
-      freeDofCount: system.freeDofs.length,
-      stiffnessBandwidth: system.bandwidth,
-      stiffnessFactorizationCount: system.factorizationCount,
-      maximumNodeEquilibriumResidual,
-      globalMomentResidual,
-    },
+    diagnostics: staticResult.diagnostics,
   }
 }
 

@@ -1,0 +1,79 @@
+.erection-result-panel {
+  margin: 0 0 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border, #d7dce2);
+  border-radius: 0.75rem;
+  background: var(--surface, #fff);
+}
+
+.erection-result-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+}
+
+.erection-result-heading h3 {
+  margin: 0.15rem 0 0;
+}
+
+.erection-result-eyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  opacity: 0.72;
+}
+
+.erection-result-status {
+  white-space: nowrap;
+  font-size: 0.78rem;
+  padding: 0.28rem 0.5rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+}
+
+.erection-result-status.pass { opacity: 0.9; }
+.erection-result-status.pending { font-weight: 700; }
+
+.erection-result-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 0.8rem;
+}
+
+.erection-result-metrics article {
+  padding: 0.6rem;
+  border: 1px solid var(--border, #d7dce2);
+  border-radius: 0.55rem;
+}
+
+.erection-result-metrics span,
+.erection-result-metrics small {
+  display: block;
+}
+
+.erection-result-metrics strong {
+  display: block;
+  margin: 0.15rem 0;
+}
+
+.erection-result-summary {
+  margin: 0.65rem 0;
+  line-height: 1.45;
+}
+
+.erection-result-details {
+  margin-top: 0.55rem;
+}
+
+.erection-result-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.erection-result-list {
+  margin: 0.55rem 0 0;
+  padding-left: 1.25rem;
+}

@@ -52,6 +52,18 @@ test('1DOF spring-mass frequency follows f=sqrt(k/m)/(2*pi)', () => {
   assert.ok(Math.abs(frequencyHz - expectedHz) < 1e-12)
 })
 
+test('cantilever tip-mass surrogate follows k_tip=3EI/L^3 analytical frequency', () => {
+  const youngModulusPa = 200e9
+  const inertiaM4 = 8.2e-8
+  const lengthM = 3.4
+  const tipMassKg = 37
+  const tipStiffnessNPerM = 3 * youngModulusPa * inertiaM4 / lengthM ** 3
+  const result = solve([[tipStiffnessNPerM]], [[tipMassKg]], 1)
+  const actualHz = Math.sqrt(1 / result.eigenpairs[0].eigenvalue) / (2 * Math.PI)
+  const expectedHz = Math.sqrt(tipStiffnessNPerM / tipMassKg) / (2 * Math.PI)
+  assert.ok(Math.abs(actualHz - expectedHz) / expectedHz < 1e-12)
+})
+
 test('generalized eigensolver accepts positive-semidefinite operator and ignores zero modes', () => {
   const result = solve(
     [[1, 0, 0], [0, 2, 0], [0, 0, 8]],

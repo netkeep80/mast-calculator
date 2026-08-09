@@ -60,15 +60,6 @@ async function readProjectPackage(file, application) {
   return application.parseProjectPackage(text)
 }
 
-function guyOptions(projectPackage) {
-  const guys = projectPackage.guys
-  if (!guys) return {}
-  return {
-    ...(guys.safetyFactor === undefined ? {} : { safetyFactor: guys.safetyFactor }),
-    ...(guys.terminationEfficiency === undefined ? {} : { terminationEfficiency: guys.terminationEfficiency }),
-  }
-}
-
 function progressReporter(hooks) {
   return typeof hooks?.onProgress === 'function' ? hooks.onProgress : () => {}
 }
@@ -181,10 +172,10 @@ export async function executeCliRequest(request, hooks = {}) {
         ...(projectPackage.erection === undefined ? {} : { erection: projectPackage.erection }),
       })
       onProgress({ phase: 'guyed', label: 'Проверка выбранной конструкции с растяжками', fraction: 0 })
-      const guyed = application.calculateGuyedProject(
+      const guyed = application.calculateProjectGuys(
         output.projectInput,
-        projectPackage.guys.tiers,
-        guyOptions(projectPackage),
+        projectPackage.guys,
+        output.result,
       )
       onProgress({ phase: 'guyed', label: 'Проверка выбранной конструкции с растяжками завершена', fraction: 1 })
       summary = application.createGuyedResultSummary(effectivePackage, guyed, {
@@ -252,7 +243,11 @@ export async function executeCliRequest(request, hooks = {}) {
     let guyed = null
     if (projectPackage.guys) {
       onProgress({ phase: 'guyed', label: 'Расчёт растяжек для закупочной сметы', fraction: 0 })
-      guyed = application.calculateGuyedProject(projectPackage.project, projectPackage.guys.tiers, guyOptions(projectPackage))
+      guyed = application.calculateProjectGuys(
+        projectPackage.project,
+        projectPackage.guys,
+        bareResult,
+      )
       onProgress({ phase: 'guyed', label: 'Расчёт растяжек для закупочной сметы завершён', fraction: 1 })
     }
     const estimate = application.createProcurementEstimateFromCalculation(bareResult, guyed)

@@ -1,9 +1,12 @@
 import type {
   GuyTierInput,
+  ProjectErectionInput,
+  ProjectErectionSamplingInput,
   ProjectGuysInput,
   ProjectInput,
   ProjectPackageMetadata,
   ProjectPackageV1,
+  ProjectTiltUpErectionInput,
 } from './contracts.js'
 import { PROJECT_PACKAGE_SCHEMA } from './contracts.js'
 import { assertProjectInput } from './project-parameters.js'
@@ -257,6 +260,105 @@ function validateGuys(value: unknown): ProjectGuysInput | undefined {
   return Object.freeze(guys)
 }
 
+function topologyIndex(value: unknown, path: string): 0 | 1 | 2 {
+  if (!Number.isInteger(value) || (value !== 0 && value !== 1 && value !== 2)) {
+    throw new ProjectSchemaError('invalid-erection-topology', `${path} должен быть целым 0…2`, { path })
+  }
+  return value
+}
+
+function positiveInteger(value: unknown, path: string): number {
+  if (!Number.isInteger(value) || !(Number(value) > 0)) {
+    throw new ProjectSchemaError('invalid-erection-sampling', `${path} должен быть положительным целым числом`, { path })
+  }
+  return Number(value)
+}
+
+function validateErectionSampling(value: unknown): ProjectErectionSamplingInput {
+  if (!isRecord(value)) throw new ProjectSchemaError('invalid-erection-sampling', 'ProjectPackage.erection.sampling должен быть объектом')
+  assertKnownFields(
+    value,
+    ['initialSegments', 'relativeTolerance', 'minimumAngleStepDeg', 'maximumEvaluations', 'maximumDepth'],
+    'ProjectPackage.erection.sampling',
+  )
+  const initialSegments = positiveInteger(value.initialSegments, 'ProjectPackage.erection.sampling.initialSegments')
+  const maximumEvaluations = positiveInteger(value.maximumEvaluations, 'ProjectPackage.erection.sampling.maximumEvaluations')
+  const maximumDepth = positiveInteger(value.maximumDepth, 'ProjectPackage.erection.sampling.maximumDepth')
+  assertFiniteNumber(value.relativeTolerance, 'ProjectPackage.erection.sampling.relativeTolerance')
+  assertFiniteNumber(value.minimumAngleStepDeg, 'ProjectPackage.erection.sampling.minimumAngleStepDeg')
+  if (!(value.relativeTolerance > 0)) {
+    throw new ProjectSchemaError('invalid-erection-sampling', 'ProjectPackage.erection.sampling.relativeTolerance должен быть > 0')
+  }
+  if (!(value.minimumAngleStepDeg > 0)) {
+    throw new ProjectSchemaError('invalid-erection-sampling', 'ProjectPackage.erection.sampling.minimumAngleStepDeg должен быть > 0')
+  }
+  if (maximumEvaluations < initialSegments + 1) {
+    throw new ProjectSchemaError(
+      'invalid-erection-sampling',
+      'ProjectPackage.erection.sampling.maximumEvaluations должен вмещать полную начальную сетку',
+    )
+  }
+  return Object.freeze({
+    initialSegments,
+    relativeTolerance: value.relativeTolerance,
+    minimumAngleStepDeg: value.minimumAngleStepDeg,
+    maximumEvaluations,
+    maximumDepth,
+  })
+}
+
+export function validateProjectErectionInput(value: unknown): ProjectErectionInput | undefined {
+  if (value === undefined) return undefined
+  if (!isRecord(value)) throw new ProjectSchemaError('invalid-erection', 'ProjectPackage.erection должен быть объектом')
+  if (value.mode === 'disabled') {
+    assertKnownFields(value, ['mode'], 'ProjectPackage.erection')
+    return Object.freeze({ mode: 'disabled' })
+  }
+  if (value.mode !== 'tilt-up') {
+    throw new ProjectSchemaError('invalid-erection-mode', `ProjectPackage.erection.mode не поддерживается: ${String(value.mode)}`)
+  }
+  assertKnownFields(
+    value,
+    [
+      'mode',
+      'hingeBaseEdgeIndex',
+      'attachmentTopCornerIndex',
+      'anchorPointM',
+      'rotationSense',
+      'startAngleDeg',
+      'endAngleDeg',
+      'sampling',
+    ],
+    'ProjectPackage.erection',
+  )
+  if (!Array.isArray(value.anchorPointM) || value.anchorPointM.length !== 3) {
+    throw new ProjectSchemaError('invalid-erection-anchor', 'ProjectPackage.erection.anchorPointM должен быть [x, y, z]')
+  }
+  const anchor = value.anchorPointM.map((coordinate, index) => {
+    assertFiniteNumber(coordinate, `ProjectPackage.erection.anchorPointM[${index}]`)
+    return coordinate
+  }) as [number, number, number]
+  if (value.rotationSense !== 1 && value.rotationSense !== -1) {
+    throw new ProjectSchemaError('invalid-erection-rotation', 'ProjectPackage.erection.rotationSense должен быть 1 или -1')
+  }
+  assertFiniteNumber(value.startAngleDeg, 'ProjectPackage.erection.startAngleDeg')
+  assertFiniteNumber(value.endAngleDeg, 'ProjectPackage.erection.endAngleDeg')
+  if (value.startAngleDeg < 0 || value.endAngleDeg > 90 || !(value.endAngleDeg > value.startAngleDeg)) {
+    throw new ProjectSchemaError('invalid-erection-angle-range', 'Монтажный диапазон должен удовлетворять 0 <= startAngleDeg < endAngleDeg <= 90')
+  }
+  const erection: ProjectTiltUpErectionInput = {
+    mode: 'tilt-up',
+    hingeBaseEdgeIndex: topologyIndex(value.hingeBaseEdgeIndex, 'ProjectPackage.erection.hingeBaseEdgeIndex'),
+    attachmentTopCornerIndex: topologyIndex(value.attachmentTopCornerIndex, 'ProjectPackage.erection.attachmentTopCornerIndex'),
+    anchorPointM: Object.freeze(anchor),
+    rotationSense: value.rotationSense,
+    startAngleDeg: value.startAngleDeg,
+    endAngleDeg: value.endAngleDeg,
+    sampling: validateErectionSampling(value.sampling),
+  }
+  return Object.freeze(erection)
+}
+
 function assertProjectPackageV1(value: Record<string, unknown>): ProjectPackageV1 {
   if (value.schema !== PROJECT_PACKAGE_SCHEMA) {
     throw new ProjectSchemaError(
@@ -265,16 +367,18 @@ function assertProjectPackageV1(value: Record<string, unknown>): ProjectPackageV
       { supported: SUPPORTED_PROJECT_PACKAGE_SCHEMAS, actual: value.schema ?? null },
     )
   }
-  assertKnownFields(value, ['schema', 'metadata', 'project', 'guys'], 'ProjectPackage')
+  assertKnownFields(value, ['schema', 'metadata', 'project', 'guys', 'erection'], 'ProjectPackage')
   if (!('project' in value)) throw new ProjectSchemaError('missing-project', 'Пакет проекта не содержит поле project')
   const project = validateProjectInput(value.project)
   const metadata = validateMetadata(value.metadata)
   const guys = validateGuys(value.guys)
+  const erection = validateProjectErectionInput(value.erection)
   return Object.freeze({
     schema: PROJECT_PACKAGE_SCHEMA,
     ...(metadata === undefined ? {} : { metadata }),
     project,
     ...(guys === undefined ? {} : { guys }),
+    ...(erection === undefined ? {} : { erection }),
   })
 }
 
@@ -299,6 +403,7 @@ export function assertProjectPackage(value: unknown): ProjectPackageV1 {
 export interface CreateProjectPackageOptions {
   readonly metadata?: ProjectPackageMetadata
   readonly guys?: ProjectGuysInput
+  readonly erection?: ProjectErectionInput
 }
 
 export function createProjectPackage(project: unknown, options: CreateProjectPackageOptions = {}): ProjectPackageV1 {
@@ -307,6 +412,7 @@ export function createProjectPackage(project: unknown, options: CreateProjectPac
     project,
     ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
     ...(options.guys === undefined ? {} : { guys: options.guys }),
+    ...(options.erection === undefined ? {} : { erection: options.erection }),
   })
 }
 

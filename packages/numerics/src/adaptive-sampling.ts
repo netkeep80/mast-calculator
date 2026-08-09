@@ -104,6 +104,14 @@ function needsRefinement<T>(
   return false
 }
 
+function minimumSampleSpacing<T>(samples: readonly AdaptiveSample<T>[], fallback: number): number {
+  let minimum = fallback
+  for (let index = 0; index < samples.length - 1; index += 1) {
+    minimum = Math.min(minimum, samples[index + 1]!.x - samples[index]!.x)
+  }
+  return minimum
+}
+
 /**
  * Deterministic adaptive sampler for a scalar interval and one or more smooth
  * response metrics. A continuity-key change is treated as a physical/regime
@@ -128,7 +136,6 @@ export function adaptiveSampleRange<T>(
   let cacheHits = 0
   let expectedMetricCount: number | null = null
   let maximumDepthReached = 0
-  let minimumResolvedStep = span
   let budgetExhausted = false
   let depthLimited = false
 
@@ -168,7 +175,6 @@ export function adaptiveSampleRange<T>(
 
   const refine = (left: AdaptiveSample<T>, right: AdaptiveSample<T>, depth: number): void => {
     const width = right.x - left.x
-    minimumResolvedStep = Math.min(minimumResolvedStep, width)
     maximumDepthReached = Math.max(maximumDepthReached, depth)
     if (width <= resolved.minimumStep) return
     const midpointX = (left.x + right.x) / 2
@@ -197,7 +203,7 @@ export function adaptiveSampleRange<T>(
       evaluationCount: cache.size,
       cacheHits,
       maximumDepthReached,
-      minimumResolvedStep,
+      minimumResolvedStep: minimumSampleSpacing(samples, span),
       converged: !budgetExhausted && !depthLimited,
       reason,
     },

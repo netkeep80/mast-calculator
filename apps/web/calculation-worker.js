@@ -1,5 +1,5 @@
 import {
-  calculateProjectWithGuys,
+  calculateProjectStages,
   optimizeAndCalculateProject,
 } from '../../packages/application/index.js'
 
@@ -16,8 +16,8 @@ function postProgress(jobId, progress) {
   })
 }
 
-function runCalculation(jobId, parameters, guys) {
-  const output = calculateProjectWithGuys(parameters, guys, {
+function runCalculation(jobId, parameters, guys, erection) {
+  const output = calculateProjectStages(parameters, guys, erection, {
     onProgress: (progress) => postProgress(jobId, progress),
   })
   self.postMessage({
@@ -25,15 +25,20 @@ function runCalculation(jobId, parameters, guys) {
     jobId,
     projectInput: parameters,
     projectGuys: guys ?? null,
+    projectErection: erection ?? null,
     result: output.result,
     guyResult: output.guyedResult,
+    erectionResult: output.erectionResult,
     optimization: null,
   })
 }
 
-function runOptimization(jobId, parameters, guys) {
+function runOptimization(jobId, parameters, guys, erection) {
   if (guys?.tiers?.length) {
     throw new Error('Автоподбор единого диаметра пока не оптимизирует конфигурацию растяжек. Отключите растяжки или выполните обычный расчёт.')
+  }
+  if (erection?.mode === 'tilt-up') {
+    throw new Error('Автоподбор единого диаметра пока не оптимизирует монтажную стадию. Отключите монтаж или выполните обычный расчёт.')
   }
   const output = optimizeAndCalculateProject(parameters, {
     onProgress: (progress) => postProgress(jobId, progress),
@@ -43,21 +48,23 @@ function runOptimization(jobId, parameters, guys) {
     jobId,
     projectInput: output.projectInput,
     projectGuys: null,
+    projectErection: erection ?? null,
     result: output.result,
     guyResult: null,
+    erectionResult: null,
     optimization: output.optimization,
   })
 }
 
 self.onmessage = (event) => {
-  const { jobId, action, parameters, guys } = event.data ?? {}
+  const { jobId, action, parameters, guys, erection } = event.data ?? {}
   try {
     if (action === 'calculate') {
-      runCalculation(jobId, parameters, guys)
+      runCalculation(jobId, parameters, guys, erection)
       return
     }
     if (action === 'optimize') {
-      runOptimization(jobId, parameters, guys)
+      runOptimization(jobId, parameters, guys, erection)
       return
     }
     throw new Error(`Неизвестная операция расчёта: ${action}`)

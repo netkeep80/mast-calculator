@@ -41,7 +41,7 @@ function symmetricJacobiEigenpairs(matrix: readonly (readonly number[])[]): Dens
   if (size === 0) return []
 
   const values = matrix.map((row) => [...row])
-  const vectors = Array.from({ length: size }, (_, row) => (
+  const vectors: number[][] = Array.from({ length: size }, (_, row) => (
     Array.from({ length: size }, (_, column) => row === column ? 1 : 0)
   ))
   const diagonalScale = Math.max(1, ...values.map((row, index) => Math.abs(row[index]!)))

@@ -74,19 +74,17 @@ function progressReporter(hooks) {
 }
 
 function calculateFromPackage(projectPackage, application, onProgress) {
-  if (projectPackage.guys) {
-    onProgress({ phase: 'guyed', label: 'Расчёт мачты с растяжками', fraction: 0 })
-    const result = application.calculateGuyedProject(
-      projectPackage.project,
-      projectPackage.guys.tiers,
-      guyOptions(projectPackage),
-    )
-    onProgress({ phase: 'guyed', label: 'Расчёт мачты с растяжками завершён', fraction: 1 })
-    return { mode: 'guyed', result }
-  }
+  const stages = application.calculateProjectStages(
+    projectPackage.project,
+    projectPackage.guys,
+    projectPackage.erection,
+    { onProgress },
+  )
+  const hasGuys = Boolean(projectPackage.guys?.tiers?.length)
   return {
-    mode: 'bare',
-    result: application.calculateProject(projectPackage.project, { onProgress }),
+    mode: hasGuys ? 'guyed' : 'bare',
+    result: hasGuys ? stages.guyedResult : stages.result,
+    stages,
   }
 }
 
@@ -97,6 +95,14 @@ function humanCalculation(summary) {
     return `OK guyed: ${geometry.moduleCount} мод.; H=${geometry.mastHeightM.toFixed(3)} м; U=${response.maxUtilization.toFixed(6)}; прогиб=${response.topDisplacementMm.toFixed(3)} мм; λcr=${response.minimumBucklingFactor.toFixed(6)}; Uтрос=${response.maximumCableUtilization.toFixed(6)}`
   }
   return `OK bare: ${geometry.moduleCount} мод.; H=${geometry.mastHeightM.toFixed(3)} м; U=${response.maxUtilization.toFixed(6)}; прогиб=${response.topDisplacementMm.toFixed(3)} мм; λcr=${response.minimumBucklingFactor.toFixed(6)}`
+}
+
+function humanErection(stage) {
+  if (!stage?.envelope) return 'Монтажная стадия отключена'
+  const envelope = stage.envelope
+  const tension = envelope.maximumCableTensionN
+  const displacement = envelope.maximumDisplacementM
+  return `Erection: ${envelope.feasibleSampleCount} feasible / ${envelope.infeasibleSampleCount} infeasible; Tmax=${tension ? (tension.value / 1000).toFixed(3) : '—'} кН; umax=${displacement ? (displacement.value * 1000).toFixed(3) : '—'} мм; convergence=${envelope.diagnostics.converged ? 'ok' : envelope.diagnostics.reason}`
 }
 
 function jsonText(value) {
@@ -136,13 +142,43 @@ export async function executeCliRequest(request, hooks = {}) {
     }
   }
 
+  if (command === 'erection') {
+    if (projectPackage.erection?.mode !== 'tilt-up') {
+      const error = new Error('В project package не включена монтажная стадия tilt-up')
+      error.code = 'erection-disabled'
+      error.category = 'unsupported-configuration'
+      throw error
+    }
+    const stage = application.calculateProjectErection(projectPackage.project, projectPackage.erection, {
+      onEvaluation: (progress) => onProgress({
+        phase: 'erection',
+        label: `Монтаж: угол ${progress.angleDeg.toFixed(2)}°`,
+        fraction: Math.min(0.99, (progress.evaluationNumber - 1) / Math.max(1, progress.maximumEvaluations)),
+      }),
+    })
+    onProgress({ phase: 'erection', label: 'Монтажная огибающая завершена', fraction: 1 })
+    return {
+      kind: 'output',
+      content: json ? jsonText(stage) : `${humanErection(stage)}\n`,
+      mediaType: json ? 'application/json' : 'text/plain',
+      human: humanErection(stage),
+    }
+  }
+
   if (command === 'optimize') {
+    if (projectPackage.erection?.mode === 'tilt-up') {
+      const error = new Error('Автоподбор единого диаметра пока не оптимизирует монтажную стадию. Отключите монтаж или выполните обычный расчёт.')
+      error.code = 'erection-optimization-unsupported'
+      error.category = 'unsupported-configuration'
+      throw error
+    }
     const output = application.optimizeAndCalculateProject(projectPackage.project, { onProgress })
     let summary = application.createOptimizationResultSummary(projectPackage, output, { provenance: source })
     if (projectPackage.guys && output.result) {
       const effectivePackage = application.createProjectPackage(output.projectInput, {
         metadata: projectPackage.metadata,
         guys: projectPackage.guys,
+        ...(projectPackage.erection === undefined ? {} : { erection: projectPackage.erection }),
       })
       onProgress({ phase: 'guyed', label: 'Проверка выбранной конструкции с растяжками', fraction: 0 })
       const guyed = application.calculateGuyedProject(

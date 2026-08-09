@@ -35,6 +35,7 @@ const cross = (a, b) => [
 ]
 const norm = (a) => Math.hypot(...a)
 const unit = (a) => scale(a, 1 / norm(a))
+const jsonValue = (value) => JSON.parse(JSON.stringify(value))
 
 function runCli(args) {
   return spawnSync(process.execPath, [cliPath, ...args], {
@@ -78,7 +79,7 @@ function erectionInput(project) {
   }
 }
 
-test('CLI erection --json is an exact oracle for the headless application erection stage', async () => {
+test('CLI erection --json is an exact JSON oracle for the headless application erection stage', async () => {
   const project = createProjectInput({ geometry: { moduleCount: 1 }, equipment: { massKg: 30 } })
   const erection = erectionInput(project)
   const packageValue = createProjectPackage(project, { erection })
@@ -91,7 +92,7 @@ test('CLI erection --json is an exact oracle for the headless application erecti
     const cli = runCli(['erection', projectFile, '--json', '--quiet'])
     assert.equal(cli.status, 0, cli.stderr)
     assert.equal(cli.stderr, '')
-    assert.deepEqual(JSON.parse(cli.stdout), direct)
+    assert.deepEqual(JSON.parse(cli.stdout), jsonValue(direct))
   } finally {
     await fs.rm(directory, { recursive: true, force: true })
   }

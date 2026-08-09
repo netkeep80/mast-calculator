@@ -8,6 +8,7 @@ import { Worker } from 'node:worker_threads'
 const COMMANDS = new Set([
   'validate',
   'calculate',
+  'erection',
   'optimize',
   'design',
   'export-obj',
@@ -20,7 +21,8 @@ const HELP = `mast-calc <command> <project.json> [options]
 
 Commands:
   validate             Validate/migrate a project package
-  calculate            Calculate bare mast or guyed mast when package.guys is present
+  calculate            Calculate operational + enabled optional project stages
+  erection             Calculate the configured tilt-up erection envelope
   optimize             Optimize diameter/joint using the same application workflow
   design               Build the versioned design package
   export-obj           Export shared mast geometry as OBJ
@@ -29,7 +31,7 @@ Commands:
   export-procurement   Export procurement estimate HTML
 
 Options:
-  --json               Machine-readable stdout for validate/calculate/optimize
+  --json               Machine-readable stdout for validate/calculate/erection/optimize
   --quiet              Suppress human success messages and TTY progress
   -o, --output <file>  Write command output/artifact to a file
   --timeout <ms>       Kill the isolated calculation worker after the deadline

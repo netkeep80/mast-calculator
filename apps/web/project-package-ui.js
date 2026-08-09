@@ -34,12 +34,18 @@ function dispatchFormSynchronization(form) {
   }
 }
 
-export function initializeProjectPackageUi(form, fileAdapter = defaultFileAdapter, guyEditor = null) {
+export function initializeProjectPackageUi(
+  form,
+  fileAdapter = defaultFileAdapter,
+  guyEditor = null,
+  erectionEditor = null,
+) {
   const actions = document.querySelector('#project-file-actions') ?? document.querySelector('.export-row')
   if (!actions || !form || !fileAdapter) return null
 
   let retainedMetadata = undefined
   let retainedGuys = undefined
+  let retainedErection = undefined
 
   const downloadButton = document.createElement('button')
   downloadButton.type = 'button'
@@ -64,11 +70,14 @@ export function initializeProjectPackageUi(form, fileAdapter = defaultFileAdapte
     try {
       const project = readProjectInputFromForm(form)
       const editableGuys = guyEditor ? guyEditor.read() : retainedGuys
+      const editableErection = erectionEditor ? erectionEditor.read() : retainedErection
       const packageValue = createProjectPackage(project, {
         ...(retainedMetadata === undefined ? {} : { metadata: retainedMetadata }),
         ...(editableGuys === undefined ? {} : { guys: editableGuys }),
+        ...(editableErection === undefined ? {} : { erection: editableErection }),
       })
       retainedGuys = packageValue.guys
+      retainedErection = packageValue.erection
       const filename = `${safeFilename(packageValue.metadata?.name)}.project.json`
       const saved = await fileAdapter.saveText({
         suggestedName: filename,
@@ -77,7 +86,11 @@ export function initializeProjectPackageUi(form, fileAdapter = defaultFileAdapte
         extensions: ['json'],
       })
       if (!saved) return
-      status.textContent = `Сохранён ${packageValue.schema}${saved.path ? `: ${saved.path}` : ''}${packageValue.guys ? '; с редактируемой конфигурацией растяжек' : ''}.`
+      const stageNotes = [
+        packageValue.guys ? 'растяжки' : null,
+        packageValue.erection?.mode === 'tilt-up' ? 'монтаж' : null,
+      ].filter(Boolean)
+      status.textContent = `Сохранён ${packageValue.schema}${saved.path ? `: ${saved.path}` : ''}${stageNotes.length ? `; конфигурации: ${stageNotes.join(', ')}` : ''}.`
       status.hidden = false
     } catch (error) {
       status.textContent = error instanceof Error ? error.message : String(error)
@@ -92,10 +105,16 @@ export function initializeProjectPackageUi(form, fileAdapter = defaultFileAdapte
       const packageValue = parseProjectPackage(opened.text)
       retainedMetadata = packageValue.metadata
       retainedGuys = packageValue.guys
+      retainedErection = packageValue.erection
       applyProjectInputToForm(form, packageValue.project)
       dispatchFormSynchronization(form)
       guyEditor?.apply(packageValue.guys)
-      status.textContent = `Открыт ${packageValue.schema}${opened.path ? `: ${opened.path}` : ''}${packageValue.guys ? '; растяжки загружены в редактор проекта' : ''}. Запустите расчёт для обновления результата.`
+      erectionEditor?.apply(packageValue.erection)
+      const stageNotes = [
+        packageValue.guys ? 'растяжки загружены в редактор' : null,
+        packageValue.erection?.mode === 'tilt-up' ? 'монтаж загружен в редактор' : null,
+      ].filter(Boolean)
+      status.textContent = `Открыт ${packageValue.schema}${opened.path ? `: ${opened.path}` : ''}${stageNotes.length ? `; ${stageNotes.join(', ')}` : ''}. Запустите расчёт для обновления результата.`
       status.hidden = false
     } catch (error) {
       status.textContent = error instanceof Error ? error.message : String(error)
@@ -112,5 +131,6 @@ export function initializeProjectPackageUi(form, fileAdapter = defaultFileAdapte
   return Object.freeze({
     get retainedMetadata() { return retainedMetadata },
     get retainedGuys() { return retainedGuys },
+    get retainedErection() { return retainedErection },
   })
 }

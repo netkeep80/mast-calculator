@@ -4,11 +4,10 @@ import type {
   ProjectInput,
 } from '../../domain/contracts.js'
 import type { ApplicationAbortSignal } from './contracts.js'
-import { attachGuyedConnectionEnvelope } from './guyed-connection-envelope.js'
 import { immutablePublicResult, type ImmutableResultOptions } from './immutability.js'
 import { calculateProjectErection } from './project-erection.js'
+import { calculateProjectGuys } from './project-guys.js'
 import {
-  calculateGuyedProject,
   calculateProject,
   type ProjectJobProgress,
 } from './use-cases.js'
@@ -60,19 +59,16 @@ export function calculateProjectStages(
 
   let cursor = layout.operationalEnd
   let guyedResult = null
-  if (hasGuys && guys) {
+  if (hasGuys) {
     options.onProgress?.({
       phase: 'guys',
       label: 'Нелинейный расчёт tension-only растяжек',
       fraction: cursor,
     })
-    const rawGuyedResult = calculateGuyedProject(input, guys.tiers, {
+    guyedResult = calculateProjectGuys(input, guys, result, {
       ...immutableOptions,
       ...cancellationOptions,
-      ...(guys.safetyFactor === undefined ? {} : { safetyFactor: guys.safetyFactor }),
-      ...(guys.terminationEfficiency === undefined ? {} : { terminationEfficiency: guys.terminationEfficiency }),
     })
-    guyedResult = attachGuyedConnectionEnvelope(rawGuyedResult, result.parameters)
     cursor += layout.optionalShare
     options.onProgress?.({
       phase: 'guys',

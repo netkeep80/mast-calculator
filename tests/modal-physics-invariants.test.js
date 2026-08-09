@@ -49,7 +49,10 @@ test('modal mass uses physical steel/ice/equipment mass without reliability fact
     deadLoadFactor: 2.5,
     equipmentLoadFactor: 2.7,
   })
-  const baseMass = assembleModalMass(generateMastModel(base), base).model
+  const baseModel = generateMastModel(base)
+  const baseAssembly = assembleModalMass(baseModel, base)
+  const baseMass = baseAssembly.model
+  const baseSystem = compileFrameSystem(baseModel, base)
   const factoredMass = assembleModalMass(generateMastModel(factored), factored).model
 
   assert.equal(baseMass.id, 'frame-lumped-translational-v1')
@@ -59,6 +62,17 @@ test('modal mass uses physical steel/ice/equipment mass without reliability fact
   assert.equal(baseMass.physicalMassKg.equipmentKg, 123)
   assert.ok(baseMass.physicalMassKg.steelKg > 0)
   assert.ok(baseMass.physicalMassKg.iceKg > 0)
+  assert.ok(Math.abs(baseMass.physicalMassKg.steelKg - baseSystem.totalMassKg) < 1e-10)
+  assert.ok(Math.abs(
+    baseMass.physicalMassKg.totalKg
+      - baseMass.physicalMassKg.steelKg
+      - baseMass.physicalMassKg.iceKg
+      - baseMass.physicalMassKg.equipmentKg,
+  ) < 1e-10)
+  for (const activeMassKg of baseMass.activeTranslationalMassKg) {
+    assert.ok(activeMassKg > 0)
+    assert.ok(activeMassKg <= baseMass.physicalMassKg.totalKg)
+  }
   assert.deepEqual(factoredMass.physicalMassKg, baseMass.physicalMassKg)
   assert.deepEqual(factoredMass.activeTranslationalMassKg, baseMass.activeTranslationalMassKg)
 })
@@ -97,6 +111,7 @@ test('natural modes are finite, positive, ordered and mass-normalized for a prod
     for (const axis of ['x', 'y', 'z']) {
       assert.ok(mode.participation[axis].effectiveMassKg >= 0)
       assert.ok(mode.participation[axis].activeMassRatio >= 0)
+      assert.ok(mode.participation[axis].activeMassRatio <= 1 + 1e-9)
     }
     if (index > 0) assert.ok(mode.frequencyHz >= result.modes[index - 1].frequencyHz)
   }

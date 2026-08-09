@@ -21,6 +21,7 @@ test('adaptive sampler leaves an exactly linear response on its bounded initial 
   assert.equal(result.diagnostics.reason, 'tolerance')
   assert.equal(result.samples.length, 5)
   assert.deepEqual(result.samples.map((sample) => sample.x), [0, 2.5, 5, 7.5, 10])
+  assert.equal(result.diagnostics.minimumResolvedStep, 2.5)
 })
 
 test('adaptive sampler resolves an interior smooth peak missed by endpoint-only sampling', () => {

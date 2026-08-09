@@ -79,14 +79,23 @@ export function calculateProjectStages(
 
   let erectionResult = null
   if (hasErection) {
+    const erectionStart = cursor
     options.onProgress?.({
       phase: 'erection',
       label: 'Адаптивная огибающая монтажа',
-      fraction: cursor,
+      fraction: erectionStart,
     })
     erectionResult = calculateProjectErection(input, erection, {
       ...immutableOptions,
       ...cancellationOptions,
+      onEvaluation: (progress) => options.onProgress?.({
+        phase: 'erection',
+        label: `Монтаж: угол ${progress.angleDeg.toFixed(2)}°`,
+        fraction: clamp01(
+          erectionStart + layout.optionalShare
+            * (progress.evaluationNumber - 1) / Math.max(1, progress.maximumEvaluations),
+        ),
+      }),
     })
     cursor += layout.optionalShare
     options.onProgress?.({

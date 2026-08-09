@@ -2,10 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const runtimeRepositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const repoRoot = path.basename(runtimeRepositoryRoot) === '.build'
-  ? path.dirname(runtimeRepositoryRoot)
-  : runtimeRepositoryRoot
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const buildPackagesRoot = path.join(repoRoot, '.build', 'packages')
 
 function moduleUrl(packageName) {

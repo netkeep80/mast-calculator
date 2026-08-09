@@ -1,6 +1,8 @@
+import { SP20_WIND_STANDARD_SOURCE } from './sp20-wind-standard.js'
+
 export const WIND_ACTION_MODE_MANUAL = 'manual-custom-pressure' as const
 export const WIND_ACTION_MODE_SP20_MEAN_V1 = 'sp20-mean-v1' as const
-export const SP20_WIND_MODEL_SOURCE = 'СП 20.13330.2016 «Нагрузки и воздействия», изм. №6; приказ Минстроя России №597/пр от 05.09.2024; введено 25.09.2024; раздел 11' as const
+export const SP20_WIND_MODEL_SOURCE = SP20_WIND_STANDARD_SOURCE
 
 export type WindActionMode = typeof WIND_ACTION_MODE_MANUAL | typeof WIND_ACTION_MODE_SP20_MEAN_V1
 export type Sp20WindRegion = 'Ia' | 'I' | 'II' | 'III' | 'IV' | 'V' | 'VI' | 'VII'

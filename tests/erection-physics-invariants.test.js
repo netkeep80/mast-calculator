@@ -77,6 +77,8 @@ test('tilt-up tension is derived from hinge equilibrium and artificial gauge rea
   assert.ok(result.analysis.diagnostics.maximumNodeEquilibriumResidual < 1e-8)
   assert.ok(result.analysis.diagnostics.globalMomentResidual < 1e-8)
   assert.equal(result.analysis.diagnostics.stiffnessFactorizationCount, 1)
+  assert.equal(result.analysis.analysisScope, 'linear-static')
+  assert.equal(Object.hasOwn(result.analysis, 'buckling'), false)
 })
 
 test('erection inertia load is physical and does not reuse operational reliability factors', () => {

@@ -32,6 +32,13 @@ test('obsolete guy-only application orchestrator is physically absent', () => {
   assert.doesNotMatch(applicationIndex, /project-with-guys/)
 })
 
+test('CLI delegates optional guy stages instead of reconstructing guy calculations', () => {
+  const cli = source('apps/cli/cli-runtime.mjs')
+  assert.match(cli, /calculateProjectStages/)
+  assert.match(cli, /calculateProjectGuys/)
+  assert.doesNotMatch(cli, /calculateGuyedProject/)
+})
+
 test('erection result panel is projection-only and refuses to invent acceptance', () => {
   const panel = source('apps/web/erection-result-panel.js')
 

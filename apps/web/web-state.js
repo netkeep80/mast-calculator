@@ -4,8 +4,10 @@ function initialSnapshot() {
   return freeze({
     projectInput: null,
     projectGuys: null,
+    projectErection: null,
     result: null,
     guyResult: null,
+    erectionResult: null,
     optimization: null,
     selectedModuleIndex: 0,
     activeJob: null,
@@ -26,9 +28,9 @@ export function createWebApplicationState() {
       return snapshot
     },
 
-    beginJob({ jobId, action, projectInput, projectGuys = null, startedAt }) {
+    beginJob({ jobId, action, projectInput, projectGuys = null, projectErection = null, startedAt }) {
       return replace({
-        activeJob: freeze({ jobId, action, projectInput, projectGuys, startedAt }),
+        activeJob: freeze({ jobId, action, projectInput, projectGuys, projectErection, startedAt }),
         progress: null,
       })
     },
@@ -42,14 +44,17 @@ export function createWebApplicationState() {
     completeJob(jobId, {
       projectInput,
       projectGuys,
+      projectErection,
       result = null,
       guyResult = null,
+      erectionResult = null,
       optimization = null,
     } = {}) {
       const activeJob = snapshot.activeJob
       if (!activeJob || activeJob.jobId !== jobId) return false
       const effectiveProjectInput = projectInput ?? activeJob.projectInput
       const effectiveProjectGuys = projectGuys === undefined ? activeJob.projectGuys : projectGuys
+      const effectiveProjectErection = projectErection === undefined ? activeJob.projectErection : projectErection
       const moduleCount = result?.model?.moduleCount ?? 0
       const selectedModuleIndex = moduleCount > 0
         ? Math.min(snapshot.selectedModuleIndex, moduleCount - 1)
@@ -57,8 +62,10 @@ export function createWebApplicationState() {
       replace({
         projectInput: effectiveProjectInput,
         projectGuys: effectiveProjectGuys ?? null,
+        projectErection: effectiveProjectErection ?? null,
         result,
         guyResult,
+        erectionResult,
         optimization,
         selectedModuleIndex,
         activeJob: null,

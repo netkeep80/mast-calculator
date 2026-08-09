@@ -6,8 +6,8 @@ import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
-  calculateGuyedProject,
   calculateProject,
+  calculateProjectStages,
   createBareResultSummary,
   createGuyedResultSummary,
   createOptimizationResultSummary,
@@ -90,7 +90,7 @@ test('CLI calculate --json is an exact oracle for direct bare application summar
   }
 })
 
-test('CLI calculate uses package.guys and matches direct guyed application summary', () => {
+test('CLI calculate uses package.guys and matches canonical staged guyed application summary', () => {
   const projectPackage = createProjectPackage(compactProject(), {
     metadata: { name: 'CLI guyed oracle' },
     guys: {
@@ -108,11 +108,13 @@ test('CLI calculate uses package.guys and matches direct guyed application summa
   })
   const temp = temporaryProject(projectPackage)
   try {
-    const directResult = calculateGuyedProject(projectPackage.project, projectPackage.guys.tiers, {
-      safetyFactor: 3,
-      terminationEfficiency: 0.8,
-    })
-    const direct = createGuyedResultSummary(projectPackage, directResult, {
+    const stages = calculateProjectStages(
+      projectPackage.project,
+      projectPackage.guys,
+      projectPackage.erection,
+    )
+    assert.ok(stages.guyedResult)
+    const direct = createGuyedResultSummary(projectPackage, stages.guyedResult, {
       provenance: provenance('calculate'),
     })
     const cli = runCli(['calculate', temp.file, '--json'])

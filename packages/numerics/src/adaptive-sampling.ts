@@ -14,6 +14,8 @@ export interface AdaptiveSamplingOptions {
   readonly minimumStep?: number
   readonly maximumEvaluations?: number
   readonly maximumDepth?: number
+  /** Called immediately before each new (non-cached) expensive evaluation. May throw to abort cooperatively. */
+  readonly onEvaluation?: (x: number, evaluationNumber: number) => void
 }
 
 export interface AdaptiveSamplingDiagnostics {
@@ -150,6 +152,7 @@ export function adaptiveSampleRange<T>(
       budgetExhausted = true
       return null
     }
+    options.onEvaluation?.(x, cache.size + 1)
     const evaluation = evaluate(x)
     const metricCount = validateEvaluation(evaluation, expectedMetricCount)
     if (metricCount > 0 && expectedMetricCount === null) expectedMetricCount = metricCount

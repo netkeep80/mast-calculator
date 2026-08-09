@@ -12,7 +12,7 @@
     "test:design": "node scripts/run-selected-emitted-tests.mjs tests/design-workspace.test.js tests/eskd-export.test.js tests/integrated-3d-viewer.test.js tests/obj-export.test.js tests/procurement-estimate.test.js tests/fabrication-project.test.js tests/assembly-mass.test.js",
     "test:architecture": "node --test tests/architecture-audit.test.js tests/typescript-package-source.test.js tests/ci-policy.test.js",
     "test:contracts": "node scripts/run-selected-emitted-tests.mjs tests/contracts.test.js",
-    "test:cli": "node scripts/run-selected-emitted-tests.mjs tests/cli-oracle.test.js tests/cli-artifacts.test.js tests/project-package-web.test.js",
+    "test:cli": "node scripts/run-selected-emitted-tests.mjs tests/cli-oracle.test.js tests/erection-cli-regression.test.js tests/cli-artifacts.test.js tests/project-package-web.test.js",
     "test:desktop": "npm run build:desktop:web && node --test tests/desktop-adapter.test.js tests/desktop-equivalence.test.js tests/desktop-packaging.test.js",
     "prepare:desktop:icons": "npx --yes @tauri-apps/cli@2.11.4 icon apps/desktop/src-tauri/icons/icon.png --output apps/desktop/src-tauri/generated-icons",
     "typecheck": "npx --yes --package typescript@7.0.2 tsc -p tsconfig.json --noEmit",

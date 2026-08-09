@@ -14,8 +14,15 @@ import { throwIfApplicationAborted } from './cancellation.js'
 import { toApplicationError } from './errors.js'
 import { immutablePublicResult, type ImmutableResultOptions } from './immutability.js'
 
+export interface ErectionEvaluationProgress {
+  readonly angleDeg: number
+  readonly evaluationNumber: number
+  readonly maximumEvaluations: number
+}
+
 export interface CalculateProjectErectionOptions extends ImmutableResultOptions {
   readonly signal?: ApplicationAbortSignal
+  readonly onEvaluation?: (progress: ErectionEvaluationProgress) => void
 }
 
 /**
@@ -36,7 +43,14 @@ export function calculateProjectErection(
     const parameters = resolveProjectInput(validateProjectInput(project))
     const model = generateMastModel(parameters)
     const resolved = resolveProjectErectionPath(model, validatedErection)
-    const envelope = calculateErectionEnvelope(model, parameters, resolved.path, resolved.options)
+    const maximumEvaluations = validatedErection.sampling.maximumEvaluations
+    const envelope = calculateErectionEnvelope(model, parameters, resolved.path, {
+      ...resolved.options,
+      onEvaluation: (angleDeg, evaluationNumber) => {
+        throwIfApplicationAborted(options.signal)
+        options.onEvaluation?.({ angleDeg, evaluationNumber, maximumEvaluations })
+      },
+    })
     throwIfApplicationAborted(options.signal)
 
     return immutablePublicResult({

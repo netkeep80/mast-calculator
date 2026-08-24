@@ -45,6 +45,7 @@ test('operational project resolves distinct SP20 design-action factors', () => {
   assert.equal(resolved.equipmentLoadFactor, 1.05)
   assert.equal(resolved.iceLoadFactor, 1.8)
   assert.equal(resolved.windLoadFactor, 1.4)
+  assert.equal(resolved.loadActionProvenance.mode, 'normative')
   assert.equal('deadLoadFactor' in resolved, false)
 })
 
@@ -112,11 +113,26 @@ test('собственный вес стержня совпадает с ρA L g
   })
   const loads = buildLoadCase(model, parameters)
   const areaM2 = Math.PI * diameterM ** 2 / 4
-  const expectedN = 7850 * areaM2 * lengthM * 9.80665 * parameters.deadLoadFactor
+  const characteristicN = 7850 * areaM2 * lengthM * 9.80665
+  const expectedN = characteristicN * parameters.steelSelfWeightLoadFactor
 
+  approximately(loads.selfWeightCharacteristicN, characteristicN)
   approximately(loads.selfWeightN, expectedN)
   approximately(loads.totalAppliedLoad[2], -expectedN)
   approximately(loads.memberDistributedLoads[0][2], -expectedN / lengthM)
+})
+
+test('гололёд хранит физический вес отдельно от расчётного γf=1.8', () => {
+  const model = oneMemberModel([1, 0, 0], 2, 0.012)
+  const parameters = resolvedProject({
+    ...quietEquipment,
+    windPressurePa: 0,
+    iceThicknessMm: 8,
+  })
+  const loads = buildLoadCase(model, parameters)
+  assert.ok(loads.iceWeightCharacteristicN > 0)
+  approximately(loads.iceWeightN, loads.iceWeightCharacteristicN * parameters.iceLoadFactor)
+  assert.equal(loads.loadActionProvenance.mode, 'normative')
 })
 
 test('слой льда увеличивает наружный диаметр, массу и ветровую нагрузку', () => {
@@ -146,8 +162,10 @@ test('вес и ветер оборудования распределяются
   })
   const loads = buildLoadCase(model, parameters)
   const expectedWind = parameters.windPressurePa * parameters.equipmentDragCoefficient * parameters.windLoadFactor
-  const expectedWeight = parameters.equipmentMassKg * 9.80665 * parameters.equipmentLoadFactor
+  const characteristicWeight = parameters.equipmentMassKg * 9.80665
+  const expectedWeight = characteristicWeight * parameters.equipmentLoadFactor
 
+  approximately(loads.equipmentWeightCharacteristicN, characteristicWeight)
   for (const load of loads.nodalLoads) {
     approximately(load[0], expectedWind / 3)
     approximately(load[2], -expectedWeight / 3)

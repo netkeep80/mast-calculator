@@ -51,7 +51,9 @@ export function calculateProjectStages(
     onProgress: (progress) => options.onProgress?.({
       phase: progress.phase,
       label: progress.label,
-      fraction: clamp01(layout.operationalEnd * progress.fraction),
+      fraction: clamp01(
+        layout.operationalEnd * progress.completed / Math.max(1, progress.total),
+      ),
     }),
   })
 

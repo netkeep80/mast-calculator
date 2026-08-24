@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   calculateProject,
-  calculateProjectWithGuys,
+  calculateProjectStages,
   createEngineeringSummary,
 } from '../packages/application/index.js'
 import {
@@ -128,7 +128,7 @@ function addCableForcesToReferenceLoad(loadCase, cables) {
 
 test('issue #88: guyed member/cable envelope can pass while the same fixed physical connection fails', () => {
   const project = failureProject()
-  const { result, guyedResult } = calculateProjectWithGuys(project, highPretensionGuys(project))
+  const { result, guyedResult } = calculateProjectStages(project, highPretensionGuys(project), null)
   assert.ok(guyedResult)
 
   const observed = {

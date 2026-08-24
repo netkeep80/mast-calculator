@@ -16,6 +16,35 @@ export type Degrees = number
 
 export type JointConfiguratorMode = 'auto' | 'manual'
 
+export const SP20_OPERATIONAL_LOAD_ACTION_PROFILE = 'sp20-2016-amendment-6' as const
+export const MANUAL_MIGRATED_V1_LOAD_ACTION_PROFILE = 'manual-migrated-v1' as const
+
+export interface NormativeLoadActionsInput {
+  readonly profile: typeof SP20_OPERATIONAL_LOAD_ACTION_PROFILE
+}
+
+export interface ManualMigratedV1LoadActionsInput {
+  readonly profile: typeof MANUAL_MIGRATED_V1_LOAD_ACTION_PROFILE
+  readonly steelSelfWeightLoadFactor: number
+  readonly equipmentLoadFactor: number
+  readonly iceLoadFactor: number
+  readonly windLoadFactor: number
+}
+
+export type LoadActionsInput = NormativeLoadActionsInput | ManualMigratedV1LoadActionsInput
+
+export interface LoadActionProvenance {
+  readonly mode: 'normative' | 'manual-migrated-v1'
+  readonly profile: LoadActionsInput['profile']
+  readonly standard: 'СП 20.13330.2016'
+  readonly amendmentNumber: 6
+  readonly source: string
+  readonly steelSelfWeight: string
+  readonly equipmentWeight: string
+  readonly ice: string
+  readonly wind: string
+}
+
 export interface GeometryInput {
   readonly moduleCount: number
   readonly stockBarLengthMm: Millimeters
@@ -30,8 +59,6 @@ export interface MaterialInput {
 }
 
 export interface EnvironmentInput {
-  readonly deadLoadFactor: number
-  readonly windLoadFactor: number
   readonly windActionMode?: WindActionMode
   readonly windRegion?: Sp20WindRegion
   readonly windTerrainType?: Sp20TerrainType
@@ -51,7 +78,6 @@ export interface EquipmentInput {
   readonly massKg: Kilograms
   readonly windAreaM2: number
   readonly dragCoefficient: number
-  readonly loadFactor: number
 }
 
 export interface ConnectionInput {
@@ -92,6 +118,7 @@ export interface CriteriaInput {
 export interface ProjectInput {
   readonly geometry: GeometryInput
   readonly material: MaterialInput
+  readonly loadActions: LoadActionsInput
   readonly environment: EnvironmentInput
   readonly equipment: EquipmentInput
   readonly connection: ConnectionInput
@@ -121,13 +148,15 @@ export interface ResolvedProject {
   readonly reinforcementWeldabilityGuaranteed: boolean
   readonly effectiveLengthFactor: number
   readonly materialSafetyFactor: number
-  readonly deadLoadFactor: number
+  readonly steelSelfWeightLoadFactor: number
+  readonly equipmentLoadFactor: number
+  readonly iceLoadFactor: number
   readonly windLoadFactor: number
+  readonly loadActionProvenance: LoadActionProvenance
   readonly windActionMode: WindActionMode
   readonly windRegion: Sp20WindRegion | null
   readonly windTerrainType: Sp20TerrainType | null
   readonly windActionProvenance: WindActionProvenance
-  readonly equipmentLoadFactor: number
   readonly windPresetId: string
   readonly windPresetLabel: string
   readonly beaufortForce: number | null
@@ -229,12 +258,15 @@ export interface ProjectPackageMetadata {
   readonly modifiedAt?: string
 }
 
-export const PROJECT_PACKAGE_SCHEMA = 'mast-calculator/project/v1' as const
+export const PROJECT_PACKAGE_SCHEMA_V1 = 'mast-calculator/project/v1' as const
+export const PROJECT_PACKAGE_SCHEMA = 'mast-calculator/project/v2' as const
 
-export interface ProjectPackageV1 {
+export interface ProjectPackageV2 {
   readonly schema: typeof PROJECT_PACKAGE_SCHEMA
   readonly metadata?: ProjectPackageMetadata
   readonly project: ProjectInput
   readonly guys?: ProjectGuysInput
   readonly erection?: ProjectErectionInput
 }
+
+export type ProjectPackageV1 = ProjectPackageV2

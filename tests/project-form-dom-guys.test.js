@@ -61,14 +61,14 @@ test('legacy guys page is only a deep-link redirect and owns no second mast form
   assert.equal(exists('apps/web/guy-procurement-sync.js'), false)
 })
 
-test('one Worker/controller transport owns bare and guyed project calculation', () => {
+test('one Worker/controller transport owns bare, guyed and erection project calculation', () => {
   const controller = source('apps/web/calculation-controller.js')
   const worker = source('apps/web/calculation-worker.js')
   const guyState = source('apps/web/guy-project-state.js')
 
   assert.match(controller, /currentProjectGuys\(\)/)
   assert.match(controller, /guys: projectGuys/)
-  assert.match(worker, /calculateProjectWithGuys/)
+  assert.match(worker, /calculateProjectStages/)
   assert.doesNotMatch(worker, /packages\/(engineering|numerics|structural-analysis)/)
   assert.match(guyState, /getGuyEditor\(\)\?\.read\(\)/)
   assert.doesNotMatch(controller + worker + guyState, /mastFieldMap/)

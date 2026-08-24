@@ -93,3 +93,29 @@ test('adaptive sampler reports its evaluation budget instead of silently claimin
   assert.equal(result.diagnostics.reason, 'max-evaluations')
   assert.equal(result.diagnostics.evaluationCount, 7)
 })
+
+test('adaptive evaluation hook runs once before each non-cached evaluation and may abort', () => {
+  const visited = []
+  let evaluated = 0
+  assert.throws(
+    () => adaptiveSampleRange(
+      0,
+      1,
+      (x) => {
+        evaluated += 1
+        return continuous(x, x * x)
+      },
+      {
+        initialSegments: 2,
+        maximumEvaluations: 20,
+        onEvaluation: (x, evaluationNumber) => {
+          visited.push([x, evaluationNumber])
+          if (evaluationNumber === 3) throw new Error('stop-before-third-evaluation')
+        },
+      },
+    ),
+    /stop-before-third-evaluation/,
+  )
+  assert.equal(evaluated, 2)
+  assert.deepEqual(visited.map((item) => item[1]), [1, 2, 3])
+})

@@ -189,22 +189,16 @@ function runCliSummary(packageText) {
 }
 
 function directSummary(projectPackage, provenance) {
-  if (projectPackage.guys) {
-    const result = application.calculateGuyedProject(
-      projectPackage.project,
-      projectPackage.guys.tiers,
-      {
-        ...(projectPackage.guys.safetyFactor === undefined ? {} : { safetyFactor: projectPackage.guys.safetyFactor }),
-        ...(projectPackage.guys.terminationEfficiency === undefined ? {} : { terminationEfficiency: projectPackage.guys.terminationEfficiency }),
-      },
-    )
-    return application.createGuyedResultSummary(projectPackage, result, { provenance })
-  }
-  return application.createBareResultSummary(
-    projectPackage,
-    application.calculateProject(projectPackage.project),
-    { provenance },
+  const stages = application.calculateProjectStages(
+    projectPackage.project,
+    projectPackage.guys,
+    projectPackage.erection,
   )
+  if (projectPackage.guys) {
+    assert.ok(stages.guyedResult)
+    return application.createGuyedResultSummary(projectPackage, stages.guyedResult, { provenance })
+  }
+  return application.createBareResultSummary(projectPackage, stages.result, { provenance })
 }
 
 test('canonical project set is exactly equivalent through direct, CLI, Web and Desktop adapters', { skip: !adaptersAvailable, timeout: 180_000 }, async (t) => {
@@ -276,7 +270,7 @@ test('Desktop generated tree contains the same calculation Worker/controller and
   }
   const desktopWorker = fs.readFileSync(path.join(desktopRoot, 'apps', 'web', 'calculation-worker.js'), 'utf8')
   const desktopController = fs.readFileSync(path.join(desktopRoot, 'apps', 'web', 'calculation-controller.js'), 'utf8')
-  assert.match(desktopWorker, /calculateProject/)
+  assert.match(desktopWorker, /calculateProjectStages/)
   assert.match(desktopWorker, /optimizeAndCalculateProject/)
   assert.match(desktopController, /\.terminate\(\)/)
   assert.equal(fs.existsSync(path.join(sourceRoot, 'apps', 'desktop', 'packages')), false)

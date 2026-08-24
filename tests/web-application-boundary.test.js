@@ -43,7 +43,7 @@ test('main Web controller delegates form, job and state ownership to cohesive ad
 test('calculation Worker transports application jobs but owns no optimization policy', () => {
   const worker = source('apps/web/calculation-worker.js')
 
-  assert.match(worker, /calculateProjectWithGuys/)
+  assert.match(worker, /calculateProjectStages/)
   assert.match(worker, /optimizeAndCalculateProject/)
   assert.match(worker, /projectInput/)
   assert.match(worker, /projectGuys/)
@@ -55,7 +55,7 @@ test('calculation Worker transports application jobs but owns no optimization po
   assert.doesNotMatch(worker, /packages\/(?:domain|engineering|numerics|structural-analysis)\//)
 })
 
-test('guy wires use the same canonical project editor and one application calculation transport', () => {
+test('guy wires use the same canonical project editor and one staged application calculation transport', () => {
   const editor = source('apps/web/guy-editor.js')
   const guyState = source('apps/web/guy-project-state.js')
   const controller = source('apps/web/calculation-controller.js')
@@ -67,7 +67,7 @@ test('guy wires use the same canonical project editor and one application calcul
   assert.match(guyState, /getGuyEditor\(\)\?\.read\(\)/)
   assert.match(controller, /currentProjectGuys\(\)/)
   assert.match(controller, /guys: projectGuys/)
-  assert.match(worker, /calculateProjectWithGuys/)
+  assert.match(worker, /calculateProjectStages/)
   assert.match(legacyPage, /index\.html#guys/)
   assert.doesNotMatch(legacyPage, /<form|guys-app\.js/)
   assert.equal(fs.existsSync(path.join(sourceRoot, 'apps', 'web', 'guys-app.js')), false)

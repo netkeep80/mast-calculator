@@ -1,6 +1,6 @@
 # Quasi-static tilt-up erection models v1
 
-This document describes the temporary erection mechanics introduced by #104 and the adaptive path envelope introduced by #106. These models are deliberately separate from the operational mast load case and from any future normative erection/load factors.
+This document describes the temporary erection mechanics introduced by #104, the adaptive path envelope introduced by #106, the static-only frame solve from #108, and the project/application transport introduced by #110/#112. These models are deliberately separate from the operational mast load case and from any future normative erection/load factors.
 
 ## Model identities
 
@@ -23,6 +23,8 @@ The envelope composes the single-angle model. It does not implement a second str
 The same generated 3D frame topology used by the operational calculation is rigidly rotated about one actual base edge selected as the erection hinge. Member connectivity, section properties and the 6-DOF Euler–Bernoulli frame formulation are unchanged.
 
 The erection angle is a rigid configuration parameter. The elastic frame solve then computes small displacements about that prescribed configuration.
+
+Persisted `project/v1` data never stores generated FEM node IDs. The user selects a semantic base-edge index and top-corner index; one structural resolver maps those topology-relative selectors to the current generated `baseNodeIds` / `topNodeIds` before the envelope is solved.
 
 ## Temporary support state
 
@@ -68,7 +70,9 @@ Let `M_g` be the total physical-gravity moment and `a_c` the projected hinge mom
 T = -M_g / a_c
 ```
 
-The resulting load case is solved by the real 6-DOF frame FEM. The artificial gauge reaction must then be approximately zero, while the normal free-DOF and global moment-equilibrium residuals remain within solver tolerance.
+The resulting load case is solved by the real 6-DOF frame FEM. Erection uses the canonical `analyzeFrameStatic()` path: displacements, rotations, reactions, member end forces and equilibrium diagnostics are recovered exactly as in the operational solver, but the unrelated operational global-buckling eigenproblem is not solved at every erection angle.
+
+The artificial gauge reaction must be approximately zero, while the normal free-DOF and global moment-equilibrium residuals remain within solver tolerance.
 
 The model fails explicitly when:
 
@@ -106,6 +110,59 @@ An interval is refined when midpoint behavior is insufficiently represented by e
 
 The result reports the actual sampled angles, governing sample index/angle for each envelope quantity and convergence diagnostics. Budget/depth exhaustion is returned as non-convergence rather than silently accepting an under-resolved envelope.
 
+The generic adaptive sampler also exposes an optional pre-evaluation hook. It is invoked only before a new non-cached point. The numerics package gives that hook no application semantics; the application layer uses it to check cooperative cancellation and publish erection progress before each expensive angle solve.
+
+## Portable project and application stage
+
+Erection is an optional sibling of the operational project and guys configuration:
+
+```text
+project/v1
+  project  -> operational user input
+  guys?    -> optional guy-stage input
+  erection?-> optional erection-stage input
+```
+
+The durable erection input contains only user-owned data:
+
+- `hingeBaseEdgeIndex`;
+- `attachmentTopCornerIndex`;
+- fixed world `anchorPointM`;
+- `rotationSense`;
+- start/end angles;
+- reproducible adaptive-sampling controls.
+
+It never persists generated node/member IDs, cable-tension history, samples, reactions, displacements or member forces.
+
+`calculateProjectErection()` is the headless application boundary for this stage. The stage-oriented project job composes:
+
+```text
+operational result
++ optional guyed result
++ optional erection result
+```
+
+as immutable sibling results. No stage mutates `CalculationResult` after completion.
+
+Web uses the existing single calculation Worker/controller. The Worker delegates sequencing to the application stage job and returns project input, optional stage inputs and all sibling results atomically under one job ID. Existing stale-job protection therefore prevents an old erection result from being combined with a newer operational result.
+
+CLI uses the same application layer. `calculate` uses the canonical stage orchestration, while the explicit `erection` command exposes a deterministic JSON projection of `calculateProjectErection()` for inspection and automation. CLI contains no topology resolver or alternative angle sweep.
+
+Desktop inherits the same generated Web application and therefore does not contain a Rust/Tauri erection solver.
+
+## Presentation and acceptance boundary
+
+The Web erection panel displays the already calculated envelope:
+
+- convergence diagnostics;
+- feasible/infeasible sample counts and transition brackets;
+- governing cable tension and angle;
+- governing displacement and angle;
+- hinge force/moment envelope;
+- per-member `N/V/T/M` governing demands and angles.
+
+The presenter does not import or call structural analysis. It intentionally does **not** infer `ERECTION PASS/FAIL` from raw demands. A normative erection acceptance/utilization contract remains a separate engineering task, especially while climatic/lifting-stage rules are still research-gated.
+
 ## Verification principles
 
 The retained tests cover:
@@ -119,6 +176,11 @@ The retained tests cover:
 7. synthetic linear and interior-peak adaptive-sampling oracles;
 8. refinement of feasibility boundaries;
 9. fixed-world anchor invariance;
-10. convergence/monotonicity of refined real-mast demand envelopes.
+10. convergence/monotonicity of refined real-mast demand envelopes;
+11. exact application-stage equivalence to independent operational/guy/erection use cases;
+12. cooperative cancellation between adaptive angle evaluations;
+13. one Worker/state snapshot for operational, guy and erection results;
+14. CLI erection JSON equivalence to the headless application stage;
+15. source-level vetoes preventing a second Web solver path or resurrection of the removed guy-only orchestrator.
 
-Operational/canonical calculations remain a frozen veto gate: introducing or refining erection mechanics must not alter service-state results.
+Operational/canonical calculations remain a frozen veto gate for this transport work: introducing or refining erection mechanics must not alter service-state results. Deliberate future normative load-factor corrections are reviewed separately as explicit physics changes rather than hidden inside this stage integration.

@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   calculateGuyedProject,
   calculateProject,
-  calculateProjectWithGuys,
+  calculateProjectStages,
   createProjectInput,
 } from '../packages/application/index.js'
 
@@ -34,7 +34,7 @@ const guys = Object.freeze({
 })
 
 test('application optional-guy job preserves the normal CalculationResult and adds a separate guyed envelope', () => {
-  const combined = calculateProjectWithGuys(input, guys)
+  const combined = calculateProjectStages(input, guys, null)
   const bare = calculateProject(input)
   const guyed = calculateGuyedProject(input, guys.tiers, {
     safetyFactor: guys.safetyFactor,
@@ -52,22 +52,23 @@ test('application optional-guy job preserves the normal CalculationResult and ad
 
 test('application optional-guy job is exactly the normal calculation when guys are absent', () => {
   const progress = []
-  const combined = calculateProjectWithGuys(input, null, {
+  const combined = calculateProjectStages(input, null, null, {
     onProgress: (event) => progress.push(event),
   })
   assert.equal(combined.guyedResult, null)
   assert.equal(combined.result.model.moduleCount, 3)
   assert.equal(progress.some((event) => event.phase === 'guys'), false)
+  assert.equal(progress.at(-1).phase, 'complete')
   assert.equal(progress.at(-1).fraction, 1)
 })
 
 test('application optional-guy job exposes one adapter progress stream including the nonlinear guy phase', () => {
   const progress = []
-  calculateProjectWithGuys(input, guys, {
+  calculateProjectStages(input, guys, null, {
     onProgress: (event) => progress.push(event),
   })
   assert.ok(progress.some((event) => event.phase === 'guys'))
-  assert.equal(progress.at(-1).phase, 'guys')
+  assert.equal(progress.at(-1).phase, 'complete')
   assert.equal(progress.at(-1).fraction, 1)
   for (let index = 1; index < progress.length; index += 1) {
     assert.ok(progress[index].fraction >= progress[index - 1].fraction)

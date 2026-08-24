@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   calculateMast,
-  calculateProjectWithGuys,
+  calculateProjectStages,
   createEngineeringSummary,
 } from '../packages/application/index.js'
 import { generateMastModel } from '../packages/structural-analysis/index.js'
@@ -197,7 +197,7 @@ test('issue #23: strongly asymmetric wind can fully unload a low-pretension cabl
 
 test('issue #88: canonical guyed job reuses one selected physical joint for the whole nonlinear envelope', () => {
   const project = compactProject()
-  const { result, guyedResult } = calculateProjectWithGuys(project, compactGuys(project))
+  const { result, guyedResult } = calculateProjectStages(project, compactGuys(project), null)
   assert.ok(guyedResult)
   assert.equal(guyedResult.connectionEnvelope.method, 'fixed-selected-joint-guyed-connection-envelope-v1')
   assert.equal(guyedResult.connectionEnvelope.physicalJointSource, 'bare-project-selected')
@@ -219,7 +219,7 @@ test('issue #88: canonical guyed job reuses one selected physical joint for the 
 
 test('issue #88: engineering summary resolves guyed connection only for the canonical composite result', () => {
   const project = compactProject()
-  const { result, guyedResult } = calculateProjectWithGuys(project, compactGuys(project))
+  const { result, guyedResult } = calculateProjectStages(project, compactGuys(project), null)
   assert.ok(guyedResult)
   const compositeSummary = createEngineeringSummary(result, guyedResult)
   const compositeCriterion = compositeSummary.criteria.find((item) => item.id === 'guyed-connection-envelope')

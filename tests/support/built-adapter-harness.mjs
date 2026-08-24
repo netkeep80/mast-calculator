@@ -20,14 +20,15 @@ async function applicationApi(buildRoot) {
 export async function calculateBuiltAdapterSummary(buildRoot, packageText, provenance) {
   const application = await applicationApi(buildRoot)
   const projectPackage = application.parseProjectPackage(packageText)
-  const result = projectPackage.guys
-    ? application.calculateGuyedProject(projectPackage.project, projectPackage.guys.tiers, {
-        ...(projectPackage.guys.safetyFactor === undefined ? {} : { safetyFactor: projectPackage.guys.safetyFactor }),
-        ...(projectPackage.guys.terminationEfficiency === undefined ? {} : { terminationEfficiency: projectPackage.guys.terminationEfficiency }),
-      })
-    : application.calculateProject(projectPackage.project)
+  const stages = application.calculateProjectStages(
+    projectPackage.project,
+    projectPackage.guys,
+    projectPackage.erection,
+  )
 
-  return projectPackage.guys
-    ? application.createGuyedResultSummary(projectPackage, result, { provenance })
-    : application.createBareResultSummary(projectPackage, result, { provenance })
+  if (projectPackage.guys) {
+    if (!stages.guyedResult) throw new Error('Built adapter did not return the enabled guy stage')
+    return application.createGuyedResultSummary(projectPackage, stages.guyedResult, { provenance })
+  }
+  return application.createBareResultSummary(projectPackage, stages.result, { provenance })
 }

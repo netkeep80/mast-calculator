@@ -1,4 +1,5 @@
 import {
+  MANUAL_MIGRATED_V1_LOAD_ACTION_PROFILE,
   createProjectInput,
   resolveProjectInput,
 } from '../../packages/domain/index.js'
@@ -13,8 +14,6 @@ const FLAT_PROJECT_FIELDS = Object.freeze({
   reinforcementClass: ['material', 'reinforcementClass'],
   materialSafetyFactor: ['material', 'materialSafetyFactor'],
 
-  deadLoadFactor: ['environment', 'deadLoadFactor'],
-  windLoadFactor: ['environment', 'windLoadFactor'],
   windActionMode: ['environment', 'windActionMode'],
   windRegion: ['environment', 'windRegion'],
   windTerrainType: ['environment', 'windTerrainType'],
@@ -31,7 +30,6 @@ const FLAT_PROJECT_FIELDS = Object.freeze({
   equipmentMassKg: ['equipment', 'massKg'],
   equipmentWindAreaM2: ['equipment', 'windAreaM2'],
   equipmentDragCoefficient: ['equipment', 'dragCoefficient'],
-  equipmentLoadFactor: ['equipment', 'loadFactor'],
 
   jointConfiguratorMode: ['connection', 'configuratorMode'],
   jointBoltDiameterMm: ['connection', 'boltDiameterMm'],
@@ -63,7 +61,18 @@ const FLAT_PROJECT_FIELDS = Object.freeze({
 
 export function resolvedProject(overrides = {}) {
   const grouped = {}
+  const manual = {}
   for (const [flatField, value] of Object.entries(overrides)) {
+    if (flatField === 'deadLoadFactor') {
+      manual.steelSelfWeightLoadFactor = value
+      manual.iceLoadFactor = value
+      continue
+    }
+    if (flatField === 'steelSelfWeightLoadFactor' || flatField === 'iceLoadFactor'
+      || flatField === 'equipmentLoadFactor' || flatField === 'windLoadFactor') {
+      manual[flatField] = value
+      continue
+    }
     const path = FLAT_PROJECT_FIELDS[flatField]
     if (!path) {
       throw new Error(`Test fixture cannot override derived/internal ResolvedProject field: ${flatField}`)
@@ -71,6 +80,17 @@ export function resolvedProject(overrides = {}) {
     const [group, field] = path
     grouped[group] ??= {}
     grouped[group][field] = value
+  }
+  if (Object.keys(manual).length > 0) {
+    const defaults = resolveProjectInput(createProjectInput()).loadActionProvenance
+    void defaults
+    grouped.loadActions = {
+      profile: MANUAL_MIGRATED_V1_LOAD_ACTION_PROFILE,
+      steelSelfWeightLoadFactor: manual.steelSelfWeightLoadFactor ?? 1.05,
+      equipmentLoadFactor: manual.equipmentLoadFactor ?? 1.05,
+      iceLoadFactor: manual.iceLoadFactor ?? 1.8,
+      windLoadFactor: manual.windLoadFactor ?? 1.4,
+    }
   }
   return resolveProjectInput(createProjectInput(grouped))
 }

@@ -232,6 +232,7 @@ export function calculateErectionEnvelope(
       minimumStep: options.minimumStep ?? 0.25,
       maximumEvaluations: options.maximumEvaluations ?? 49,
       maximumDepth: options.maximumDepth ?? 12,
+      ...(options.onEvaluation === undefined ? {} : { onEvaluation: options.onEvaluation }),
     },
   )
 

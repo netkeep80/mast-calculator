@@ -15,7 +15,9 @@ interface LoadCaseOptions {
 interface MemberLoadDetail {
   readonly memberId: number
   readonly lengthM: number
+  readonly characteristicSteelWeightPerLengthN: number
   readonly steelWeightPerLengthN: number
+  readonly characteristicIceWeightPerLengthN: number
   readonly iceWeightPerLengthN: number
   readonly windReferenceHeightM: number
   readonly characteristicMeanWindPressurePa: number
@@ -32,14 +34,18 @@ export interface BuiltLoadCase {
   totalAppliedLoad: MutableVector3
   distributedResultant: MutableVector3
   nodalResultant: MutableVector3
+  selfWeightCharacteristicN: number
   selfWeightN: number
+  iceWeightCharacteristicN: number
   iceWeightN: number
   memberWindN: number
+  equipmentWeightCharacteristicN: number
   equipmentWeightN: number
   equipmentWindN: number
   equipmentWindReferenceHeightM: number
   equipmentCharacteristicMeanWindPressurePa: number
   equipmentDesignMeanWindPressurePa: number
+  loadActionProvenance: ResolvedProject['loadActionProvenance']
   windActionProvenance: ResolvedProject['windActionProvenance']
   topPointLoadN: MutableVector3
   topHorizontalLoadN: number
@@ -70,14 +76,6 @@ export function buildLoadCase(
   parameters: ResolvedProject,
   options: LoadCaseOptions = {},
 ): BuiltLoadCase {
-  // В frame-модели собственный вес, лёд и ветер на стержни являются
-  // распределёнными нагрузками. В nodalLoads остаются только нагрузки,
-  // приложенные непосредственно к расчётным узлам: масса/парусность
-  // оборудования и внутренняя test-fixture нагрузка специальных расчётов.
-  //
-  // Issue #36: произвольные extraHorizontal/extraVertical больше не являются
-  // пользовательскими параметрами. Нормированные 1 Н проверки передают силу
-  // отдельно через options.topPointLoadN, чтобы verification API не протекал в UI.
   const nodalLoads: MutableVector3[] = model.nodes.map(() => [0, 0, 0])
   const nodalMoments: MutableVector3[] = model.nodes.map(() => [0, 0, 0])
   const memberDistributedLoads: MutableVector3[] = model.members.map(() => [0, 0, 0])
@@ -88,7 +86,9 @@ export function buildLoadCase(
   const wind: MutableVector3 = [Math.cos(directionRad), Math.sin(directionRad), 0]
   const iceThicknessM = Math.max(0, parameters.iceThicknessMm) / 1000
   const iceDensityKgM3 = Math.max(0, parameters.iceDensityKgM3)
+  let selfWeightCharacteristicN = 0
   let selfWeightN = 0
+  let iceWeightCharacteristicN = 0
   let iceWeightN = 0
   let memberWindN = 0
   let distributedResultant: MutableVector3 = [0, 0, 0]
@@ -113,31 +113,24 @@ export function buildLoadCase(
     const outerDiameterM = member.diameterM + 2 * iceThicknessM
     const iceAreaM2 = Math.PI * Math.max(0, outerDiameterM ** 2 - member.diameterM ** 2) / 4
 
-    const steelWeightPerLengthN = member.densityKgM3
-      * steelAreaM2
-      * GRAVITY
-      * parameters.deadLoadFactor
-    const iceWeightPerLengthN = iceDensityKgM3
-      * iceAreaM2
-      * GRAVITY
-      * parameters.deadLoadFactor
+    const characteristicSteelWeightPerLengthN = member.densityKgM3 * steelAreaM2 * GRAVITY
+    const steelWeightPerLengthN = characteristicSteelWeightPerLengthN * parameters.steelSelfWeightLoadFactor
+    const characteristicIceWeightPerLengthN = iceDensityKgM3 * iceAreaM2 * GRAVITY
+    const iceWeightPerLengthN = characteristicIceWeightPerLengthN * parameters.iceLoadFactor
 
+    const characteristicSteelWeightN = characteristicSteelWeightPerLengthN * lengthM
     const steelWeightN = steelWeightPerLengthN * lengthM
+    const characteristicIceWeightN = characteristicIceWeightPerLengthN * lengthM
     const memberIceWeightN = iceWeightPerLengthN * lengthM
+    selfWeightCharacteristicN += characteristicSteelWeightN
     selfWeightN += steelWeightN
+    iceWeightCharacteristicN += characteristicIceWeightN
     iceWeightN += memberIceWeightN
 
-    // СП 20 для башен/мачт задаёт ze по высоте рассматриваемого участка.
-    // Frame-element несёт равномерную q, поэтому для короткого стержня используем
-    // давление в его средней отметке как midpoint quadrature; это не отдельный
-    // аэродинамический коэффициент и не динамический multiplier.
     const windReferenceHeightM = Math.max(0, (nodeA.position[2] + nodeB.position[2]) / 2)
     const characteristicMeanWindPressurePa = meanWindPressureAtHeightPa(parameters, windReferenceHeightM)
     const designMeanWindPressurePa = characteristicMeanWindPressurePa * parameters.windLoadFactor
 
-    // Для цилиндрического стержня учитываем только компонент скорости/давления,
-    // нормальный к его оси. Вектор (wind - axis*(axis·wind)) одновременно задаёт
-    // направление силы и коэффициент пространственной проекции.
     const axisWindProjection = dot3(axis, wind)
     const windNormal = sub3(wind, scale3(axis, axisWindProjection))
     const windCoefficientNPerM = designMeanWindPressurePa
@@ -153,7 +146,9 @@ export function buildLoadCase(
     memberLoadDetails[member.id] = {
       memberId: member.id,
       lengthM,
+      characteristicSteelWeightPerLengthN,
       steelWeightPerLengthN,
+      characteristicIceWeightPerLengthN,
       iceWeightPerLengthN,
       windReferenceHeightM,
       characteristicMeanWindPressurePa,
@@ -164,10 +159,9 @@ export function buildLoadCase(
     distributedResultant = add3(distributedResultant, scale3(distributed, lengthM))
   }
 
-  // equipmentMassKg — единственная пользовательская вертикальная нагрузка
-  // вершины. Она переводится в расчётный вес по m*g*equipmentLoadFactor.
   const equipmentMassKg = Math.max(0, Number(parameters.equipmentMassKg))
-  const equipmentWeightN = equipmentMassKg * GRAVITY * parameters.equipmentLoadFactor
+  const equipmentWeightCharacteristicN = equipmentMassKg * GRAVITY
+  const equipmentWeightN = equipmentWeightCharacteristicN * parameters.equipmentLoadFactor
   const equipmentWindReferenceHeightM = Math.max(0, ...model.topNodeIds.map((nodeId) => model.nodes[nodeId]?.position[2] ?? 0))
   const equipmentCharacteristicMeanWindPressurePa = meanWindPressureAtHeightPa(parameters, equipmentWindReferenceHeightM)
   const equipmentDesignMeanWindPressurePa = equipmentCharacteristicMeanWindPressurePa * parameters.windLoadFactor
@@ -198,14 +192,18 @@ export function buildLoadCase(
     totalAppliedLoad,
     distributedResultant,
     nodalResultant,
+    selfWeightCharacteristicN,
     selfWeightN,
+    iceWeightCharacteristicN,
     iceWeightN,
     memberWindN,
+    equipmentWeightCharacteristicN,
     equipmentWeightN,
     equipmentWindN,
     equipmentWindReferenceHeightM,
     equipmentCharacteristicMeanWindPressurePa,
     equipmentDesignMeanWindPressurePa,
+    loadActionProvenance: parameters.loadActionProvenance,
     windActionProvenance: parameters.windActionProvenance,
     topPointLoadN: [...topPointLoadN],
     topHorizontalLoadN: Math.hypot(

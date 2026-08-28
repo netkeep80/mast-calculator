@@ -10,13 +10,17 @@ import {
   parseProjectPackage,
   serializeProjectPackage,
 } from '../packages/application/index.js'
-import { WIND_ACTION_MODE_SP20_MEAN_V1 } from '../packages/domain/index.js'
+import {
+  MANUAL_MIGRATED_V1_LOAD_ACTION_PROFILE,
+  PROJECT_PACKAGE_SCHEMA_V1,
+  WIND_ACTION_MODE_SP20_MEAN_V1,
+} from '../packages/domain/index.js'
 
 const runtimeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const sourceRoot = path.basename(runtimeRoot) === '.build' ? path.dirname(runtimeRoot) : runtimeRoot
 const source = (relativePath) => fs.readFileSync(path.join(sourceRoot, relativePath), 'utf8')
 
-test('project package presentation uses canonical project/v1, shared DOM mapping and an environment file adapter', () => {
+test('project package presentation uses canonical project/v2, shared DOM mapping and an environment file adapter', () => {
   const adapter = source('apps/web/project-package-ui.js')
   const browserFiles = source('apps/web/file-adapter.js')
   const bootstrap = source('apps/web/app-bootstrap.js')
@@ -37,7 +41,41 @@ test('project package presentation uses canonical project/v1, shared DOM mapping
   assert.doesNotMatch(adapter, /ribCutLengthMm|moduleHeightMm|jointEffectiveRadiusMm|calculateProject|calculateMast/)
 })
 
-test('project/v1 keeps legacy packages readable and round-trips optional SP20 wind fields without a schema fork', () => {
+test('project/v1 migrates historical load factors explicitly into project/v2 manual-migrated-v1 actions', () => {
+  const currentProject = createProjectInput({
+    geometry: { moduleCount: 3 },
+    environment: { windPresetId: 'custom', windPressurePa: 380 },
+  })
+  const { loadActions: _currentLoadActions, ...legacyGroups } = currentProject
+  const legacyPackage = {
+    schema: PROJECT_PACKAGE_SCHEMA_V1,
+    project: {
+      ...legacyGroups,
+      environment: {
+        ...currentProject.environment,
+        deadLoadFactor: 1.1,
+        windLoadFactor: 1.4,
+      },
+      equipment: {
+        ...currentProject.equipment,
+        loadFactor: 1.1,
+      },
+    },
+  }
+
+  const migrated = parseProjectPackage(JSON.stringify(legacyPackage))
+  assert.equal(migrated.schema, PROJECT_PACKAGE_SCHEMA)
+  assert.equal(migrated.project.loadActions.profile, MANUAL_MIGRATED_V1_LOAD_ACTION_PROFILE)
+  assert.equal(migrated.project.loadActions.steelSelfWeightLoadFactor, 1.1)
+  assert.equal(migrated.project.loadActions.iceLoadFactor, 1.1)
+  assert.equal(migrated.project.loadActions.equipmentLoadFactor, 1.1)
+  assert.equal(migrated.project.loadActions.windLoadFactor, 1.4)
+  assert.equal('deadLoadFactor' in migrated.project.environment, false)
+  assert.equal('windLoadFactor' in migrated.project.environment, false)
+  assert.equal('loadFactor' in migrated.project.equipment, false)
+})
+
+test('project/v2 round-trips optional SP20 wind fields without a schema fork', () => {
   const legacyProject = createProjectInput({
     geometry: { moduleCount: 3 },
     environment: { windPresetId: 'custom', windPressurePa: 380 },

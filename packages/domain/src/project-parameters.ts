@@ -295,7 +295,7 @@ function resolveLoadActions(parameters: JsonRecord): {
 function resolveFlatCalculationParameters(parameters: JsonRecord = {}): ResolvedProject {
   const merged = { ...DEFAULT_FLAT_INPUT, ...parameters }
   const loadActions = resolveLoadActions(merged)
-  const withMaterial = applyReinforcementClass({ ...merged, ...loadActions } as JsonRecord & { reinforcementClass: string })
+  const withMaterial = applyReinforcementClass({ ...merged, ...loadActions } as unknown as JsonRecord & { reinforcementClass: string })
   const withWeather = resolveWindParameters(withMaterial as JsonRecord & { windPresetId?: string; windPressurePa?: unknown })
   const ribCutLengthMm = theoreticalCutLengthMm(withWeather.stockBarLengthMm, withWeather.stockBarPieces)
   const moduleHeightMm = regularOctahedronHeightMm(ribCutLengthMm)

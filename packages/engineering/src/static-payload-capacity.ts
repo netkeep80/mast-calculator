@@ -41,7 +41,7 @@ function payloadParameters(
 ): ResolvedProject {
   return {
     ...parameters,
-    deadLoadFactor: includeSelfWeight ? parameters.deadLoadFactor : 0,
+    steelSelfWeightLoadFactor: includeSelfWeight ? parameters.steelSelfWeightLoadFactor : 0,
     windPressurePa: 0,
     windPresetId: 'custom',
     windDirectionDeg: 0,

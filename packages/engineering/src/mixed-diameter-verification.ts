@@ -94,7 +94,7 @@ export function repairMixedDiameterVerificationPassport<T extends VerificationPa
     const areaM2 = Math.PI * member.diameterM ** 2 / 4
     return sum + memberLength(model, member) * areaM2 * member.densityKgM3
   }, 0)
-  const expectedSelfWeightN = expectedMassKg * GRAVITY_M_S2 * result.parameters.deadLoadFactor
+  const expectedSelfWeightN = expectedMassKg * GRAVITY_M_S2 * result.parameters.steelSelfWeightLoadFactor
   const diameters = [...new Set(model.members.map((member) => member.diameterM * 1000))].sort((a, b) => b - a)
 
   const steelMass = repaired.checks?.find((check) => check.id === 'steel-mass')
@@ -122,7 +122,7 @@ export function repairMixedDiameterVerificationPassport<T extends VerificationPa
     Object.assign(selfWeight, {
       explanation: 'Расчётный собственный вес строится из независимо пересчитанной массы всех рёбер смешанного профиля.',
       formula: 'G = (Σmi)·g·γg',
-      substitution: `${expectedMassKg}·${GRAVITY_M_S2}·${result.parameters.deadLoadFactor} = ${expectedSelfWeightN} Н`,
+      substitution: `${expectedMassKg}·${GRAVITY_M_S2}·${result.parameters.steelSelfWeightLoadFactor} = ${expectedSelfWeightN} Н`,
       actual,
       expected: expectedSelfWeightN,
       tolerance: 1e-10,

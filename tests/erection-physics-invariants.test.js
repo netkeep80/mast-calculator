@@ -85,14 +85,16 @@ test('erection inertia load is physical and does not reuse operational reliabili
   const base = resolvedProject({
     moduleCount: 2,
     equipmentMassKg: 80,
-    deadLoadFactor: 1,
+    steelSelfWeightLoadFactor: 1,
+    iceLoadFactor: 1,
     equipmentLoadFactor: 1,
     windLoadFactor: 1,
   })
   const factored = resolvedProject({
     moduleCount: 2,
     equipmentMassKg: 80,
-    deadLoadFactor: 2.7,
+    steelSelfWeightLoadFactor: 2.7,
+    iceLoadFactor: 3.3,
     equipmentLoadFactor: 2.9,
     windLoadFactor: 3.1,
   })

@@ -63,14 +63,14 @@ function stableErectionInput(project, midpointAngleDeg = 35) {
   }
 }
 
-test('legacy project/v1 without erection preserves exact serialization', () => {
+test('current project/v2 without erection preserves exact serialization', () => {
   const project = createProjectInput({ geometry: { moduleCount: 2 } })
-  const legacy = { schema: PROJECT_PACKAGE_SCHEMA, project }
-  assert.deepEqual(parseProjectPackage(JSON.stringify(legacy)), legacy)
-  assert.equal(serializeProjectPackage(legacy), `${JSON.stringify(legacy, null, 2)}\n`)
+  const current = { schema: PROJECT_PACKAGE_SCHEMA, project }
+  assert.deepEqual(parseProjectPackage(JSON.stringify(current)), current)
+  assert.equal(serializeProjectPackage(current), `${JSON.stringify(current, null, 2)}\n`)
 })
 
-test('project/v1 round-trips only user-owned erection configuration', () => {
+test('project/v2 round-trips only user-owned erection configuration', () => {
   const project = createProjectInput({ geometry: { moduleCount: 2 } })
   const erection = stableErectionInput(project)
   const packageValue = createProjectPackage(project, { erection })

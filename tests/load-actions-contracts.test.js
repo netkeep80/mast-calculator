@@ -40,7 +40,7 @@ test('calculation project identifies migrated project/v1 factors without relabel
   const html = createCalculationProjectHtml(migratedResult, migratedParameters)
   assert.match(html, /Профиль расчётных воздействий/)
   assert.match(html, /Мигрированный профиль project\/v1/)
-  assert.match(html, /не является нормативным профилем по умолчанию/i)
+  assert.match(html, /не являются нормативным профилем по умолчанию/i)
   assert.match(html, tableValue('γf собственного веса стали', '0(?:,0+)?'))
   assert.match(html, tableValue('γf оборудования', '1,17'))
   assert.match(html, tableValue('γf гололёда', '0(?:,0+)?'))

@@ -74,8 +74,15 @@ function compareExpectedSubset(actual, expected, pathParts = []) {
 
 test('canonical engineering scenarios preserve the frozen pre-foundation numerical baseline', () => {
   const current = generateCurrentBaseline()
-  assert.equal(current.schema, baseline.schema)
-  assert.equal(current.scenariosSchema, baseline.scenariosSchema)
-  assert.deepEqual(Object.keys(current.cases), Object.keys(baseline.cases), 'canonical scenario set changed without baseline versioning')
-  compareExpectedSubset(current, baseline)
+  try {
+    assert.equal(current.schema, baseline.schema)
+    assert.equal(current.scenariosSchema, baseline.scenariosSchema)
+    assert.deepEqual(Object.keys(current.cases), Object.keys(baseline.cases), 'canonical scenario set changed without baseline versioning')
+    compareExpectedSubset(current, baseline)
+  } catch (error) {
+    console.error(BEGIN)
+    console.error(JSON.stringify(current, null, 2))
+    console.error(END)
+    throw error
+  }
 })

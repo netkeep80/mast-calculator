@@ -40,6 +40,7 @@ const FAST_CRITERIA = Object.freeze({ heightSearchMaxModules: 2 })
 function compactProject(overrides = {}) {
   return application.createProjectInput({
     geometry: { moduleCount: 2, ...(overrides.geometry ?? {}) },
+    loadActions: { ...(overrides.loadActions ?? {}) },
     environment: { ...FAST_ENVIRONMENT, ...(overrides.environment ?? {}) },
     equipment: { ...(overrides.equipment ?? {}) },
     connection: { ...(overrides.connection ?? {}) },
@@ -63,8 +64,15 @@ function canonicalProjectCases() {
   })
   const capacities = compactProject({
     geometry: { moduleCount: 2, barDiameterMm: 16 },
+    loadActions: {
+      profile: 'manual-migrated-v1',
+      steelSelfWeightLoadFactor: 1.1,
+      equipmentLoadFactor: 1.1,
+      iceLoadFactor: 1.1,
+      windLoadFactor: 1.4,
+    },
     environment: { windPressurePa: 380 },
-    equipment: { massKg: 25, windAreaM2: 0.5, dragCoefficient: 1.4, loadFactor: 1.1 },
+    equipment: { massKg: 25, windAreaM2: 0.5, dragCoefficient: 1.4 },
   })
   const sp20Mean = compactProject({
     geometry: { moduleCount: 2, barDiameterMm: 16 },

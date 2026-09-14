@@ -5,10 +5,14 @@ import type {
   ProjectGuysInput,
   ProjectInput,
   ProjectPackageMetadata,
-  ProjectPackageV1,
+  ProjectPackageV2,
   ProjectTiltUpErectionInput,
 } from './contracts.js'
-import { PROJECT_PACKAGE_SCHEMA } from './contracts.js'
+import {
+  MANUAL_MIGRATED_V1_LOAD_ACTION_PROFILE,
+  PROJECT_PACKAGE_SCHEMA,
+  PROJECT_PACKAGE_SCHEMA_V1,
+} from './contracts.js'
 import { assertProjectInput } from './project-parameters.js'
 import {
   SP20_BASIC_WIND_PRESSURE_PA,
@@ -17,8 +21,11 @@ import {
   WIND_ACTION_MODE_SP20_MEAN_V1,
 } from './wind-action.js'
 
-export { PROJECT_PACKAGE_SCHEMA }
-export const SUPPORTED_PROJECT_PACKAGE_SCHEMAS = Object.freeze([PROJECT_PACKAGE_SCHEMA] as const)
+export { PROJECT_PACKAGE_SCHEMA, PROJECT_PACKAGE_SCHEMA_V1 }
+export const SUPPORTED_PROJECT_PACKAGE_SCHEMAS = Object.freeze([
+  PROJECT_PACKAGE_SCHEMA,
+  PROJECT_PACKAGE_SCHEMA_V1,
+] as const)
 
 export class ProjectSchemaError extends Error {
   readonly code: string
@@ -49,6 +56,14 @@ function assertKnownFields(value: Record<string, unknown>, allowed: readonly str
 
 function assertFiniteNumber(value: unknown, path: string): asserts value is number {
   if (!Number.isFinite(value)) throw new ProjectSchemaError('invalid-number', `${path} должен быть конечным числом`, { path })
+}
+
+function legacyLoadFactor(value: unknown, path: string): number {
+  assertFiniteNumber(value, path)
+  if (value < 0) {
+    throw new ProjectSchemaError('invalid-load-factor', `${path} должен быть неотрицательным`, { path })
+  }
+  return value
 }
 
 function optionalString(value: unknown, path: string): string | undefined {
@@ -85,8 +100,6 @@ function assertProjectValueTypes(project: ProjectInput): ProjectInput {
     ['geometry.stockBarPieces', project.geometry.stockBarPieces],
     ['geometry.barDiameterMm', project.geometry.barDiameterMm],
     ['material.materialSafetyFactor', project.material.materialSafetyFactor],
-    ['environment.deadLoadFactor', project.environment.deadLoadFactor],
-    ['environment.windLoadFactor', project.environment.windLoadFactor],
     ['environment.dragCoefficient', project.environment.dragCoefficient],
     ['environment.windDirectionDeg', project.environment.windDirectionDeg],
     ['environment.windEnvelopeStepDeg', project.environment.windEnvelopeStepDeg],
@@ -96,7 +109,6 @@ function assertProjectValueTypes(project: ProjectInput): ProjectInput {
     ['equipment.massKg', project.equipment.massKg],
     ['equipment.windAreaM2', project.equipment.windAreaM2],
     ['equipment.dragCoefficient', project.equipment.dragCoefficient],
-    ['equipment.loadFactor', project.equipment.loadFactor],
     ['connection.boltDiameterMm', project.connection.boltDiameterMm],
     ['connection.clearanceNutThreadMm', project.connection.clearanceNutThreadMm],
     ['connection.boltLengthMm', project.connection.boltLengthMm],
@@ -359,17 +371,7 @@ export function validateProjectErectionInput(value: unknown): ProjectErectionInp
   return Object.freeze(erection)
 }
 
-function assertProjectPackageV1(value: Record<string, unknown>): ProjectPackageV1 {
-  if (value.schema !== PROJECT_PACKAGE_SCHEMA) {
-    throw new ProjectSchemaError(
-      'unsupported-schema',
-      `Неподдерживаемая схема проекта: ${String(value.schema ?? 'не указана')}`,
-      { supported: SUPPORTED_PROJECT_PACKAGE_SCHEMAS, actual: value.schema ?? null },
-    )
-  }
-  assertKnownFields(value, ['schema', 'metadata', 'project', 'guys', 'erection'], 'ProjectPackage')
-  if (!('project' in value)) throw new ProjectSchemaError('missing-project', 'Пакет проекта не содержит поле project')
-  const project = validateProjectInput(value.project)
+function packageParts(value: Record<string, unknown>, project: ProjectInput): ProjectPackageV2 {
   const metadata = validateMetadata(value.metadata)
   const guys = validateGuys(value.guys)
   const erection = validateProjectErectionInput(value.erection)
@@ -382,13 +384,72 @@ function assertProjectPackageV1(value: Record<string, unknown>): ProjectPackageV
   })
 }
 
-/**
- * Version migration dispatch. v1 is the only current schema; future migrations are added here
- * and must return the canonical current ProjectPackageV1. No synthetic legacy wrapper is kept.
- */
-export function migrateProjectPackage(value: unknown): ProjectPackageV1 {
+function assertProjectPackageV2(value: Record<string, unknown>): ProjectPackageV2 {
+  if (value.schema !== PROJECT_PACKAGE_SCHEMA) {
+    throw new ProjectSchemaError(
+      'unsupported-schema',
+      `Неподдерживаемая схема проекта: ${String(value.schema ?? 'не указана')}`,
+      { supported: SUPPORTED_PROJECT_PACKAGE_SCHEMAS, actual: value.schema ?? null },
+    )
+  }
+  assertKnownFields(value, ['schema', 'metadata', 'project', 'guys', 'erection'], 'ProjectPackage')
+  if (!('project' in value)) throw new ProjectSchemaError('missing-project', 'Пакет проекта не содержит поле project')
+  return packageParts(value, validateProjectInput(value.project))
+}
+
+function migrateProjectV1(value: Record<string, unknown>): ProjectPackageV2 {
+  assertKnownFields(value, ['schema', 'metadata', 'project', 'guys', 'erection'], 'ProjectPackage')
+  if (!isRecord(value.project)) throw new ProjectSchemaError('missing-project', 'Пакет проекта не содержит объект project')
+  const legacy = value.project
+  assertKnownFields(legacy, ['geometry', 'material', 'environment', 'equipment', 'connection', 'criteria'], 'ProjectPackage.project')
+  if (!isRecord(legacy.environment)) {
+    throw new ProjectSchemaError('invalid-project-input', 'ProjectInput.environment должен быть объектом')
+  }
+  if (!isRecord(legacy.equipment)) {
+    throw new ProjectSchemaError('invalid-project-input', 'ProjectInput.equipment должен быть объектом')
+  }
+
+  const deadLoadFactor = legacyLoadFactor(
+    legacy.environment.deadLoadFactor,
+    'ProjectInput.environment.deadLoadFactor',
+  )
+  const windLoadFactor = legacyLoadFactor(
+    legacy.environment.windLoadFactor,
+    'ProjectInput.environment.windLoadFactor',
+  )
+  const equipmentLoadFactor = legacyLoadFactor(
+    legacy.equipment.loadFactor,
+    'ProjectInput.equipment.loadFactor',
+  )
+  const environment = { ...legacy.environment }
+  const equipment = { ...legacy.equipment }
+  delete environment.deadLoadFactor
+  delete environment.windLoadFactor
+  delete equipment.loadFactor
+
+  const project = validateProjectInput({
+    geometry: legacy.geometry,
+    material: legacy.material,
+    loadActions: {
+      profile: MANUAL_MIGRATED_V1_LOAD_ACTION_PROFILE,
+      steelSelfWeightLoadFactor: deadLoadFactor,
+      equipmentLoadFactor,
+      iceLoadFactor: deadLoadFactor,
+      windLoadFactor,
+    },
+    environment,
+    equipment,
+    connection: legacy.connection,
+    criteria: legacy.criteria,
+  })
+  return packageParts(value, project)
+}
+
+/** Upgrade every supported historical package to the canonical current project/v2 contract. */
+export function migrateProjectPackage(value: unknown): ProjectPackageV2 {
   if (!isRecord(value)) throw new ProjectSchemaError('invalid-package', 'Пакет проекта должен быть объектом')
-  if (value.schema === PROJECT_PACKAGE_SCHEMA) return assertProjectPackageV1(value)
+  if (value.schema === PROJECT_PACKAGE_SCHEMA) return assertProjectPackageV2(value)
+  if (value.schema === PROJECT_PACKAGE_SCHEMA_V1) return migrateProjectV1(value)
   throw new ProjectSchemaError(
     'unsupported-schema',
     `Неподдерживаемая схема проекта: ${String(value.schema ?? 'не указана')}`,
@@ -396,7 +457,7 @@ export function migrateProjectPackage(value: unknown): ProjectPackageV1 {
   )
 }
 
-export function assertProjectPackage(value: unknown): ProjectPackageV1 {
+export function assertProjectPackage(value: unknown): ProjectPackageV2 {
   return migrateProjectPackage(value)
 }
 
@@ -406,7 +467,7 @@ export interface CreateProjectPackageOptions {
   readonly erection?: ProjectErectionInput
 }
 
-export function createProjectPackage(project: unknown, options: CreateProjectPackageOptions = {}): ProjectPackageV1 {
+export function createProjectPackage(project: unknown, options: CreateProjectPackageOptions = {}): ProjectPackageV2 {
   return assertProjectPackage({
     schema: PROJECT_PACKAGE_SCHEMA,
     project,
@@ -420,7 +481,7 @@ export function serializeProjectPackage(value: unknown): string {
   return `${JSON.stringify(assertProjectPackage(value), null, 2)}\n`
 }
 
-export function parseProjectPackage(text: unknown): ProjectPackageV1 {
+export function parseProjectPackage(text: unknown): ProjectPackageV2 {
   let value: unknown
   try {
     value = JSON.parse(String(text)) as unknown

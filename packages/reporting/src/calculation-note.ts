@@ -255,9 +255,9 @@ ${formula(
 <h2>4. Нагрузки</h2>
 <h3>4.1. Собственный вес ребра</h3>
 ${formula(
-    'qg = ρ·A·g·γg',
-    `qg = ${number(p.densityKgM3, 0)}·${scientific(areaM2)}·9,80665·${number(p.deadLoadFactor, 3)} Н/м`,
-    `${number(p.densityKgM3 * areaM2 * 9.80665 * p.deadLoadFactor, 5)} Н/м`,
+    'qsteel = ρ·A·g·γsteel',
+    `qsteel = ${number(p.densityKgM3, 0)}·${scientific(areaM2)}·9,80665·${number(p.steelSelfWeightLoadFactor, 3)} Н/м`,
+    `${number(p.densityKgM3 * areaM2 * 9.80665 * p.steelSelfWeightLoadFactor, 5)} Н/м`,
   )}
 <h3>4.2. Обледенение</h3>
 ${formula(
@@ -265,7 +265,7 @@ ${formula(
     `Aice = π[( ${number((diameterM + 2 * p.iceThicknessMm / 1000) * 1000, 3)} )²−${number(diameterM * 1000, 3)}²]/4 мм²`,
     `${number(Math.PI * Math.max(0, (diameterM + 2 * p.iceThicknessMm / 1000) ** 2 - diameterM ** 2) / 4 * 1e6, 3)} мм²`,
   )}
-<p>Линейный вес льда далее вычисляется как <em>q<sub>ice</sub> = ρ<sub>ice</sub>·A<sub>ice</sub>·g·γ<sub>g</sub></em>.</p>
+<p>Линейный расчётный вес льда вычисляется как <em>q<sub>ice</sub> = ρ<sub>ice</sub>·A<sub>ice</sub>·g·γ<sub>ice</sub></em>, где γ<sub>ice</sub> = ${number(p.iceLoadFactor, 3)}.</p>
 <h3>4.3. Ветер на пространственно ориентированное ребро</h3>
 <div class="formula">
   <div class="formula-symbolic">q⃗w = p·cd·dout·γw·[e⃗w − e⃗x(e⃗x·e⃗w)]</div>

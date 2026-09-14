@@ -125,6 +125,17 @@ export interface ProjectInput {
   readonly criteria: CriteriaInput
 }
 
+/** Historical project/v1 input. The three ambiguous load-factor fields are retained only for migration. */
+export type ProjectInputV1 = Omit<ProjectInput, 'loadActions' | 'environment' | 'equipment'> & {
+  readonly environment: EnvironmentInput & {
+    readonly deadLoadFactor: number
+    readonly windLoadFactor: number
+  }
+  readonly equipment: EquipmentInput & {
+    readonly loadFactor: number
+  }
+}
+
 /**
  * Canonical resolved calculation contract consumed by physics packages in 4a.
  * It is intentionally flat so the existing solver formulas can migrate without a simultaneous rewrite.
@@ -261,6 +272,14 @@ export interface ProjectPackageMetadata {
 export const PROJECT_PACKAGE_SCHEMA_V1 = 'mast-calculator/project/v1' as const
 export const PROJECT_PACKAGE_SCHEMA = 'mast-calculator/project/v2' as const
 
+export interface ProjectPackageV1 {
+  readonly schema: typeof PROJECT_PACKAGE_SCHEMA_V1
+  readonly metadata?: ProjectPackageMetadata
+  readonly project: ProjectInputV1
+  readonly guys?: ProjectGuysInput
+  readonly erection?: ProjectErectionInput
+}
+
 export interface ProjectPackageV2 {
   readonly schema: typeof PROJECT_PACKAGE_SCHEMA
   readonly metadata?: ProjectPackageMetadata
@@ -268,5 +287,3 @@ export interface ProjectPackageV2 {
   readonly guys?: ProjectGuysInput
   readonly erection?: ProjectErectionInput
 }
-
-export type ProjectPackageV1 = ProjectPackageV2

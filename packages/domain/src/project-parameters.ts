@@ -210,8 +210,8 @@ export function assertProjectInput(value: unknown): ProjectInput {
   if (actions.profile === MANUAL_MIGRATED_V1_LOAD_ACTION_PROFILE) {
     for (const field of ['steelSelfWeightLoadFactor', 'equipmentLoadFactor', 'iceLoadFactor', 'windLoadFactor']) {
       const factor = Number(actions[field])
-      if (!Number.isFinite(factor) || factor <= 0) {
-        throw new Error(`ProjectInput.loadActions.${field} должен быть положительным конечным числом`)
+      if (!Number.isFinite(factor) || factor < 0) {
+        throw new Error(`ProjectInput.loadActions.${field} должен быть неотрицательным конечным числом`)
       }
     }
   }
@@ -271,7 +271,7 @@ function resolveLoadActions(parameters: JsonRecord): {
     iceLoadFactor,
     windLoadFactor,
   })) {
-    if (!Number.isFinite(factor) || factor <= 0) throw new Error(`Некорректный legacy коэффициент ${name}`)
+    if (!Number.isFinite(factor) || factor < 0) throw new Error(`Некорректный legacy коэффициент ${name}`)
   }
   return {
     steelSelfWeightLoadFactor,

@@ -9,7 +9,10 @@ import {
   readProjectInputFromForm,
 } from '../apps/web/project-form-dom.js'
 import { createProjectInput } from '../packages/application/index.js'
-import { WIND_ACTION_MODE_SP20_MEAN_V1 } from '../packages/domain/index.js'
+import {
+  MANUAL_MIGRATED_V1_LOAD_ACTION_PROFILE,
+  WIND_ACTION_MODE_SP20_MEAN_V1,
+} from '../packages/domain/index.js'
 
 const runtimeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const sourceRoot = path.basename(runtimeRoot) === '.build' ? path.dirname(runtimeRoot) : runtimeRoot
@@ -56,7 +59,7 @@ test('shared DOM adapter reads canonical ProjectInput with integer/boolean/strin
   assert.equal(input.equipment.massKg, 8.5)
 })
 
-test('legacy ProjectInput can be written to the same DOM adapter and read back unchanged', () => {
+test('canonical ProjectInput can be written to the same DOM adapter and read back unchanged', () => {
   const form = fakeForm([
     'moduleCount', 'stockBarLengthMm', 'stockBarPieces', 'barDiameterMm',
     'reinforcementClass', 'windPresetId', 'windPressurePa', 'windEnvelopeEnabled',
@@ -75,7 +78,32 @@ test('legacy ProjectInput can be written to the same DOM adapter and read back u
   assert.deepEqual(roundTrip, input)
 })
 
-test('SP20 wind mode region and terrain round-trip as optional project/v1 fields', () => {
+test('Web form round-trip preserves migrated project/v1 load-action semantics including zero factors', () => {
+  const form = fakeForm([
+    'loadActionProfile',
+    'steelSelfWeightLoadFactor',
+    'equipmentLoadFactor',
+    'iceLoadFactor',
+    'windLoadFactor',
+  ])
+  const input = createProjectInput({
+    loadActions: {
+      profile: MANUAL_MIGRATED_V1_LOAD_ACTION_PROFILE,
+      steelSelfWeightLoadFactor: 0,
+      equipmentLoadFactor: 1.17,
+      iceLoadFactor: 0,
+      windLoadFactor: 1.41,
+    },
+  })
+
+  applyDefaultProjectInputToForm(form)
+  applyProjectInputToForm(form, input)
+  const roundTrip = readProjectInputFromForm(form)
+
+  assert.deepEqual(roundTrip.loadActions, input.loadActions)
+})
+
+test('SP20 wind mode region and terrain round-trip as optional project/v2 fields', () => {
   const form = fakeForm([
     'moduleCount', 'stockBarLengthMm', 'stockBarPieces', 'barDiameterMm',
     'reinforcementClass', 'windActionMode', 'windRegion', 'windTerrainType',

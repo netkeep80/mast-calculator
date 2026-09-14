@@ -16,6 +16,30 @@ const number = (value: unknown, digits = 3): string => (
     : '—'
 )
 
+function loadActionSection(parameters: ResolvedProject): string {
+  const provenance = parameters.loadActionProvenance
+  const normative = provenance.mode === 'normative'
+  const title = normative
+    ? 'Нормативный профиль СП 20.13330.2016, изм. №6'
+    : 'Мигрированный профиль project/v1'
+  const qualification = normative
+    ? 'Коэффициенты приняты из указанного нормативного профиля.'
+    : 'Коэффициенты сохранены из исторического project/v1 и не являются нормативным профилем по умолчанию.'
+
+  return `<h3>Профиль расчётных воздействий</h3>
+<p><strong>${escapeHtml(title)}</strong>. ${escapeHtml(qualification)}</p>
+<table>
+<thead><tr><th>Воздействие</th><th>γf</th><th>Provenance</th></tr></thead>
+<tbody>
+<tr><td>γf собственного веса стали</td><td>${number(parameters.steelSelfWeightLoadFactor, 3)}</td><td>${escapeHtml(provenance.steelSelfWeight)}</td></tr>
+<tr><td>γf оборудования</td><td>${number(parameters.equipmentLoadFactor, 3)}</td><td>${escapeHtml(provenance.equipmentWeight)}</td></tr>
+<tr><td>γf гололёда</td><td>${number(parameters.iceLoadFactor, 3)}</td><td>${escapeHtml(provenance.ice)}</td></tr>
+<tr><td>γf ветровой нагрузки</td><td>${number(parameters.windLoadFactor, 3)}</td><td>${escapeHtml(provenance.wind)}</td></tr>
+</tbody>
+</table>
+<p class="equation-note"><strong>Источник:</strong> ${escapeHtml(provenance.source)}</p>`
+}
+
 function windActionSection(parameters: ResolvedProject): string {
   const provenance = parameters.windActionProvenance
   if (provenance.model === WIND_ACTION_MODE_SP20_MEAN_V1) {
@@ -61,5 +85,5 @@ export function createCalculationProjectHtml(
   const startIndex = html.indexOf(start)
   const endIndex = html.indexOf(end, startIndex)
   if (startIndex < 0 || endIndex < 0) throw new Error('Не найдена секция ветровой нагрузки в расчётном проекте')
-  return `${html.slice(0, startIndex)}${windActionSection(parameters)}\n\n${html.slice(endIndex)}`
+  return `${html.slice(0, startIndex)}${loadActionSection(parameters)}\n\n${windActionSection(parameters)}\n\n${html.slice(endIndex)}`
 }

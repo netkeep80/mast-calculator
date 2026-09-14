@@ -63,11 +63,6 @@ export function resolvedProject(overrides = {}) {
   const grouped = {}
   const manual = {}
   for (const [flatField, value] of Object.entries(overrides)) {
-    if (flatField === 'deadLoadFactor') {
-      manual.steelSelfWeightLoadFactor = value
-      manual.iceLoadFactor = value
-      continue
-    }
     if (flatField === 'steelSelfWeightLoadFactor' || flatField === 'iceLoadFactor'
       || flatField === 'equipmentLoadFactor' || flatField === 'windLoadFactor') {
       manual[flatField] = value
@@ -82,8 +77,6 @@ export function resolvedProject(overrides = {}) {
     grouped[group][field] = value
   }
   if (Object.keys(manual).length > 0) {
-    const defaults = resolveProjectInput(createProjectInput()).loadActionProvenance
-    void defaults
     grouped.loadActions = {
       profile: MANUAL_MIGRATED_V1_LOAD_ACTION_PROFILE,
       steelSelfWeightLoadFactor: manual.steelSelfWeightLoadFactor ?? 1.05,

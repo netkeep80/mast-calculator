@@ -4,7 +4,6 @@ import {
   DEFAULT_PROJECT_INPUT,
   MastApplicationError,
   PROJECT_PACKAGE_SCHEMA,
-  PROJECT_PACKAGE_SCHEMA_V1,
   ProjectSchemaError,
   SUPPORTED_PROJECT_PACKAGE_SCHEMAS,
   calculateProject,
@@ -16,6 +15,7 @@ import {
   serializeProjectPackage,
   validateProjectInput,
 } from '../packages/application/index.js'
+import { PROJECT_PACKAGE_SCHEMA_V1 } from '../packages/domain/index.js'
 
 test('ProjectInput is grouped, user-only and rejects derived/dead fields', () => {
   const input = createProjectInput({ geometry: { moduleCount: 3 } })

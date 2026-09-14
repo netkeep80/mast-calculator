@@ -78,27 +78,33 @@ function projectMast(result) {
       topDisplacementM: finite(result.envelope?.maxTopDisplacementM),
       maxUtilization: finite(result.envelope?.maxUtilization),
       minimumBucklingFactor: finite(result.envelope?.minimumBucklingFactor),
-      eigenResidual: finite(analysis?.buckling?.eigenResidual),
+      eigenResidual: finite(analysis?.buckling?.residual),
       globalSchurRelativeDifference: finite(analysis?.modular?.relativeDisplacementDifference),
       interfaceEquilibriumResidual: finite(analysis?.modular?.interfaceEquilibriumResidual),
     },
     criticalMember: member ? {
-      memberId: member.memberId,
+      memberId: member.memberId ?? member.id ?? null,
       utilization: finite(member.utilization),
       localEndForcesChecksum: numericChecksum(member.localEndForces ?? []),
     } : null,
     connection: {
-      jointCount: result.connections?.jointCount ?? 0,
-      boltClass: selected?.boltClass ?? null,
-      boltDiameterMm: geometry?.bolt?.diameterMm ?? null,
-      boltLengthMm: geometry?.bolt?.lengthMm ?? null,
-      boltUtilization: finite(result.connections?.bolt?.selected?.utilization ?? 0),
+      jointCount: result.connections?.jointCount ?? null,
+      boltClass: selected?.boltClass ?? result.connections?.bolt?.configuredClass ?? null,
+      boltDiameterMm: finite(selected?.diameterMm ?? geometry?.bolt?.diameterMm),
+      boltLengthMm: finite(geometry?.bolt?.lengthMm),
+      boltUtilization: finite(result.connections?.bolt?.selected?.utilization),
       criticalWeldLengthMm: finite(result.connections?.weld?.critical?.check?.requiredPhysicalLengthMm),
     },
   }
 }
 
-function projectGuys(result) {
+function projectGuyed(parameters, scenario) {
+  const heightM = parameters.moduleCount * parameters.moduleHeightMm / 1000
+  const tiers = scenario.tiers.map(({ moduleFraction, ...tier }) => ({
+    ...tier,
+    heightM: heightM * moduleFraction,
+  }))
+  const result = calculateGuyedMast(parameters, tiers)
   return {
     topology: {
       modules: result.model.moduleCount,
@@ -113,154 +119,136 @@ function projectGuys(result) {
       maximumCableUtilization: finite(result.envelope.maximumCableUtilization),
     },
     cables: {
-      totalLengthM: finite(result.cableSystem.totalLengthM),
-      totalMassKg: finite(result.cableSystem.totalMassKg),
-      tensionChecksum: numericChecksum(result.envelope.governing?.cableTensionsN ?? []),
+      totalLengthM: finite(result.cableSystem.totalCableLengthM),
+      totalMassKg: finite(result.cableSystem.totalCableMassKg),
+      tensionChecksum: numericChecksum(result.cableEnvelope.map((item) => item.maximumTensionN)),
     },
     nonlinear: {
-      allConverged: result.envelope.cases.every((item) => item.converged),
-      maximumIterations: Math.max(...result.envelope.cases.map((item) => item.iterations)),
+      allConverged: result.cases.every((item) => item.nonlinear.converged),
+      maximumIterations: Math.max(...result.cases.map((item) => item.nonlinear.iterations)),
     },
   }
 }
 
-function projectStaticPayload(result) {
-  return {
-    maximumTopMassKg: finite(result.maximumTopEquipmentMassKg),
-    additionalTopMassKg: finite(result.additionalTopEquipmentMassKg),
-    utilizationAtLimit: finite(result.utilizationAtLimit),
-    boltUtilizationAtLimit: finite(result.boltUtilizationAtLimit),
-    bucklingFactorAtLimit: finite(result.bucklingFactorAtLimit),
-    governingMode: result.governingMode,
+function projectComplete(result, projection) {
+  if (projection === 'staticPayload') {
+    return {
+      maximumTopMassKg: finite(result.staticPayloadCapacity.maximumTotalTopMassKg),
+      additionalTopMassKg: finite(result.staticPayloadCapacity.remainingAdditionalMassKg ?? result.staticPayloadCapacity.additionalTopEquipmentMassKg),
+      utilizationAtLimit: finite(result.staticPayloadCapacity.utilizationAtLimit),
+      boltUtilizationAtLimit: finite(result.staticPayloadCapacity.boltUtilizationAtLimit),
+      bucklingFactorAtLimit: finite(result.staticPayloadCapacity.bucklingFactorAtLimit),
+      governingMode: result.staticPayloadCapacity.governingMode,
+    }
   }
+  if (projection === 'lateral') {
+    return {
+      criticalForceN: finite(result.lateralCapacity.criticalForceN),
+      memberLimitForceN: finite(result.lateralCapacity.memberLimitForceN),
+      globalBucklingForceN: finite(result.lateralCapacity.globalBucklingForceN),
+      boltLimitForceN: finite(result.lateralCapacity.boltLimitForceN),
+      governingMode: result.lateralCapacity.governingMode,
+      directionDeg: finite(result.lateralCapacity.directionDeg),
+    }
+  }
+  if (projection === 'craneBoom') {
+    return {
+      maximumEndPayloadMassKg: finite(result.craneBoomCapacity.maximumEndPayloadMassKg),
+      additionalEndPayloadMassKg: finite(result.craneBoomCapacity.additionalEndPayloadMassKg),
+      configuredEndPayloadMassKg: finite(result.craneBoomCapacity.configuredEndPayloadMassKg),
+      boomSelfWeightN: finite(result.craneBoomCapacity.boomSelfWeightN),
+      boomSelfMassEquivalentKg: finite(result.craneBoomCapacity.boomSelfMassEquivalentKg),
+      governingMode: result.craneBoomCapacity.governingMode,
+      governingDirectionDeg: finite(result.craneBoomCapacity.governingDirectionDeg),
+    }
+  }
+  if (projection === 'height') {
+    return {
+      designMaximumModules: result.heightCapacity.design.maximumModules,
+      designFirstFailModules: result.heightCapacity.design.firstFailModules,
+      ultimateMaximumModules: result.heightCapacity.ultimateResistance.maximumModules,
+      ultimateFirstFailModules: result.heightCapacity.ultimateResistance.firstFailModules,
+      evaluationCount: result.heightCapacity.evaluationCount,
+    }
+  }
+  throw new Error(`Неизвестная complete projection: ${projection}`)
 }
 
-function projectLateral(result) {
-  return {
-    criticalForceN: finite(result.criticalForceN),
-    memberLimitForceN: finite(result.memberLimitForceN),
-    globalBucklingForceN: finite(result.globalBucklingForceN),
-    boltLimitForceN: finite(result.boltLimitForceN),
-    governingMode: result.governingMode,
-    directionDeg: finite(result.directionDeg),
-  }
-}
-
-function projectCraneBoom(result) {
-  return {
-    maximumEndPayloadMassKg: finite(result.maximumEndPayloadMassKg),
-    additionalEndPayloadMassKg: finite(result.additionalEndPayloadMassKg),
-    configuredEndPayloadMassKg: finite(result.configuredEndPayloadMassKg),
-    boomSelfWeightN: finite(result.boomSelfWeightN),
-    boomSelfMassEquivalentKg: finite(result.boomSelfMassEquivalentKg),
-    governingMode: result.governingMode,
-    governingDirectionDeg: finite(result.governingDirectionDeg),
-  }
-}
-
-function projectHeight(result) {
-  return {
-    designMaximumModules: result.designMaximumModules,
-    designFirstFailModules: result.designFirstFailModules,
-    ultimateMaximumModules: result.ultimateMaximumModules,
-    ultimateFirstFailModules: result.ultimateFirstFailModules,
-    evaluationCount: result.evaluationCount,
-  }
-}
-
-function projectDesignRoundTrip(result) {
-  const packageValue = buildDesignPackage(result, {
-    createdAt: '2026-08-08T12:00:00.000Z',
-    repository: 'netkeep80/mast-calculator',
-    ref: 'canonical-baseline',
-    sha: 'canonical-baseline',
+function projectDesign(result) {
+  const designPackage = buildDesignPackage(result, {
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ref: 'canonical-v1',
+    sha: 'canonical-v1',
   })
-  const serialized = serializeDesignPackage(packageValue)
+  const serialized = serializeDesignPackage(designPackage)
   const parsed = parseDesignPackage(serialized)
   const restored = designResultFromPackage(parsed)
-  const mesh = buildDetailedMastModel(restored)
-  const obj = createMastObj(restored)
-  const lines = obj.split('\n')
+  const mesh = buildDetailedMastModel(restored, { radialSegments: 8 })
+  const obj = createMastObj(restored, { radialSegments: 8 })
   return {
     schema: parsed.schema,
-    serializedBytes: Buffer.byteLength(serialized),
+    serializedBytes: Buffer.byteLength(serialized, 'utf8'),
     model: {
       modules: restored.model.moduleCount,
       nodes: restored.model.nodes.length,
       members: restored.model.members.length,
     },
     mesh: {
-      structuralMembers: mesh.structuralMembers.length,
-      hardwareObjects: mesh.hardware.length,
+      structuralMembers: mesh.statistics.structuralMembers,
+      hardwareObjects: mesh.statistics.hardwareObjects,
     },
     obj: {
-      bytes: Buffer.byteLength(obj),
-      vertexLines: lines.filter((line) => line.startsWith('v ')).length,
-      faceLines: lines.filter((line) => line.startsWith('f ')).length,
-      hasStructuralGroup: lines.some((line) => line.startsWith('g structural-')),
-      hasJointHardwareGroup: lines.some((line) => line.startsWith('g joint-')),
+      bytes: Buffer.byteLength(obj, 'utf8'),
+      vertexLines: obj.split('\n').filter((line) => line.startsWith('v ')).length,
+      faceLines: obj.split('\n').filter((line) => line.startsWith('f ')).length,
+      hasStructuralGroup: /\ng structural_members\n/.test(`\n${obj}`),
+      hasJointHardwareGroup: /\ng joint_hardware\n/.test(`\n${obj}`),
     },
   }
+}
+
+const completeCache = new Map()
+function completeFor(scenario) {
+  const key = scenario.cacheKey ?? JSON.stringify(scenario.input)
+  if (!completeCache.has(key)) {
+    completeCache.set(key, calculateCompleteMastWithConfiguredJoint(resolvedProject(scenario.input)))
+  }
+  return completeCache.get(key)
+}
+
+const cases = {}
+for (const scenario of CANONICAL_SCENARIOS) {
+  if (scenario.kind === 'performance-owner') {
+    cases[scenario.id] = {
+      ownerTest: scenario.ownerTest,
+      topology: { modules: scenario.input.moduleCount, members: scenario.input.moduleCount * 9 },
+    }
+    continue
+  }
+  if (scenario.kind === 'mast') {
+    cases[scenario.id] = projectMast(calculateMast(resolvedProject(scenario.input)))
+    continue
+  }
+  if (scenario.kind === 'guys') {
+    const parameters = resolvedProject(scenario.input)
+    cases[scenario.id] = projectGuyed(parameters, scenario)
+    continue
+  }
+  if (scenario.kind === 'complete-projection') {
+    cases[scenario.id] = projectComplete(completeFor(scenario), scenario.projection)
+    continue
+  }
+  if (scenario.kind === 'design') {
+    cases[scenario.id] = projectDesign(completeFor(scenario))
+    continue
+  }
+  throw new Error(`Неизвестный canonical scenario kind: ${scenario.kind}`)
 }
 
 const baseline = {
   schema: BASELINE_SCHEMA,
   scenariosSchema: CANONICAL_SCENARIO_SCHEMA,
-  cases: {},
-}
-
-for (const scenario of CANONICAL_SCENARIOS) {
-  if (scenario.kind === 'performance-owner') {
-    baseline.cases[scenario.id] = {
-      ownerTest: scenario.ownerTest,
-      topology: scenario.topology,
-    }
-    continue
-  }
-
-  if (scenario.kind === 'mast') {
-    const parameters = resolvedProject(scenario.parameters)
-    baseline.cases[scenario.id] = projectMast(calculateCompleteMastWithConfiguredJoint(parameters))
-    continue
-  }
-
-  if (scenario.kind === 'guyed') {
-    const parameters = resolvedProject(scenario.parameters)
-    baseline.cases[scenario.id] = projectGuys(calculateGuyedMast(parameters, scenario.guys))
-    continue
-  }
-
-  if (scenario.kind === 'static-payload') {
-    const parameters = resolvedProject(scenario.parameters)
-    baseline.cases[scenario.id] = projectStaticPayload(calculateMast(parameters).staticPayloadCapacity)
-    continue
-  }
-
-  if (scenario.kind === 'lateral-capacity') {
-    const parameters = resolvedProject(scenario.parameters)
-    baseline.cases[scenario.id] = projectLateral(calculateMast(parameters).lateralCapacity)
-    continue
-  }
-
-  if (scenario.kind === 'crane-boom') {
-    const parameters = resolvedProject(scenario.parameters)
-    baseline.cases[scenario.id] = projectCraneBoom(calculateMast(parameters).craneBoomCapacity)
-    continue
-  }
-
-  if (scenario.kind === 'height-search') {
-    const parameters = resolvedProject(scenario.parameters)
-    baseline.cases[scenario.id] = projectHeight(calculateMast(parameters).heightCapacity)
-    continue
-  }
-
-  if (scenario.kind === 'design-round-trip') {
-    const parameters = resolvedProject(scenario.parameters)
-    baseline.cases[scenario.id] = projectDesignRoundTrip(calculateMast(parameters))
-    continue
-  }
-
-  throw new Error(`Unsupported canonical scenario kind: ${scenario.kind}`)
+  cases,
 }
 
 console.log('===CANONICAL_BASELINE_BEGIN===')

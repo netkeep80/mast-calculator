@@ -1,6 +1,6 @@
 # Canonical contracts
 
-Status: current after Architecture Foundation 2.0 and Web UI 2.0 result consolidation.
+Status: current after Architecture Foundation 2.0, Web UI 2.0 result consolidation, and load-action schema migration #113.
 
 ## Public project input
 
@@ -10,12 +10,21 @@ All environment adapters construct one grouped `ProjectInput`:
 {
   geometry: { moduleCount, stockBarLengthMm, stockBarPieces, barDiameterMm, moduleDiametersMm? },
   material: { reinforcementClass, materialSafetyFactor },
+  loadActions:
+    | { profile: 'sp20-2016-amendment-6' }
+    | {
+        profile: 'manual-migrated-v1',
+        steelSelfWeightLoadFactor,
+        equipmentLoadFactor,
+        iceLoadFactor,
+        windLoadFactor,
+      },
   environment: {
-    deadLoadFactor, windLoadFactor, windPresetId, windPressurePa?, dragCoefficient,
+    windActionMode?, windRegion?, windTerrainType?, windPresetId, windPressurePa?, dragCoefficient,
     windDirectionDeg, windEnvelopeEnabled, windEnvelopeStepDeg, lateralCapacityStepDeg,
     iceThicknessMm, iceDensityKgM3,
   },
-  equipment: { massKg, windAreaM2, dragCoefficient, loadFactor },
+  equipment: { massKg, windAreaM2, dragCoefficient },
   connection: {
     configuratorMode, boltDiameterMm, boltClass, clearanceNutThreadMm, boltLengthMm,
     threadEngagementFactor, boltShearPlanes, conditionFactor, weldConsumableId,
@@ -28,9 +37,11 @@ All environment adapters construct one grouped `ProjectInput`:
 }
 ```
 
+New projects use `sp20-2016-amendment-6`; the resolver owns the named design-action factors and their provenance. `manual-migrated-v1` exists only to preserve historical `project/v1` numerical meaning during explicit migration. It must not be presented as the normative default profile.
+
 The input does **not** contain derived or catalogue-owned values. In particular these are forbidden as user fields: `ribCutLengthMm`, `triangleSideMm`, `moduleHeightMm`, `youngModulusGPa`, `yieldStrengthMPa`, `tensileStrengthMPa`, `densityKgM3`, `windSpeedMs`, `jointEffectiveRadiusMm`, `jointBaseMetalTensileStrengthMPa`, `extraHorizontalLoadN`, and `extraVerticalLoadN`.
 
-`createProjectInput(overrides)` is the convenience constructor. `validateProjectInput()` is the runtime boundary check for complete external values.
+`createProjectInput(overrides)` is the convenience constructor. `validateProjectInput()` is the runtime boundary check for complete current external values.
 
 ## Resolution
 
@@ -46,9 +57,54 @@ resolveProjectInput()
 ResolvedProject
 ```
 
-`ResolvedProject` contains the flat, fully derived values consumed by the numerical and engineering implementation. Adapters must never construct it directly and must never apply a second default/resolve pass.
+`ResolvedProject` contains the flat, fully derived values consumed by numerical and engineering packages, including named action factors and `loadActionProvenance`. Adapters must never construct it directly and must never apply a second default/resolve pass.
 
-The former transition helpers `resolveCalculationParameters()` and `DEFAULT_PARAMETERS` were removed in #62. They are not production exports and must not be reintroduced as compatibility layers. Low-level tests that need a resolved fixture use a test-only adapter under `tests/helpers/`; that adapter accepts only user-owned project fields and resolves them through the same canonical `ProjectInput -> resolveProjectInput()` path.
+Physical modal mass/inertia remains unfactored. Design-action factors belong to load effects and may not leak into modal inertia.
+
+The former transition helpers `resolveCalculationParameters()` and `DEFAULT_PARAMETERS` were removed in #62. They are not production exports and must not be reintroduced as compatibility layers. Tests that need a resolved fixture use `tests/helpers/resolved-project.js`, which maps only user-owned values and resolves through the canonical boundary.
+
+## External project JSON
+
+The current persisted/imported schema is:
+
+```json
+{
+  "schema": "mast-calculator/project/v2",
+  "project": {
+    "geometry": {},
+    "material": {},
+    "loadActions": { "profile": "sp20-2016-amendment-6" },
+    "environment": {},
+    "equipment": {},
+    "connection": {},
+    "criteria": {}
+  }
+}
+```
+
+Historical `mast-calculator/project/v1` remains a supported migration source. Its ambiguous coefficients are interpreted exactly as the old runtime did:
+
+```text
+environment.deadLoadFactor -> steel self-weight + ice
+equipment.loadFactor       -> equipment weight
+environment.windLoadFactor -> wind
+```
+
+They become a v2 `manual-migrated-v1` profile. Finite zero coefficients are preserved; negative/non-finite values are rejected. Writers always emit v2.
+
+The package may also contain optional user-owned `guys` and `erection` configuration. Derived cable states, erection FEM topology, loads, reactions and envelopes are results and are never persisted as project input.
+
+Public helpers:
+
+```text
+createProjectPackage(ProjectInput)
+serializeProjectPackage(package)
+parseProjectPackage(json)
+assertProjectPackage(value)
+migrateProjectPackage(value)
+```
+
+Unknown schema ids and unknown package/input fields fail closed with `ProjectSchemaError`. Any future incompatible external JSON semantics require a new schema version and explicit tested migration.
 
 ## Application result
 
@@ -58,15 +114,15 @@ The canonical headless use case is:
 const result = calculateProject(projectInput)
 ```
 
-The application resolves input once, performs all engineering/design enrichment through copy-on-write assembly, adds final verification, and returns one complete `CalculationResult`. The public result is deeply frozen by default. Web, CLI and Desktop adapters consume this value; they do not add engineering fields after calculation.
+The application resolves input once, performs engineering/design enrichment through copy-on-write assembly, adds final verification, and returns one complete `CalculationResult`. The public result is deeply frozen by default. Web, CLI and Desktop consume this value; they do not add engineering fields after calculation.
 
-For a project with optional guy wires, `calculateProjectWithGuys()` returns the normal complete `CalculationResult` plus a separate nonlinear `GuyedResult`. The two values are deliberately not merged into one incompatible result type. `GuyedResult` currently owns member/cable/displacement/buckling envelope checks; normal special capacity searches remain part of `CalculationResult`.
+For optional guy wires, `calculateProjectWithGuys()` returns the complete `CalculationResult` plus a separate nonlinear `GuyedResult`. The two values deliberately remain separate contracts.
 
 Low-level calculation functions below the application boundary consume `ResolvedProject` directly. They do not accept flat user input and do not perform fallback resolution.
 
 ## Engineering summary
 
-Presentation adapters must not independently decide project PASS/FAIL from raw result fields. The canonical projection is:
+Presentation adapters must not independently decide project PASS/FAIL from raw fields. The canonical projection is:
 
 ```text
 mast-calculator/engineering-summary/v1
@@ -88,42 +144,11 @@ criteria[]
 capacities
 ```
 
-`fail` means at least one implemented required criterion has failed. `incomplete` is intentionally **not** a soft PASS: no implemented required criterion has failed, but at least one required criterion is not verified.
+`fail` means at least one implemented required criterion failed. `incomplete` is intentionally **not** a soft PASS: no implemented required criterion failed, but at least one required criterion is not verified.
 
-For a guyed project, the current nonlinear cable solver does not yet recompute the physical bolt/weld envelope from guyed member-end actions. Therefore `guyed-connection-envelope` is a required `not-verified` criterion. A known ordinary connection failure is still a hard veto, but ordinary connection PASS plus `GUY PASS` cannot produce full project PASS. Until the guyed connection layer exists, an otherwise passing guyed project is `incomplete`.
+For a guyed project, the current nonlinear cable solver does not yet recompute the physical bolt/weld envelope from guyed member-end actions. Therefore `guyed-connection-envelope` is a required `not-verified` criterion. Ordinary connection PASS plus `GUY PASS` cannot produce full project PASS until that layer exists.
 
-Existing `mast-calculator/result-summary/v1` remains a stable machine transport contract. Its historical bare `passes` field keeps its original four-criterion meaning for compatibility, but those four statuses are now derived from `engineering-summary/v1` rather than from duplicated comparison formulas. A future incompatible reinterpretation of `result-summary/v1` requires a new schema version.
-
-## External JSON
-
-Persisted/imported project JSON is versioned independently from internal TypeScript shapes:
-
-```json
-{
-  "schema": "mast-calculator/project/v1",
-  "project": {
-    "geometry": {},
-    "material": {},
-    "environment": {},
-    "equipment": {},
-    "connection": {},
-    "criteria": {}
-  }
-}
-```
-
-The package may also contain optional user-owned `guys` input. Derived cable lengths, tensions, reactions and envelopes are results and are never persisted as project input.
-
-Public helpers:
-
-```text
-createProjectPackage(ProjectInput)
-serializeProjectPackage(package)
-parseProjectPackage(json)
-assertProjectPackage(value)
-```
-
-Unknown schema ids and unknown package/input fields fail closed with `ProjectSchemaError`. An incompatible future schema must receive a new version and explicit migration path; silently accepting unknown fields or reinterpreting them is forbidden.
+Existing `mast-calculator/result-summary/v1` remains a stable machine transport contract. Its historical bare `passes` field keeps its original four-criterion meaning for compatibility, but those statuses are derived from `engineering-summary/v1`. A future incompatible reinterpretation requires a new schema version.
 
 ## Errors
 
@@ -142,7 +167,7 @@ Adapters may translate these errors into UI/CLI messages, but must not infer eng
 
 Canonical packages are authored only in TypeScript. Compiler output is emitted to `.build/packages` for Node tests and Web publication. Source `.js` implementations, compatibility wrappers and `allowJs` are forbidden by architecture tests.
 
-Imports inside TypeScript source intentionally use NodeNext runtime specifiers such as `./module.js`; TypeScript and the architecture audit resolve those specifiers to the owning `.ts` source file, while emitted JavaScript keeps the runtime-compatible path.
+Imports inside TypeScript source use NodeNext runtime specifiers such as `./module.js`; TypeScript and the architecture audit resolve them to the owning `.ts` source file while emitted JavaScript keeps the runtime-compatible path.
 
 ## CI contract
 
@@ -158,4 +183,4 @@ npm run audit:architecture
 npm test
 ```
 
-Canonical numerical equivalence remains a veto: contract or TypeScript refactoring is not allowed to alter engineering results except for explicitly reviewed serialization changes caused by removal of dead fields. The frozen canonical baseline is never regenerated merely to make a migration pass.
+Canonical numerical equivalence remains a veto except for explicitly reviewed physics/schema changes such as #113. Baselines or tolerances must never be weakened merely to make a migration pass. Intentional numerical changes must be demonstrated and reviewed independently from serialization compatibility.

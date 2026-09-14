@@ -2,6 +2,11 @@ import {
   DEFAULT_PROJECT_INPUT,
   createProjectInput,
 } from '../../packages/application/index.js'
+import {
+  MANUAL_MIGRATED_V1_LOAD_ACTION_PROFILE,
+  SP20_OPERATIONAL_LOAD_ACTION_PROFILE,
+  SP20_OPERATIONAL_LOAD_FACTORS,
+} from '../../packages/domain/index.js'
 
 const GROUP_FIELDS = Object.freeze({
   geometry: Object.freeze({
@@ -16,8 +21,6 @@ const GROUP_FIELDS = Object.freeze({
     materialSafetyFactor: 'materialSafetyFactor',
   }),
   environment: Object.freeze({
-    deadLoadFactor: 'deadLoadFactor',
-    windLoadFactor: 'windLoadFactor',
     windActionMode: 'windActionMode',
     windRegion: 'windRegion',
     windTerrainType: 'windTerrainType',
@@ -35,7 +38,6 @@ const GROUP_FIELDS = Object.freeze({
     massKg: 'equipmentMassKg',
     windAreaM2: 'equipmentWindAreaM2',
     dragCoefficient: 'equipmentDragCoefficient',
-    loadFactor: 'equipmentLoadFactor',
   }),
   connection: Object.freeze({
     configuratorMode: 'jointConfiguratorMode',
@@ -68,13 +70,30 @@ const GROUP_FIELDS = Object.freeze({
   }),
 })
 
+const LOAD_ACTION_FORM_FIELDS = Object.freeze({
+  profile: 'loadActionProfile',
+  steelSelfWeightLoadFactor: 'steelSelfWeightLoadFactor',
+  equipmentLoadFactor: 'equipmentLoadFactor',
+  iceLoadFactor: 'iceLoadFactor',
+  windLoadFactor: 'windLoadFactor',
+})
+
 export const OPTIONAL_PROJECT_FORM_FIELDS = Object.freeze([
   'windActionMode',
   'windRegion',
   'windTerrainType',
 ])
 
-export const DEFAULT_PROJECT_FORM_VALUES = Object.freeze(projectInputToFlatValues(DEFAULT_PROJECT_INPUT))
+function loadActionValues(loadActions) {
+  if (loadActions.profile === SP20_OPERATIONAL_LOAD_ACTION_PROFILE) {
+    return {
+      profile: loadActions.profile,
+      ...SP20_OPERATIONAL_LOAD_FACTORS,
+    }
+  }
+  if (loadActions.profile === MANUAL_MIGRATED_V1_LOAD_ACTION_PROFILE) return loadActions
+  throw new Error(`Неизвестный профиль расчётных воздействий: ${String(loadActions.profile)}`)
+}
 
 export function projectInputToFlatValues(projectInput) {
   const flat = {}
@@ -84,7 +103,28 @@ export function projectInputToFlatValues(projectInput) {
       if (group?.[field] !== undefined) flat[flatName] = group[field]
     }
   }
+  const actions = loadActionValues(projectInput.loadActions)
+  for (const [field, flatName] of Object.entries(LOAD_ACTION_FORM_FIELDS)) {
+    if (actions[field] !== undefined) flat[flatName] = actions[field]
+  }
   return flat
+}
+
+export const DEFAULT_PROJECT_FORM_VALUES = Object.freeze(projectInputToFlatValues(DEFAULT_PROJECT_INPUT))
+
+function loadActionsFromFlatValues(values) {
+  const profile = values.loadActionProfile ?? DEFAULT_PROJECT_INPUT.loadActions.profile
+  if (profile === SP20_OPERATIONAL_LOAD_ACTION_PROFILE) return { profile }
+  if (profile !== MANUAL_MIGRATED_V1_LOAD_ACTION_PROFILE) {
+    throw new Error(`Неизвестный профиль расчётных воздействий: ${String(profile)}`)
+  }
+  return {
+    profile,
+    steelSelfWeightLoadFactor: values.steelSelfWeightLoadFactor,
+    equipmentLoadFactor: values.equipmentLoadFactor,
+    iceLoadFactor: values.iceLoadFactor,
+    windLoadFactor: values.windLoadFactor,
+  }
 }
 
 export function projectInputFromFlatValues(values = {}) {
@@ -96,5 +136,6 @@ export function projectInputFromFlatValues(values = {}) {
     }
     groups[groupName] = group
   }
+  groups.loadActions = loadActionsFromFlatValues(values)
   return createProjectInput(groups)
 }

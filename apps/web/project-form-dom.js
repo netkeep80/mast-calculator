@@ -7,6 +7,7 @@ import {
 
 const STRING_FIELDS = new Set([
   'reinforcementClass',
+  'loadActionProfile',
   'windActionMode',
   'windRegion',
   'windTerrainType',

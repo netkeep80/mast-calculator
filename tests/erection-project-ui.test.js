@@ -8,7 +8,7 @@ const runtimeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const sourceRoot = path.basename(runtimeRoot) === '.build' ? path.dirname(runtimeRoot) : runtimeRoot
 const source = (relativePath) => fs.readFileSync(path.join(sourceRoot, relativePath), 'utf8')
 
-test('erection configuration is an editable project/v1 stage rather than an invisible sidecar', () => {
+test('erection configuration is an editable project/v2 stage rather than an invisible sidecar', () => {
   const adapter = source('apps/web/project-package-ui.js')
   const editor = source('apps/web/erection-editor.js')
 
@@ -33,7 +33,7 @@ test('erection Web editor owns only user input and cannot become a second solver
   assert.doesNotMatch(editor, /hingeNodeIds|attachmentNodeId|requiredCableTensionN|memberResults|reactionMoments/)
 })
 
-test('legacy package remains absence-preserving until the user enables or explicitly disables erection', () => {
+test('opened package remains absence-preserving until the user enables or explicitly disables erection', () => {
   const editor = source('apps/web/erection-editor.js')
 
   assert.match(editor, /let explicitDisabled = false/)

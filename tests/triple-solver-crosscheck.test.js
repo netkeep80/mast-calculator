@@ -155,6 +155,19 @@ test('1 модуль: собственный вес совпадает трем�
   assertBucklingIdentity(state)
 })
 
+test('1 модуль: ветер и оборудование сохраняют точность λcr и eigen residual', () => {
+  const state = runThreeWays({
+    moduleCount: 1,
+    windDirectionDeg: 0,
+    windPressurePa: 250,
+    equipmentMassKg: 10,
+    equipmentWindAreaM2: 0.2,
+    iceThicknessMm: 0,
+  }, { compareBuckling: true })
+  assertTripleStaticIdentity(state)
+  assertBucklingIdentity(state)
+})
+
 test('2 модуля: косой ветер, оборудование и внутренняя узловая fixture-нагрузка совпадают тремя путями', () => {
   const directionDeg = 17
   const state = runThreeWays({

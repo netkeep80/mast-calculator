@@ -113,7 +113,7 @@ test('all-stage job equals independent operational, guy and erection application
   assert.deepEqual(staged.guyedResult, directGuys)
   assert.deepEqual(staged.erectionResult, directErection)
   assert.equal(staged.stageSummary.stages.operational.status, 'passed')
-  assert.equal(staged.stageSummary.stages.guys.status, 'pending')
+  assert.equal(staged.stageSummary.stages.guys.status, 'passed')
   assert.equal(staged.stageSummary.stages.erection.status, 'pending')
   assert.equal(staged.stageSummary.overallStatus, 'incomplete')
   assert.ok(Object.isFrozen(staged))

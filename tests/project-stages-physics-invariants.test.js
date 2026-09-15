@@ -59,6 +59,27 @@ function stableErectionInput(project, midpointAngleDeg = 35) {
   }
 }
 
+function singularErectionInput(project) {
+  const parameters = resolveProjectInput(project)
+  const model = generateMastModel(parameters)
+  return {
+    mode: 'tilt-up',
+    hingeBaseEdgeIndex: 0,
+    attachmentTopCornerIndex: 0,
+    anchorPointM: [...model.nodes[model.baseNodeIds[0]].position],
+    rotationSense: 1,
+    startAngleDeg: 31,
+    endAngleDeg: 39,
+    sampling: {
+      initialSegments: 4,
+      relativeTolerance: 0.02,
+      minimumAngleStepDeg: 2,
+      maximumEvaluations: 17,
+      maximumDepth: 4,
+    },
+  }
+}
+
 function guyInput() {
   return {
     safetyFactor: 3,
@@ -91,8 +112,13 @@ test('all-stage job equals independent operational, guy and erection application
   assert.deepEqual(staged.result, operational)
   assert.deepEqual(staged.guyedResult, directGuys)
   assert.deepEqual(staged.erectionResult, directErection)
+  assert.equal(staged.stageSummary.stages.operational.status, 'passed')
+  assert.equal(staged.stageSummary.stages.guys.status, 'pending')
+  assert.equal(staged.stageSummary.stages.erection.status, 'pending')
+  assert.equal(staged.stageSummary.overallStatus, 'incomplete')
   assert.ok(Object.isFrozen(staged))
   assert.ok(Object.isFrozen(staged.erectionResult))
+  assert.ok(Object.isFrozen(staged.stageSummary))
   assert.ok(progress.some((item) => item.phase === 'guys'))
   assert.ok(progress.some((item) => item.phase === 'erection'))
   assert.equal(progress.at(-1).phase, 'complete')
@@ -100,6 +126,40 @@ test('all-stage job equals independent operational, guy and erection application
   for (let index = 1; index < progress.length; index += 1) {
     assert.ok(progress[index].fraction >= progress[index - 1].fraction - 1e-12)
   }
+})
+
+test('requested singular erection makes the complete project FAIL instead of bare PASS', () => {
+  const project = createProjectInput({
+    geometry: { moduleCount: 2 },
+    environment: {
+      windPresetId: 'custom',
+      windPressurePa: 20,
+      windEnvelopeEnabled: false,
+      lateralCapacityStepDeg: 60,
+    },
+    equipment: { massKg: 2, windAreaM2: 0.01 },
+    criteria: { heightSearchMaxModules: 2, displacementLimitMm: 100 },
+  })
+  const staged = calculateProjectStages(project, null, singularErectionInput(project))
+
+  assert.equal(staged.erectionResult.envelope.feasibleSampleCount, 0)
+  assert.ok(staged.erectionResult.envelope.infeasibleSampleCount > 0)
+  assert.ok(staged.erectionResult.envelope.samples.every((sample) => sample.result.status === 'infeasible'))
+  assert.equal(staged.stageSummary.stages.operational.status, 'passed')
+  assert.equal(staged.stageSummary.stages.erection.status, 'infeasible')
+  assert.equal(staged.stageSummary.overallStatus, 'fail')
+})
+
+test('requested feasible erection stays INCOMPLETE until erection strength acceptance exists', () => {
+  const project = createProjectInput({ geometry: { moduleCount: 2 }, equipment: { massKg: 20 } })
+  const staged = calculateProjectStages(project, null, stableErectionInput(project))
+
+  assert.ok(staged.erectionResult.envelope.feasibleSampleCount > 0)
+  assert.equal(staged.erectionResult.envelope.infeasibleSampleCount, 0)
+  assert.equal(staged.stageSummary.stages.erection.status, 'pending')
+  assert.equal(staged.stageSummary.stages.erection.feasible, true)
+  assert.equal(staged.stageSummary.stages.erection.verified, false)
+  assert.equal(staged.stageSummary.overallStatus, 'incomplete')
 })
 
 test('absent optional stages reproduce the operational application result exactly', () => {
@@ -110,12 +170,16 @@ test('absent optional stages reproduce the operational application result exactl
   assert.deepEqual(staged.result, direct)
   assert.equal(staged.guyedResult, null)
   assert.equal(staged.erectionResult, null)
+  assert.equal(staged.stageSummary.overallStatus, 'pass')
+  assert.equal(staged.stageSummary.stages.guys.status, 'not-requested')
+  assert.equal(staged.stageSummary.stages.erection.status, 'not-requested')
 })
 
 test('explicit disabled erection is a no-op sibling', () => {
   const project = createProjectInput({ geometry: { moduleCount: 1 } })
   const staged = calculateProjectStages(project, null, { mode: 'disabled' })
   assert.equal(staged.erectionResult, null)
+  assert.equal(staged.stageSummary.stages.erection.status, 'not-requested')
   assert.deepEqual(staged.result, calculateProject(project))
 })
 

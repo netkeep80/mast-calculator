@@ -2,12 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   ENGINEERING_SUMMARY_SCHEMA,
+  PROJECT_STAGE_SUMMARY_SCHEMA,
   calculateGuyedProject,
   calculateProject,
   createBareResultSummary,
   createEngineeringSummary,
   createProjectInput,
   createProjectPackage,
+  createProjectStageSummary,
 } from '../packages/application/index.js'
 
 const input = createProjectInput({
@@ -43,6 +45,41 @@ const guyed = calculateGuyedProject(input, guys.tiers, {
 })
 
 const criterion = (summary, id) => summary.criteria.find((item) => item.id === id)
+const noStageErrors = Object.freeze({ guys: null, erection: null })
+
+function staged(overrides = {}) {
+  return {
+    result: bare,
+    guyedResult: null,
+    erectionResult: null,
+    stageErrors: noStageErrors,
+    ...overrides,
+  }
+}
+
+function erectionEnvelope({ feasible = 1, infeasible = 0, converged = true } = {}) {
+  const sampleCount = feasible + infeasible
+  return {
+    envelope: {
+      samples: Array.from({ length: sampleCount }, (_, index) => ({
+        angleDeg: 31 + index,
+        result: index < feasible
+          ? { status: 'ok' }
+          : { status: 'infeasible', reason: 'singular-cable-geometry' },
+      })),
+      feasibleSampleCount: feasible,
+      infeasibleSampleCount: infeasible,
+      diagnostics: {
+        evaluationCount: sampleCount,
+        cacheHits: 0,
+        maximumDepthReached: 0,
+        minimumResolvedAngleStepDeg: 2,
+        converged,
+        reason: converged ? 'tolerance' : 'max-evaluations',
+      },
+    },
+  }
+}
 
 test('bare engineering summary is the single PASS/FAIL projection for current normal criteria', () => {
   const summary = createEngineeringSummary(bare)
@@ -55,6 +92,85 @@ test('bare engineering summary is the single PASS/FAIL projection for current no
   assert.equal(criterion(summary, 'bare-top-displacement').status, 'pass')
   assert.equal(criterion(summary, 'bare-connection').status, 'pass')
   assert.equal(criterion(summary, 'internal-verification').status, 'pass')
+})
+
+test('project stage summary distinguishes requested scope from not-requested stages', () => {
+  const summary = createProjectStageSummary(staged(), {
+    requestedGuys: false,
+    requestedErection: false,
+  })
+
+  assert.equal(summary.schema, PROJECT_STAGE_SUMMARY_SCHEMA)
+  assert.equal(summary.overallStatus, 'pass')
+  assert.deepEqual(summary.requestedStages, ['operational'])
+  assert.deepEqual(summary.stages.operational, {
+    requested: true,
+    executed: true,
+    feasible: true,
+    verified: true,
+    status: 'passed',
+  })
+  assert.equal(summary.stages.guys.status, 'not-requested')
+  assert.equal(summary.stages.erection.status, 'not-requested')
+})
+
+test('known infeasible erection is a hard veto even when operational criteria pass', () => {
+  const summary = createProjectStageSummary(staged({
+    erectionResult: erectionEnvelope({ feasible: 0, infeasible: 5, converged: true }),
+  }), {
+    requestedGuys: false,
+    requestedErection: true,
+  })
+
+  assert.equal(summary.stages.operational.status, 'passed')
+  assert.equal(summary.stages.erection.status, 'infeasible')
+  assert.equal(summary.stages.erection.feasible, false)
+  assert.equal(summary.stages.erection.verified, true)
+  assert.equal(summary.overallStatus, 'fail')
+})
+
+test('feasible erection remains pending until erection strength acceptance exists', () => {
+  const summary = createProjectStageSummary(staged({
+    erectionResult: erectionEnvelope({ feasible: 5, infeasible: 0, converged: true }),
+  }), {
+    requestedGuys: false,
+    requestedErection: true,
+  })
+
+  assert.equal(summary.stages.erection.status, 'pending')
+  assert.equal(summary.stages.erection.feasible, true)
+  assert.equal(summary.stages.erection.verified, false)
+  assert.equal(summary.overallStatus, 'incomplete')
+})
+
+test('sampling non-convergence and numerical stage errors are not mistaken for physical PASS', () => {
+  const nonConverged = createProjectStageSummary(staged({
+    erectionResult: erectionEnvelope({ feasible: 5, infeasible: 0, converged: false }),
+  }), {
+    requestedGuys: false,
+    requestedErection: true,
+  })
+  assert.equal(nonConverged.stages.erection.status, 'numerical-error')
+  assert.equal(nonConverged.stages.erection.feasible, true)
+  assert.equal(nonConverged.stages.erection.verified, false)
+  assert.equal(nonConverged.overallStatus, 'incomplete')
+
+  const numericalError = createProjectStageSummary(staged({
+    stageErrors: {
+      guys: null,
+      erection: {
+        category: 'numerical-failure',
+        code: 'fixture-singular-matrix',
+        message: 'fixture numerical failure',
+      },
+    },
+  }), {
+    requestedGuys: false,
+    requestedErection: true,
+  })
+  assert.equal(numericalError.stages.erection.status, 'numerical-error')
+  assert.equal(numericalError.stages.erection.executed, true)
+  assert.equal(numericalError.overallStatus, 'incomplete')
 })
 
 test('known normal connection failure remains a hard veto for a guyed project', () => {
@@ -78,6 +194,28 @@ test('passing guy envelope cannot claim project PASS until guyed connection enve
   assert.equal(criterion(summary, 'guyed-connection-envelope').status, 'not-verified')
   assert.equal(criterion(summary, 'guyed-connection-envelope').required, true)
   assert.equal(summary.capacities.guyedCapacitiesAvailable, false)
+})
+
+test('guyed stage status uses existing engineering criteria and preserves fail precedence', () => {
+  const pending = createProjectStageSummary(staged({ guyedResult: guyed }), {
+    requestedGuys: true,
+    requestedErection: false,
+  })
+  assert.equal(pending.stages.guys.status, 'pending')
+  assert.equal(pending.stages.guys.verified, false)
+  assert.equal(pending.overallStatus, 'incomplete')
+
+  const failedGuyed = {
+    ...guyed,
+    envelope: { ...guyed.envelope, maximumCableUtilization: 1.25 },
+  }
+  const failed = createProjectStageSummary(staged({ guyedResult: failedGuyed }), {
+    requestedGuys: true,
+    requestedErection: false,
+  })
+  assert.equal(failed.stages.guys.status, 'failed')
+  assert.equal(failed.stages.guys.verified, true)
+  assert.equal(failed.overallStatus, 'fail')
 })
 
 test('a failed implemented guy criterion dominates pending checks and produces overall FAIL', () => {

@@ -1,4 +1,4 @@
-import type { ApplicationErrorCategory, CalculationResult } from './contracts.js'
+import type { ApplicationErrorCategory } from './contracts.js'
 import {
   createEngineeringSummary,
   type EngineeringCriterion,
@@ -6,6 +6,7 @@ import {
 import { immutablePublicResult } from './immutability.js'
 import type { calculateProjectErection } from './project-erection.js'
 import type { calculateProjectGuys } from './project-guys.js'
+import type { calculateProject } from './use-cases.js'
 
 export const PROJECT_STAGE_SUMMARY_SCHEMA = 'mast-calculator/project-stage-summary/v1' as const
 
@@ -30,11 +31,12 @@ export interface ProjectStageErrors {
   readonly erection: SerializedStageError | null
 }
 
+type OperationalResult = ReturnType<typeof calculateProject>
 type GuyedResult = Exclude<ReturnType<typeof calculateProjectGuys>, null>
 type ErectionResult = Exclude<ReturnType<typeof calculateProjectErection>, null>
 
 export interface ProjectStageCalculationSnapshot {
-  readonly result: CalculationResult
+  readonly result: OperationalResult
   readonly guyedResult: GuyedResult | null
   readonly erectionResult: ErectionResult | null
   readonly stageErrors: ProjectStageErrors
@@ -109,7 +111,7 @@ function criteriaStage(
   }
 }
 
-function operationalStage(result: CalculationResult): ProjectStageStatusSummary {
+function operationalStage(result: OperationalResult): ProjectStageStatusSummary {
   const engineering = createEngineeringSummary(result)
   return criteriaStage(
     engineering.criteria.filter((item) => item.source === 'bare' || item.source === 'verification'),

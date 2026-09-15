@@ -2,13 +2,16 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   ENGINEERING_SUMMARY_SCHEMA,
+  PROJECT_RESULT_SUMMARY_SCHEMA,
   PROJECT_STAGE_SUMMARY_SCHEMA,
+  RESULT_SUMMARY_SCHEMA,
   calculateGuyedProject,
   calculateProject,
   createBareResultSummary,
   createEngineeringSummary,
   createProjectInput,
   createProjectPackage,
+  createProjectResultSummary,
   createProjectStageSummary,
 } from '../packages/application/index.js'
 
@@ -38,6 +41,29 @@ const guys = Object.freeze({
   terminationEfficiency: 0.8,
 })
 
+const erection = Object.freeze({
+  mode: 'tilt-up',
+  hingeBaseEdgeIndex: 0,
+  attachmentTopCornerIndex: 0,
+  anchorPointM: Object.freeze([5, 0, 2]),
+  rotationSense: 1,
+  startAngleDeg: 31,
+  endAngleDeg: 39,
+  sampling: Object.freeze({
+    initialSegments: 4,
+    relativeTolerance: 0.02,
+    minimumAngleStepDeg: 2,
+    maximumEvaluations: 17,
+    maximumDepth: 4,
+  }),
+})
+
+const provenance = Object.freeze({
+  toolVersion: 'test',
+  coreVersion: 'test',
+  command: 'calculate',
+})
+
 const bare = calculateProject(input)
 const guyed = calculateGuyedProject(input, guys.tiers, {
   safetyFactor: guys.safetyFactor,
@@ -54,6 +80,14 @@ function staged(overrides = {}) {
     erectionResult: null,
     stageErrors: noStageErrors,
     ...overrides,
+  }
+}
+
+function stagedWithSummary(overrides = {}, scope = { requestedGuys: false, requestedErection: false }) {
+  const snapshot = staged(overrides)
+  return {
+    ...snapshot,
+    stageSummary: createProjectStageSummary(snapshot, scope),
   }
 }
 
@@ -244,12 +278,31 @@ test('result-summary/v1 keeps its historical four-criterion passes meaning', () 
     && bare.envelope.minimumBucklingFactor >= bare.parameters.minimumBucklingFactor
     && bare.envelope.maxTopDisplacementM * 1000 <= bare.parameters.displacementLimitMm
     && bare.connections?.passes !== false
-  const machine = createBareResultSummary(createProjectPackage(input), bare, {
-    provenance: {
-      toolVersion: 'test',
-      coreVersion: 'test',
-      command: 'calculate',
-    },
-  })
+  const machine = createBareResultSummary(createProjectPackage(input), bare, { provenance })
+  assert.equal(machine.schema, RESULT_SUMMARY_SCHEMA)
   assert.equal(machine.result.passes, expectedLegacyPasses)
+})
+
+test('result-summary/v2 carries requested stage scope and the application stage verdict', () => {
+  const projectPackage = createProjectPackage(input, { erection })
+  const stages = stagedWithSummary({
+    erectionResult: erectionEnvelope({ feasible: 0, infeasible: 5, converged: true }),
+  }, {
+    requestedGuys: false,
+    requestedErection: true,
+  })
+
+  const machine = createProjectResultSummary(projectPackage, stages, { provenance })
+
+  assert.equal(machine.schema, PROJECT_RESULT_SUMMARY_SCHEMA)
+  assert.equal(machine.mode, 'project')
+  assert.equal(machine.inputSchema, projectPackage.schema)
+  assert.deepEqual(machine.erection, erection)
+  assert.equal(machine.overallStatus, 'fail')
+  assert.deepEqual(machine.stageSummary, stages.stageSummary)
+  assert.equal(machine.stageResults.operational.passes, true)
+  assert.equal(machine.stageResults.guys, null)
+  assert.equal(machine.stageResults.erection.feasibleSampleCount, 0)
+  assert.equal(machine.stageResults.erection.infeasibleSampleCount, 5)
+  assert.deepEqual(machine.stageResults.errors, noStageErrors)
 })

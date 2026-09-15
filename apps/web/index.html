@@ -139,12 +139,14 @@
 
           <details class="advanced-inputs">
             <summary>Инженерные коэффициенты и ограничения</summary>
-            <p class="hint practical-note">Эти поля влияют на критерии прохождения. Менять их следует осознанно; значения по умолчанию всегда попадают в расчётный проект.</p>
+            <p class="hint practical-note">Профиль расчётных воздействий задаётся схемой проекта. Для новых проектов используется СП 20.13330.2016, изм. №6; при открытии project/v1 исторические коэффициенты сохраняются как отдельный мигрированный профиль и не выдаются за нормативные значения.</p>
             <div class="form-grid advanced-grid">
               <label>Коэффициент материала<input name="materialSafetyFactor" type="number" min="1" max="3" step="0.05"></label>
-              <label>Коэффициент постоянной нагрузки<input name="deadLoadFactor" type="number" min="1" max="3" step="0.05"></label>
-              <label>γf ветровой нагрузки<input name="windLoadFactor" type="number" min="1" max="3" step="0.05"></label>
-              <label>Коэффициент веса оборудования<input name="equipmentLoadFactor" type="number" min="1" max="3" step="0.05"></label>
+              <label>Профиль расчётных воздействий<select name="loadActionProfile" disabled><option value="sp20-2016-amendment-6">СП 20.13330.2016, изм. №6</option><option value="manual-migrated-v1">Мигрировано из project/v1</option></select></label>
+              <label>γf собственного веса стали<input name="steelSelfWeightLoadFactor" type="number" readonly></label>
+              <label>γf оборудования<input name="equipmentLoadFactor" type="number" readonly></label>
+              <label>γf гололёда<input name="iceLoadFactor" type="number" readonly></label>
+              <label>γf ветровой нагрузки<input name="windLoadFactor" type="number" readonly></label>
               <label>Допустимое отклонение, мм<input name="displacementLimitMm" type="number" min="1" step="1"></label>
               <label>Минимальный множитель общей устойчивости<input name="minimumBucklingFactor" type="number" min="1" step="0.1"></label>
               <label>Шаг боковой проверки, °<input name="lateralCapacityStepDeg" type="number" min="5" max="60" step="5"></label>

@@ -46,7 +46,7 @@ export function lateralDirections(stepDeg: unknown): number[] {
 function pureUnitLateralParameters(parameters: ResolvedProject, directionDeg: number): ResolvedProject {
   return {
     ...parameters,
-    deadLoadFactor: 0,
+    steelSelfWeightLoadFactor: 0,
     windPressurePa: 0,
     windPresetId: 'custom',
     windDirectionDeg: directionDeg,

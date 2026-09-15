@@ -15,6 +15,7 @@ import {
   serializeProjectPackage,
   validateProjectInput,
 } from '../packages/application/index.js'
+import { PROJECT_PACKAGE_SCHEMA_V1 } from '../packages/domain/index.js'
 
 test('ProjectInput is grouped, user-only and rejects derived/dead fields', () => {
   const input = createProjectInput({ geometry: { moduleCount: 3 } })
@@ -61,7 +62,7 @@ test('versioned project package round-trips and rejects unknown schemas/fields',
   )
 })
 
-test('project package v1 supports metadata and optional guys without derived calculation state', () => {
+test('current project/v2 supports metadata and optional guys without derived calculation state', () => {
   const project = createProjectInput({ geometry: { moduleCount: 3 } })
   const packageValue = createProjectPackage(project, {
     metadata: {
@@ -92,11 +93,11 @@ test('project package v1 supports metadata and optional guys without derived cal
   assert.equal('jointEffectiveRadiusMm' in parsed.project.connection, false)
 })
 
-test('project package migration dispatcher accepts current v1 and exposes supported schemas', () => {
+test('project package migration dispatcher accepts current v2 and exposes v2 plus legacy v1', () => {
   const project = createProjectInput({ geometry: { moduleCount: 2 } })
-  const legacyShapeWithinV1 = { schema: PROJECT_PACKAGE_SCHEMA, project }
-  assert.deepEqual(migrateProjectPackage(legacyShapeWithinV1), legacyShapeWithinV1)
-  assert.deepEqual([...SUPPORTED_PROJECT_PACKAGE_SCHEMAS], [PROJECT_PACKAGE_SCHEMA])
+  const current = createProjectPackage(project)
+  assert.deepEqual(migrateProjectPackage(current), current)
+  assert.deepEqual([...SUPPORTED_PROJECT_PACKAGE_SCHEMAS], [PROJECT_PACKAGE_SCHEMA, PROJECT_PACKAGE_SCHEMA_V1])
 })
 
 test('project package validates guy semantics and rejects unknown nested fields', () => {

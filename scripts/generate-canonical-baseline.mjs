@@ -15,7 +15,7 @@ import {
   CANONICAL_SCENARIOS,
 } from '../tests/fixtures/canonical/scenarios-v1.js'
 
-const BASELINE_SCHEMA = 'mast-calculator/canonical-baseline/v1'
+const BASELINE_SCHEMA = 'mast-calculator/canonical-baseline/v2'
 
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null
 

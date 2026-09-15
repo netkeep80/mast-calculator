@@ -191,7 +191,7 @@ function geometryAndMaterialChecks(result: VerificationResult): VerificationChec
   const areaM2 = Math.PI * diameterM ** 2 / 4
   const totalLengthM = model.members.length * targetLengthM
   const expectedMassKg = totalLengthM * areaM2 * p.densityKgM3
-  const expectedSelfWeightN = expectedMassKg * VERIFICATION_GRAVITY_M_S2 * p.deadLoadFactor
+  const expectedSelfWeightN = expectedMassKg * VERIFICATION_GRAVITY_M_S2 * p.steelSelfWeightLoadFactor
   const expectedPressurePa = 0.5 * AIR_DENSITY_KG_M3 * p.windSpeedMs ** 2
 
   return [
@@ -251,10 +251,10 @@ function geometryAndMaterialChecks(result: VerificationResult): VerificationChec
       id: 'self-weight', level: 1,
       title: 'Расчётный собственный вес',
       explanation: 'Проверяется преобразование массы стали в расчётную силу тяжести.',
-      formula: 'G = m·g·γg',
-      substitution: `${expectedMassKg}·${VERIFICATION_GRAVITY_M_S2}·${p.deadLoadFactor} = ${expectedSelfWeightN} Н`,
+      formula: 'G = m·g·γsteel',
+      substitution: `${expectedMassKg}·${VERIFICATION_GRAVITY_M_S2}·${p.steelSelfWeightLoadFactor} = ${expectedSelfWeightN} Н`,
       actual: result.loads.selfWeightN, expected: expectedSelfWeightN, tolerance: 1e-10, unit: 'Н',
-      howToCheck: 'Умножьте массу стали на 9,80665 и коэффициент постоянной нагрузки γg.',
+      howToCheck: 'Умножьте массу стали на 9,80665 и именованный коэффициент собственного веса стали.',
     }),
     numericCheck({
       id: 'wind-pressure', level: 1,

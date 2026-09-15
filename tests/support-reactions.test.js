@@ -26,7 +26,8 @@ const midpoint = (left, right) => left.map((value, axis) => (value + right[axis]
 function staticsParameters(overrides = {}) {
   return resolvedProject({
     moduleCount: 4,
-    deadLoadFactor: 1,
+    steelSelfWeightLoadFactor: 1,
+    iceLoadFactor: 1,
     windPresetId: 'custom',
     windPressurePa: 0,
     equipmentMassKg: 0,
@@ -65,7 +66,7 @@ function independentSelfWeightOracle(model, parameters) {
     const lengthM = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2])
     const areaM2 = Math.PI * member.diameterM ** 2 / 4
     const memberWeightN = member.densityKgM3 * areaM2 * lengthM
-      * GRAVITY_M_S2 * parameters.deadLoadFactor
+      * GRAVITY_M_S2 * parameters.steelSelfWeightLoadFactor
     const center = midpoint(a, b)
     weightN += memberWeightN
     for (let axis = 0; axis < 3; axis += 1) firstMoment[axis] += center[axis] * memberWeightN

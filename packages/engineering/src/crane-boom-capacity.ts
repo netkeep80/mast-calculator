@@ -100,7 +100,7 @@ export function buildHorizontalBoomLoadCase(
   // pressure from region/terrain; force the explicit manual zero-wind model.
   const zeroWindParameters = {
     ...parameters,
-    deadLoadFactor: 0,
+    steelSelfWeightLoadFactor: 0,
     windActionMode: WIND_ACTION_MODE_MANUAL,
     windRegion: null,
     windTerrainType: null,
@@ -123,17 +123,17 @@ export function buildHorizontalBoomLoadCase(
     topPointLoadN: scale3(direction, payloadForceN),
   })
 
-  const gammaDead = Math.max(0, Number(parameters.deadLoadFactor ?? 1))
+  const gammaSteel = Math.max(0, Number(parameters.steelSelfWeightLoadFactor ?? 1))
   let boomSelfWeightN = 0
   let distributedResultant: Vector3 = [0, 0, 0]
 
   for (const member of model.members) {
     const lengthM = memberLengthM(model, member)
     const areaM2 = Math.PI * member.diameterM ** 2 / 4
-    const weightPerLengthN = member.densityKgM3
+    const characteristicSteelWeightPerLengthN = member.densityKgM3
       * areaM2
       * STANDARD_GRAVITY_M_S2
-      * gammaDead
+    const weightPerLengthN = characteristicSteelWeightPerLengthN * gammaSteel
     const distributed = scale3(direction, weightPerLengthN)
     const weightN = weightPerLengthN * lengthM
     boomSelfWeightN += weightN
@@ -141,7 +141,9 @@ export function buildHorizontalBoomLoadCase(
     const detail = {
       memberId: member.id,
       lengthM,
+      characteristicSteelWeightPerLengthN,
       steelWeightPerLengthN: weightPerLengthN,
+      characteristicIceWeightPerLengthN: 0,
       iceWeightPerLengthN: 0,
       windReferenceHeightM: memberReferenceHeightM(model, member),
       characteristicMeanWindPressurePa: 0,

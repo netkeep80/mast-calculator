@@ -67,7 +67,7 @@ test('собственный вес использует фактическое 
     const lengthM = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2])
     return sum + lengthM * Math.PI * member.diameterM ** 2 / 4 * member.densityKgM3
   }, 0)
-  close(loads.selfWeightN, expectedMassKg * 9.80665 * p.deadLoadFactor, 1e-10)
+  close(loads.selfWeightN, expectedMassKg * 9.80665 * p.steelSelfWeightLoadFactor, 1e-10)
 
   const uniform16Parameters = parameters({ moduleDiametersMm: [16, 16, 16] })
   const uniform16 = generateMastModel(uniform16Parameters)

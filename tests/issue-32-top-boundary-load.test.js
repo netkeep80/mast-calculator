@@ -43,7 +43,8 @@ test('issue #32: верхняя масса передаётся через ст�
   const parameters = quietParameters({
     moduleCount: 3,
     equipmentMassKg: 1000,
-    deadLoadFactor: 0,
+    steelSelfWeightLoadFactor: 0,
+    iceLoadFactor: 0,
   })
   const result = calculateMast(parameters)
   const expectedWeightN = 1000 * GRAVITY * parameters.equipmentLoadFactor

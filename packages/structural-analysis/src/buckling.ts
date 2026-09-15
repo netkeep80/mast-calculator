@@ -114,7 +114,7 @@ function largestEigenpairTridiagonal(
   const size = diagonal.length
   if (size === 0) return { eigenvalue: Number.NEGATIVE_INFINITY, vector: [], residual: 0 }
   const tolerance = options.tolerance ?? 1e-11
-  const maxIterations = options.maxIterations ?? 1200
+  const maxIterations = options.maxIterations ?? 4000
 
   let lowerBound = Number.POSITIVE_INFINITY
   let scale = 1

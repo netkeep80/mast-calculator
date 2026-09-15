@@ -70,7 +70,7 @@ test(`seeded physical invariants remain valid (seed=${SEED})`, () => {
     }, 0)
     assertClose(
       loads.selfWeightN,
-      independentSteelMassKg * GRAVITY * parameters.deadLoadFactor,
+      independentSteelMassKg * GRAVITY * parameters.steelSelfWeightLoadFactor,
       'force',
       `${label}: self-weight = ρALgγg`,
     )

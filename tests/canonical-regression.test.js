@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { assertClose } from './helpers/regression-tolerances.js'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const baseline = JSON.parse(fs.readFileSync(path.join(root, 'tests/fixtures/canonical/baseline-v1.json'), 'utf8'))
+const baseline = JSON.parse(fs.readFileSync(path.join(root, 'tests/fixtures/canonical/baseline-v2.json'), 'utf8'))
 const BEGIN = '===CANONICAL_BASELINE_BEGIN==='
 const END = '===CANONICAL_BASELINE_END==='
 
@@ -72,10 +72,17 @@ function compareExpectedSubset(actual, expected, pathParts = []) {
   }
 }
 
-test('canonical engineering scenarios preserve the frozen pre-foundation numerical baseline', () => {
+test('canonical engineering scenarios match reviewed load-action baseline v2', () => {
   const current = generateCurrentBaseline()
-  assert.equal(current.schema, baseline.schema)
-  assert.equal(current.scenariosSchema, baseline.scenariosSchema)
-  assert.deepEqual(Object.keys(current.cases), Object.keys(baseline.cases), 'canonical scenario set changed without baseline versioning')
-  compareExpectedSubset(current, baseline)
+  try {
+    assert.equal(current.schema, baseline.schema)
+    assert.equal(current.scenariosSchema, baseline.scenariosSchema)
+    assert.deepEqual(Object.keys(current.cases), Object.keys(baseline.cases), 'canonical scenario set changed without baseline versioning')
+    compareExpectedSubset(current, baseline)
+  } catch (error) {
+    console.error(BEGIN)
+    console.error(JSON.stringify(current, null, 2))
+    console.error(END)
+    throw error
+  }
 })

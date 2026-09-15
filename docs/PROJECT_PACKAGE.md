@@ -2,21 +2,21 @@
 
 ## Purpose
 
-`mast-calculator/project/v1` is the canonical portable input format for Mast Calculator. The same package is consumed by the Web adapter, the CLI and future adapters such as Desktop.
+`mast-calculator/project/v2` is the canonical portable input format for Mast Calculator. The same package is consumed by Web, CLI and Desktop adapters.
 
-The schema identifier intentionally remains `mast-calculator/project/v1`: it already existed as the canonical `ProjectInput` package before Architecture Foundation #55, so introducing a second `project-package/v1` name would create two competing formats for the same concept.
+A project package contains only user-controlled inputs, optional user-owned stage configuration and explicit metadata. Derived engineering values are resolved again when the package is opened.
 
-A project package contains only user-controlled inputs and explicit project metadata. Every derived engineering value is resolved again when the package is opened.
+`mast-calculator/project/v1` remains a supported **read-only historical input schema**. Readers migrate it explicitly to v2; writers never emit v1.
 
-## Current shape
+## Current v2 shape
 
 ```json
 {
-  "schema": "mast-calculator/project/v1",
+  "schema": "mast-calculator/project/v2",
   "metadata": {
     "name": "12 m mast",
     "description": "Example project",
-    "createdAt": "2026-08-08T12:00:00.000Z"
+    "createdAt": "2026-09-14T12:00:00.000Z"
   },
   "project": {
     "geometry": {
@@ -29,9 +29,10 @@ A project package contains only user-controlled inputs and explicit project meta
       "reinforcementClass": "A400C",
       "materialSafetyFactor": 1.1
     },
+    "loadActions": {
+      "profile": "sp20-2016-amendment-6"
+    },
     "environment": {
-      "deadLoadFactor": 1.1,
-      "windLoadFactor": 1.4,
       "windPresetId": "custom",
       "windPressurePa": 380,
       "dragCoefficient": 1.2,
@@ -45,8 +46,7 @@ A project package contains only user-controlled inputs and explicit project meta
     "equipment": {
       "massKg": 20,
       "windAreaM2": 0.35,
-      "dragCoefficient": 1.4,
-      "loadFactor": 1.1
+      "dragCoefficient": 1.4
     },
     "connection": {
       "configuratorMode": "auto",
@@ -72,16 +72,73 @@ A project package contains only user-controlled inputs and explicit project meta
 }
 ```
 
-`geometry.moduleDiametersMm` is optional and stores an explicit bottom-to-top mixed-diameter profile. Connection fields remain user inputs in manual mode; in auto mode the application is free to select the final physical joint during calculation.
+`geometry.moduleDiametersMm` is optional and stores an explicit bottom-to-top mixed-diameter profile. Connection fields remain user inputs in manual mode; in auto mode the application may select the final physical joint during calculation.
 
-## Guys
+## Load-action profiles
 
-Guy wires use the same project package rather than a separate incompatible file format:
+New v2 projects use:
 
 ```json
 {
-  "schema": "mast-calculator/project/v1",
-  "project": { "...": "same grouped ProjectInput as above" },
+  "profile": "sp20-2016-amendment-6"
+}
+```
+
+The resolver owns the named design factors for this profile:
+
+| Action | γf |
+| --- | ---: |
+| steel self-weight | 1.05 |
+| stationary equipment weight | 1.05 |
+| ice | 1.8 |
+| wind | 1.4 |
+
+The resolved result carries `loadActionProvenance`; reports and UI must distinguish this normative profile from migrated historical values.
+
+### v1 migration
+
+Historical v1 stored three ambiguous user coefficients:
+
+```text
+environment.deadLoadFactor
+environment.windLoadFactor
+equipment.loadFactor
+```
+
+Migration is deterministic and preserves historical numerical meaning:
+
+```text
+v1 environment.deadLoadFactor -> v2 steelSelfWeightLoadFactor
+v1 environment.deadLoadFactor -> v2 iceLoadFactor
+v1 equipment.loadFactor       -> v2 equipmentLoadFactor
+v1 environment.windLoadFactor -> v2 windLoadFactor
+profile                        -> manual-migrated-v1
+```
+
+The migrated v2 representation is therefore:
+
+```json
+{
+  "profile": "manual-migrated-v1",
+  "steelSelfWeightLoadFactor": 1.1,
+  "equipmentLoadFactor": 1.1,
+  "iceLoadFactor": 1.1,
+  "windLoadFactor": 1.4
+}
+```
+
+Finite historical zero coefficients are preserved as zero. Negative and non-finite factors are rejected at the migration boundary. A `manual-migrated-v1` project is **not relabelled as normative** and is serialized as canonical v2.
+
+Physical modal inertia remains unfactored; load-action factors belong to design actions, not physical mass.
+
+## Guys
+
+Guy wires are an optional sibling of `project`, not a second project format:
+
+```json
+{
+  "schema": "mast-calculator/project/v2",
+  "project": { "...": "canonical ProjectInput" },
   "guys": {
     "safetyFactor": 3,
     "terminationEfficiency": 0.8,
@@ -99,16 +156,16 @@ Guy wires use the same project package rather than a separate incompatible file 
 }
 ```
 
-The package validates the guy configuration before calculation. The engineering layer still resolves catalog data and physical attachment geometry at runtime.
+Derived cable lengths, tensions, reactions and nonlinear envelopes are results and are never persisted as project input.
 
 ## Erection
 
-The quasi-static tilt-up stage is also an optional sibling of `project` rather than part of operational `ProjectInput`. The package stores semantic user intent, not generated FEM topology:
+The quasi-static tilt-up stage is also an optional sibling of `project`:
 
 ```json
 {
-  "schema": "mast-calculator/project/v1",
-  "project": { "...": "same grouped ProjectInput as above" },
+  "schema": "mast-calculator/project/v2",
+  "project": { "...": "canonical ProjectInput" },
   "erection": {
     "mode": "tilt-up",
     "hingeBaseEdgeIndex": 0,
@@ -128,59 +185,58 @@ The quasi-static tilt-up stage is also an optional sibling of `project` rather t
 }
 ```
 
-`hingeBaseEdgeIndex` selects one of the three physical edges of the generated base triangle: edge `i` connects base corners `i` and `(i + 1) mod 3`. `attachmentTopCornerIndex` selects one of the three top-face corners. The single structural resolver translates those stable topology-relative selectors into current generated node IDs after the mast model has been built.
+Stable topology-relative selectors are persisted; generated FEM node/member IDs, cable-tension histories, sampled states, reactions, member forces and governing angles are not.
 
-`anchorPointM` is a fixed point in world coordinates. `rotationSense`, the requested angle range and adaptive-sampling controls are persisted because they are user-owned inputs required to reproduce the same erection envelope.
-
-The package may also explicitly contain `{ "erection": { "mode": "disabled" } }`. Absence remains distinct from explicit disable so an older `project/v1` opened and saved without touching erection settings is not silently rewritten with a new field.
-
-The project package deliberately never stores erection `hingeNodeIds`, generated member/node IDs, cable-tension histories, sampled FEM states, reactions, member forces or governing angles. Those are calculation results and are regenerated by the headless application use-case.
+The package may explicitly contain `{ "erection": { "mode": "disabled" } }`. Absence and explicit disable remain distinct user states.
 
 ## What is deliberately not stored
 
-The input package must not contain stale derived state. In particular it does **not** persist:
+The project package does **not** persist stale derived state, including:
 
-- calculated rib cut length or octahedron module height copies;
+- rib cut length or octahedron module height copies;
 - catalog-resolved material strengths, density or elastic constants;
-- resolved joint effective radius or automatically selected physical hardware;
+- resolved load-action or wind-action provenance copies;
+- resolved joint effective radius or auto-selected hardware;
 - FEM matrices, displacements, member forces or reactions;
-- generated erection node/member IDs, cable tensions, sampled states or governing angles;
+- generated erection topology, cable tensions or sampled states;
 - wind envelopes, capacities, verification passports or optimization results.
 
-The lifecycle is therefore:
+The lifecycle is:
 
 ```text
 read JSON
-→ parse and validate schema
-→ migrate supported version to current package
-→ resolve ProjectInput
-→ resolve optional stage topology/configuration
-→ calculate
+-> parse schema
+-> migrate supported historical version to current v2
+-> validate canonical ProjectInput
+-> resolve ProjectInput
+-> resolve optional stage topology/configuration
+-> calculate
 ```
 
 ## Versioning and migration
 
-Readers call the migration dispatcher rather than binding directly to a one-off parser. At present v1 is the only supported schema, so migration is an identity validation step. Optional `guys` and `erection` sections are backward-compatible extensions of the same user-input contract: an old v1 package that lacks them remains valid and serializes without synthetic fields. Future incompatible versions are added to the dispatcher and must produce the current canonical package.
+Readers call `migrateProjectPackage()` through the public parser/assertion boundary. Supported schemas are currently v1 and v2. v1 is migrated to v2; v2 is validated as current.
 
-Writers always emit the current schema. There is no synthetic v0 compatibility wrapper.
+Writers always emit `mast-calculator/project/v2`.
 
-Unknown top-level or nested fields are rejected instead of silently becoming shadow configuration. Semantic constraints such as positive integer module counts, valid guy counts, erection topology selectors and adaptive-sampling bounds are checked at the package boundary.
+Unknown schema ids, unknown top-level fields and unknown nested input fields fail closed with `ProjectSchemaError`. Future incompatible external JSON semantics require a new schema id plus explicit, tested migration.
 
 ## Artifact taxonomy
 
-These formats have intentionally different responsibilities:
-
 | Artifact | Schema / form | Purpose |
 | --- | --- | --- |
-| Project package | `mast-calculator/project/v1` | Recalculable user input shared by Web/CLI/Desktop |
-| Result summary | `mast-calculator/result-summary/v1` | Stable external machine-readable calculation/optimization summary |
-| Design package | versioned design package | Accepted calculated construction used by 3D and construction-document workflows |
-| Internal calculation snapshot | current internal snapshot schema | Reproducibility/report-generation implementation detail, not a user project or public result API |
+| Project package | `mast-calculator/project/v2` | Recalculable user input shared by Web/CLI/Desktop |
+| Historical project input | `mast-calculator/project/v1` | Read-only migration source |
+| Result summary | `mast-calculator/result-summary/v1` | Stable external machine-readable result |
+| Design package | versioned design package | Accepted calculated construction for downstream artifacts |
+| Internal calculation snapshot | current internal snapshot schema | Reproducibility/report-generation detail |
 
-The internal calculation snapshot is therefore not a competing project persistence format and must not be consumed as one.
+The internal calculation snapshot is not a competing project persistence format.
 
 ## Web integration
 
-The Web application exposes **Скачать проект JSON** and **Открыть проект JSON**. Both actions use the same parser/serializer and the same grouped `ProjectInput` mapping as the CLI/application boundary. Loaded optional metadata, guy configuration and erection configuration are presented through editable project controls and saved back through the canonical package contract; none is retained as an invisible browser-only sidecar.
+**Скачать проект JSON** writes v2. **Открыть проект JSON** accepts supported historical versions through the same shared parser/migrator used by other adapters.
 
-Opening a project never trusts old derived values: the form receives only canonical user input and a subsequent calculation resolves all derived state again.
+When a v1 file is opened, Web receives the canonical migrated v2 `ProjectInput`. The migrated `manual-migrated-v1` profile and its factors must survive form round-trips and subsequent Save/Calculate operations unchanged. New projects use the normative SP20 profile.
+
+Opening a project never trusts old derived values: all derived state is resolved again from canonical user input.

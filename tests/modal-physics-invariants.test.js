@@ -39,14 +39,16 @@ test('modal mass uses physical steel/ice/equipment mass without reliability fact
     moduleCount: 2,
     equipmentMassKg: 123,
     iceThicknessMm: 6,
-    deadLoadFactor: 1,
+    steelSelfWeightLoadFactor: 1,
+    iceLoadFactor: 1,
     equipmentLoadFactor: 1,
   })
   const factored = resolvedProject({
     moduleCount: 2,
     equipmentMassKg: 123,
     iceThicknessMm: 6,
-    deadLoadFactor: 2.5,
+    steelSelfWeightLoadFactor: 2.5,
+    iceLoadFactor: 3.1,
     equipmentLoadFactor: 2.7,
   })
   const baseModel = generateMastModel(base)
@@ -130,7 +132,8 @@ test('load reliability factors do not alter inertia frequencies', () => {
     moduleCount: 3,
     equipmentMassKg: 80,
     iceThicknessMm: 4,
-    deadLoadFactor: 1,
+    steelSelfWeightLoadFactor: 1,
+    iceLoadFactor: 1,
     equipmentLoadFactor: 1,
     windLoadFactor: 1,
   })
@@ -138,7 +141,8 @@ test('load reliability factors do not alter inertia frequencies', () => {
     moduleCount: 3,
     equipmentMassKg: 80,
     iceThicknessMm: 4,
-    deadLoadFactor: 2.2,
+    steelSelfWeightLoadFactor: 2.2,
+    iceLoadFactor: 3.2,
     equipmentLoadFactor: 2.4,
     windLoadFactor: 2.6,
   })
